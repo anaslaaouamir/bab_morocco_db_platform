@@ -5,6 +5,7 @@ import "@fontsource/roboto/500.css";
 import "@fontsource/roboto/700.css";
 import "./globals.css";
 import ThemeRegistry from "@/components/ThemeRegistry";
+import { SnackbarProvider } from "@/contexts/SnackbarContext";
 import AppShell from "@/components/nav/AppShell";
 
 export const metadata: Metadata = {
@@ -19,8 +20,17 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body>
+        {/*
+         * Provider order (inner to outer):
+         *   ThemeRegistry — Emotion SSR + MUI ThemeProvider
+         *     SnackbarProvider — global toast layer (needs MUI theme for Alert/Snackbar)
+         *       AppShell — navigation rail/bar shell
+         *         {page content}
+         */}
         <ThemeRegistry>
-          <AppShell>{children}</AppShell>
+          <SnackbarProvider>
+            <AppShell>{children}</AppShell>
+          </SnackbarProvider>
         </ThemeRegistry>
       </body>
     </html>

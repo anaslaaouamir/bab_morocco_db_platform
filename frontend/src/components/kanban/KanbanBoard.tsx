@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef } from "react";
 import {
   DragDropContext,
   Droppable,
@@ -28,27 +28,37 @@ import {
   PARTNER_TYPE_LABELS,
   LANGUAGE_FLAGS,
 } from "@/types/prospect";
-import mockProspects from "@/data/mockProspects";
 
 // ─── Column configuration ─────────────────────────────────────────────────
 
 interface KanbanColumn {
-  id: string;         // droppableId
+  id: string;
   label: string;
   stages: PipelineStage[];
-  accent: string;     // hex accent for column header
-  targetStage: PipelineStage; // stage to assign on drop
+  accent: string;
+  targetStage: PipelineStage;
 }
 
 const COLUMNS: KanbanColumn[] = [
-  { id: "prospection",   label: "Prospection",   stages: ["prospection"],   accent: "#78909C", targetStage: "prospection" },
-  { id: "qualification", label: "Qualification", stages: ["qualification"], accent: "#42A5F5", targetStage: "qualification" },
-  { id: "outreach",      label: "Outreach",      stages: ["outreach"],      accent: "#FFA726", targetStage: "outreach" },
-  { id: "negociation",   label: "Négociation",   stages: ["negociation"],   accent: "#AB47BC", targetStage: "negociation" },
-  { id: "closing",       label: "Closing",       stages: ["closing"],       accent: "#66BB6A", targetStage: "closing" },
-  { id: "activation_ota",label: "Activation OTA",stages: ["activation_ota"],accent: "#2E7D32", targetStage: "activation_ota" },
-  { id: "veille_perdu",  label: "Veille / Perdu",stages: ["veille","perdu"],accent: "#BDBDBD", targetStage: "veille" },
+  { id: "prospection",    label: "Prospection",    stages: ["prospection"],    accent: "#78909C", targetStage: "prospection" },
+  { id: "qualification",  label: "Qualification",  stages: ["qualification"],  accent: "#42A5F5", targetStage: "qualification" },
+  { id: "outreach",       label: "Outreach",       stages: ["outreach"],       accent: "#FFA726", targetStage: "outreach" },
+  { id: "negociation",    label: "Négociation",    stages: ["negociation"],    accent: "#AB47BC", targetStage: "negociation" },
+  { id: "closing",        label: "Closing",        stages: ["closing"],        accent: "#66BB6A", targetStage: "closing" },
+  { id: "activation_ota", label: "Activation OTA", stages: ["activation_ota"], accent: "#2E7D32", targetStage: "activation_ota" },
+  { id: "veille_perdu",   label: "Veille / Perdu", stages: ["veille", "perdu"], accent: "#BDBDBD", targetStage: "veille" },
 ];
+
+// ─── Props ─────────────────────────────────────────────────────────────────
+
+export interface KanbanBoardProps {
+  /** Pre-filtered by FilterBar chips at the page level. */
+  prospects: Prospect[];
+  /** Called when a card is dragged to a new column. Page holds allProspects state. */
+  onStageChange: (id: string, newStage: PipelineStage) => void;
+  /** Called when a card body is clicked (not dragged) to open the Fiche Partenaire drawer. */
+  onProspectClick?: (prospect: Prospect) => void;
+}
 
 // ─── Score badge ──────────────────────────────────────────────────────────
 
@@ -57,12 +67,12 @@ function ScoreBadge({ prospect }: { prospect: Prospect }) {
   const total = scoreTotal(prospect.score);
   const color = scoreColor(total);
   const palette = theme.palette[color];
-  const isHuman = total < 75;
+  const isLow = total < 75;
 
   return (
     <Tooltip
       title={
-        isHuman
+        isLow
           ? `Score ${total}/100 — sous le seuil outreach (75)`
           : `Score ${total}/100 — qualifié pour outreach`
       }
@@ -81,19 +91,14 @@ function ScoreBadge({ prospect }: { prospect: Prospect }) {
           cursor: "default",
         }}
       >
-        {isHuman ? (
+        {isLow ? (
           <WarningAmberRoundedIcon sx={{ fontSize: 11, color: palette.main }} />
         ) : (
           <StarRateRoundedIcon sx={{ fontSize: 11, color: palette.main }} />
         )}
         <Typography
           component="span"
-          sx={{
-            fontSize: "0.6875rem",
-            fontWeight: 700,
-            lineHeight: 1,
-            color: palette.main,
-          }}
+          sx={{ fontSize: "0.6875rem", fontWeight: 700, lineHeight: 1, color: palette.main }}
         >
           {total}
         </Typography>
@@ -104,13 +109,19 @@ function ScoreBadge({ prospect }: { prospect: Prospect }) {
 
 // ─── Kanban card ──────────────────────────────────────────────────────────
 
-interface KanbanCardProps {
+function KanbanCard({
+  prospect,
+  index,
+  onClick,
+}: {
   prospect: Prospect;
   index: number;
-}
-
-function KanbanCard({ prospect, index }: KanbanCardProps) {
+  onClick?: (p: Prospect) => void;
+}) {
   const theme = useTheme();
+  // Distinguish click from drag: record pointer-down position; suppress onClick if moved > 4px
+  const pointerDownPos = useRef<{ x: number; y: number } | null>(null);
+  const didDrag = useRef(false);
 
   return (
     <Draggable draggableId={prospect.id} index={index}>
@@ -120,6 +131,20 @@ function KanbanCard({ prospect, index }: KanbanCardProps) {
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           elevation={snapshot.isDragging ? 8 : 1}
+          onPointerDown={(e) => {
+            pointerDownPos.current = { x: e.clientX, y: e.clientY };
+            didDrag.current = false;
+          }}
+          onPointerMove={(e) => {
+            if (pointerDownPos.current) {
+              const dx = Math.abs(e.clientX - pointerDownPos.current.x);
+              const dy = Math.abs(e.clientY - pointerDownPos.current.y);
+              if (dx > 4 || dy > 4) didDrag.current = true;
+            }
+          }}
+          onClick={() => {
+            if (!didDrag.current) onClick?.(prospect);
+          }}
           sx={{
             mb: 1.25,
             borderRadius: 2,
@@ -131,32 +156,28 @@ function KanbanCard({ prospect, index }: KanbanCardProps) {
             transition: snapshot.isDragging
               ? "none"
               : "box-shadow 200ms ease, rotate 200ms ease, scale 200ms ease",
-            "&:hover": {
-              boxShadow: theme.shadows[3],
-            },
+            "&:hover": { boxShadow: theme.shadows[3] },
           }}
         >
           <CardContent sx={{ p: "10px 12px !important" }}>
-            {/* Header row: drag handle + type chip */}
+            {/* Name row */}
             <Box sx={{ display: "flex", alignItems: "flex-start", gap: 0.5, mb: 0.75 }}>
               <DragIndicatorIcon
                 sx={{ fontSize: 14, color: "text.disabled", mt: "2px", flexShrink: 0 }}
               />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography
-                  variant="bodySmall"
-                  sx={{
-                    fontWeight: 700,
-                    display: "block",
-                    lineHeight: 1.3,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {prospect.nom}
-                </Typography>
-              </Box>
+              <Typography
+                variant="bodySmall"
+                sx={{
+                  fontWeight: 700,
+                  flex: 1,
+                  lineHeight: 1.3,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {prospect.nom}
+              </Typography>
             </Box>
 
             {/* Type chip + language flag */}
@@ -226,42 +247,23 @@ function KanbanCard({ prospect, index }: KanbanCardProps) {
 
 // ─── Kanban column ────────────────────────────────────────────────────────
 
-interface KanbanColumnProps {
+function KanbanColumnComponent({
+  column,
+  prospects,
+  onProspectClick,
+}: {
   column: KanbanColumn;
   prospects: Prospect[];
-}
-
-function KanbanColumnComponent({ column, prospects }: KanbanColumnProps) {
+  onProspectClick?: (p: Prospect) => void;
+}) {
   const theme = useTheme();
 
   return (
-    <Box
-      sx={{
-        width: 252,
-        flexShrink: 0,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* Column header */}
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: 1,
-          mb: 1.25,
-          px: 0.5,
-        }}
-      >
-        {/* Colour dot */}
+    <Box sx={{ width: 252, flexShrink: 0, display: "flex", flexDirection: "column" }}>
+      {/* Header */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.25, px: 0.5 }}>
         <Box
-          sx={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            bgcolor: column.accent,
-            flexShrink: 0,
-          }}
+          sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: column.accent, flexShrink: 0 }}
         />
         <Typography
           variant="titleSmall"
@@ -290,7 +292,7 @@ function KanbanColumnComponent({ column, prospects }: KanbanColumnProps) {
         />
       </Box>
 
-      {/* Droppable zone */}
+      {/* Droppable */}
       <Droppable droppableId={column.id}>
         {(provided, snapshot) => (
           <Box
@@ -311,18 +313,13 @@ function KanbanColumnComponent({ column, prospects }: KanbanColumnProps) {
             }}
           >
             {prospects.map((p, i) => (
-              <KanbanCard key={p.id} prospect={p} index={i} />
+              <KanbanCard key={p.id} prospect={p} index={i} onClick={onProspectClick} />
             ))}
             {provided.placeholder}
 
             {prospects.length === 0 && !snapshot.isDraggingOver && (
               <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: 80,
-                }}
+                sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: 80 }}
               >
                 <Typography variant="bodySmall" color="text.disabled">
                   Aucun prospect
@@ -338,20 +335,12 @@ function KanbanColumnComponent({ column, prospects }: KanbanColumnProps) {
 
 // ─── Board root ────────────────────────────────────────────────────────────
 
-export default function KanbanBoard() {
-  const [prospects, setProspects] = useState<Prospect[]>(mockProspects);
-
+export default function KanbanBoard({ prospects, onStageChange, onProspectClick }: KanbanBoardProps) {
   function handleDragEnd(result: DropResult) {
     if (!result.destination) return;
-    const { draggableId, destination } = result;
-    const col = COLUMNS.find((c) => c.id === destination.droppableId);
+    const col = COLUMNS.find((c) => c.id === result.destination!.droppableId);
     if (!col) return;
-
-    setProspects((prev) =>
-      prev.map((p) =>
-        p.id === draggableId ? { ...p, stage: col.targetStage } : p
-      )
-    );
+    onStageChange(result.draggableId, col.targetStage);
   }
 
   return (
@@ -365,29 +354,20 @@ export default function KanbanBoard() {
           alignItems: "flex-start",
           px: { xs: 2, md: 4 },
           py: 2,
-          // Ensure columns fill available height
           minHeight: "calc(100vh - 220px)",
-          // Custom scrollbar styling
           "&::-webkit-scrollbar": { height: 6 },
           "&::-webkit-scrollbar-track": { bgcolor: "transparent" },
-          "&::-webkit-scrollbar-thumb": {
-            bgcolor: "divider",
-            borderRadius: 3,
-          },
+          "&::-webkit-scrollbar-thumb": { bgcolor: "divider", borderRadius: 3 },
         }}
       >
-        {COLUMNS.map((col) => {
-          const colProspects = prospects.filter((p) =>
-            col.stages.includes(p.stage)
-          );
-          return (
-            <KanbanColumnComponent
-              key={col.id}
-              column={col}
-              prospects={colProspects}
-            />
-          );
-        })}
+        {COLUMNS.map((col) => (
+          <KanbanColumnComponent
+            key={col.id}
+            column={col}
+            prospects={prospects.filter((p) => col.stages.includes(p.stage))}
+            onProspectClick={onProspectClick}
+          />
+        ))}
       </Box>
     </DragDropContext>
   );

@@ -30,9 +30,8 @@ import {
   STAGE_LABELS,
   LANGUAGE_FLAGS,
 } from "@/types/prospect";
-import mockProspects from "@/data/mockProspects";
 
-// ─── Stage chip colour map ─────────────────────────────────────────────────
+// ─── Stage / Type colour maps ──────────────────────────────────────────────
 
 const STAGE_COLORS: Record<
   PipelineStage,
@@ -69,12 +68,12 @@ type SortOrder = "asc" | "desc";
 
 function getComparable(p: Prospect, key: SortKey): string | number {
   switch (key) {
-    case "score": return scoreTotal(p.score);
-    case "nom": return p.nom.toLowerCase();
-    case "ville": return p.ville.toLowerCase();
-    case "stage": return STAGE_LABELS[p.stage];
-    case "commissionStandard": return p.commissionStandard;
-    case "dateAjout": return p.dateAjout;
+    case "score":               return scoreTotal(p.score);
+    case "nom":                 return p.nom.toLowerCase();
+    case "ville":               return p.ville.toLowerCase();
+    case "stage":               return STAGE_LABELS[p.stage];
+    case "commissionStandard":  return p.commissionStandard;
+    case "dateAjout":           return p.dateAjout;
   }
 }
 
@@ -100,14 +99,19 @@ function ScoreCell({ prospect }: { prospect: Prospect }) {
       <Typography variant="labelSmall" sx={{ display: "block", mb: 0.5, opacity: 0.7 }}>
         Détail du score
       </Typography>
-      {[
-        ["Activité digitale", prospect.score.activiteDigitale, 25],
-        ["Cohérence marché", prospect.score.coherenceMarche, 25],
-        ["Taille & capacité", prospect.score.tailleCapacite, 20],
-        ["Contact décideur", prospect.score.contactDecideur, 15],
-        ["Liberté OTA", prospect.score.liberteOta, 15],
-      ].map(([label, val, max]) => (
-        <Box key={String(label)} sx={{ display: "flex", justifyContent: "space-between", gap: 2, py: 0.25 }}>
+      {(
+        [
+          ["Activité digitale", prospect.score.activiteDigitale, 25],
+          ["Cohérence marché",  prospect.score.coherenceMarche,  25],
+          ["Taille & capacité", prospect.score.tailleCapacite,   20],
+          ["Contact décideur",  prospect.score.contactDecideur,  15],
+          ["Liberté OTA",       prospect.score.liberteOta,       15],
+        ] as [string, number, number][]
+      ).map(([label, val, max]) => (
+        <Box
+          key={label}
+          sx={{ display: "flex", justifyContent: "space-between", gap: 2, py: 0.25 }}
+        >
           <Typography variant="bodySmall">{label}</Typography>
           <Typography variant="bodySmall" sx={{ fontWeight: 600 }}>
             {val}/{max}
@@ -146,25 +150,34 @@ function ScoreCell({ prospect }: { prospect: Prospect }) {
   );
 }
 
-// ─── Column headers config ─────────────────────────────────────────────────
+// ─── Column headers ────────────────────────────────────────────────────────
 
 const COLUMNS: { id: SortKey; label: string; align?: "right" }[] = [
-  { id: "nom", label: "Partenaire" },
-  { id: "ville", label: "Localisation" },
-  { id: "score", label: "Score", align: "right" },
-  { id: "stage", label: "Pipeline" },
+  { id: "nom",                label: "Partenaire" },
+  { id: "ville",              label: "Localisation" },
+  { id: "score",              label: "Score",      align: "right" },
+  { id: "stage",              label: "Pipeline" },
   { id: "commissionStandard", label: "Commission", align: "right" },
-  { id: "dateAjout", label: "Ajouté le" },
+  { id: "dateAjout",          label: "Ajouté le" },
 ];
+
+// ─── Props ─────────────────────────────────────────────────────────────────
+
+export interface ProspectTableProps {
+  /** Pre-filtered by FilterBar chips at the page level. */
+  prospects: Prospect[];
+  /** Called when a row is clicked to open the Fiche Partenaire drawer. */
+  onProspectClick?: (prospect: Prospect) => void;
+}
 
 // ─── Main component ────────────────────────────────────────────────────────
 
-export default function ProspectTable() {
+export default function ProspectTable({ prospects, onProspectClick }: ProspectTableProps) {
   const [orderBy, setOrderBy] = useState<SortKey>("score");
-  const [order, setOrder] = useState<SortOrder>("desc");
-  const [page, setPage] = useState(0);
-  const [rowsPerPage] = useState(10);
-  const [search, setSearch] = useState("");
+  const [order,   setOrder]   = useState<SortOrder>("desc");
+  const [page,    setPage]    = useState(0);
+  const [search,  setSearch]  = useState("");
+  const rowsPerPage = 10;
 
   function handleSort(col: SortKey) {
     if (col === orderBy) {
@@ -176,10 +189,11 @@ export default function ProspectTable() {
     setPage(0);
   }
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return mockProspects;
+  // Text search applied on top of the chip-filtered `prospects` prop
+  const searched = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return mockProspects.filter(
+    if (!q) return prospects;
+    return prospects.filter(
       (p) =>
         p.nom.toLowerCase().includes(q) ||
         p.ville.toLowerCase().includes(q) ||
@@ -187,24 +201,32 @@ export default function ProspectTable() {
         STAGE_LABELS[p.stage].toLowerCase().includes(q) ||
         PARTNER_TYPE_LABELS[p.type].toLowerCase().includes(q)
     );
-  }, [search]);
+  }, [prospects, search]);
 
   const sorted = useMemo(
-    () => stableSort(filtered, orderBy, order),
-    [filtered, orderBy, order]
+    () => stableSort(searched, orderBy, order),
+    [searched, orderBy, order]
   );
 
-  const paginated = sorted.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  // Reset to page 0 whenever the upstream filter changes row count
+  const visiblePage = Math.min(page, Math.max(0, Math.ceil(sorted.length / rowsPerPage) - 1));
+  const paginated = sorted.slice(
+    visiblePage * rowsPerPage,
+    visiblePage * rowsPerPage + rowsPerPage
+  );
 
   return (
     <Box>
-      {/* Search bar */}
+      {/* Search bar — narrows further within the already-chip-filtered list */}
       <Box sx={{ px: { xs: 2, md: 4 }, pb: 2 }}>
         <TextField
           size="small"
-          placeholder="Rechercher un partenaire, ville, étape…"
+          placeholder="Rechercher nom, ville, étape…"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(0);
+          }}
           slotProps={{
             input: {
               startAdornment: (
@@ -218,8 +240,13 @@ export default function ProspectTable() {
         />
       </Box>
 
-      <TableContainer component={Paper} elevation={0} variant="outlined" sx={{ borderRadius: 2, mx: { xs: 2, md: 4 }, width: "auto" }}>
-        <Table size="small" aria-label="CRM Prospects">
+      <TableContainer
+        component={Paper}
+        elevation={0}
+        variant="outlined"
+        sx={{ borderRadius: 2, mx: { xs: 2, md: 4 }, width: "auto" }}
+      >
+        <Table size="small" stickyHeader aria-label="CRM Prospects">
           <TableHead>
             <TableRow sx={{ "& th": { bgcolor: "background.paper" } }}>
               {COLUMNS.map((col) => (
@@ -240,136 +267,135 @@ export default function ProspectTable() {
                   </TableSortLabel>
                 </TableCell>
               ))}
-              {/* Extra non-sortable columns */}
-              <TableCell sx={{ py: 1.5 }}>
-                <Typography variant="labelMedium" sx={{ fontWeight: 700 }}>Type</Typography>
-              </TableCell>
-              <TableCell sx={{ py: 1.5 }}>
-                <Typography variant="labelMedium" sx={{ fontWeight: 700 }}>OTAs</Typography>
-              </TableCell>
-              <TableCell sx={{ py: 1.5 }}>
-                <Typography variant="labelMedium" sx={{ fontWeight: 700 }}>Langue</Typography>
-              </TableCell>
+              {/* Non-sortable columns */}
+              {["Type", "OTAs", "Langue"].map((h) => (
+                <TableCell key={h} sx={{ py: 1.5 }}>
+                  <Typography variant="labelMedium" sx={{ fontWeight: 700 }}>
+                    {h}
+                  </Typography>
+                </TableCell>
+              ))}
             </TableRow>
           </TableHead>
 
           <TableBody>
-            {paginated.map((prospect) => {
-              const total = scoreTotal(prospect.score);
-              return (
-                <TableRow
-                  key={prospect.id}
-                  hover
-                  sx={{ cursor: "default", "&:last-child td": { borderBottom: 0 } }}
-                >
-                  {/* Partenaire */}
-                  <TableCell sx={{ py: 1.25, maxWidth: 220 }}>
-                    <Typography variant="bodySmall" sx={{ fontWeight: 600, display: "block" }}>
-                      {prospect.nom}
-                    </Typography>
-                    <Typography variant="bodySmall" color="text.secondary">
-                      {prospect.nomContact} · {prospect.posteContact}
-                    </Typography>
-                  </TableCell>
+            {paginated.map((prospect) => (
+              <TableRow
+                key={prospect.id}
+                hover
+                onClick={() => onProspectClick?.(prospect)}
+                sx={{
+                  cursor: onProspectClick ? "pointer" : "default",
+                  "&:last-child td": { borderBottom: 0 },
+                }}
+              >
+                {/* Partenaire */}
+                <TableCell sx={{ py: 1.25, maxWidth: 220 }}>
+                  <Typography variant="bodySmall" sx={{ fontWeight: 600, display: "block" }}>
+                    {prospect.nom}
+                  </Typography>
+                  <Typography variant="bodySmall" color="text.secondary">
+                    {prospect.nomContact} · {prospect.posteContact}
+                  </Typography>
+                </TableCell>
 
-                  {/* Localisation */}
-                  <TableCell sx={{ py: 1.25, whiteSpace: "nowrap" }}>
-                    <Typography variant="bodySmall" sx={{ display: "block" }}>
-                      {prospect.ville}
-                    </Typography>
-                    <Typography variant="bodySmall" color="text.secondary">
-                      {prospect.pays}
-                    </Typography>
-                  </TableCell>
+                {/* Localisation */}
+                <TableCell sx={{ py: 1.25, whiteSpace: "nowrap" }}>
+                  <Typography variant="bodySmall" sx={{ display: "block" }}>
+                    {prospect.ville}
+                  </Typography>
+                  <Typography variant="bodySmall" color="text.secondary">
+                    {prospect.pays}
+                  </Typography>
+                </TableCell>
 
-                  {/* Score */}
-                  <TableCell align="right" sx={{ py: 1.25, width: 100 }}>
-                    <ScoreCell prospect={prospect} />
-                  </TableCell>
+                {/* Score */}
+                <TableCell align="right" sx={{ py: 1.25, width: 100 }}>
+                  <ScoreCell prospect={prospect} />
+                </TableCell>
 
-                  {/* Pipeline */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Chip
-                      label={STAGE_LABELS[prospect.stage]}
-                      color={STAGE_COLORS[prospect.stage]}
-                      size="small"
-                      variant={prospect.stage === "activation_ota" ? "filled" : "outlined"}
-                      sx={{ fontWeight: 600, fontSize: "0.6875rem" }}
-                    />
-                  </TableCell>
+                {/* Pipeline */}
+                <TableCell sx={{ py: 1.25 }}>
+                  <Chip
+                    label={STAGE_LABELS[prospect.stage]}
+                    color={STAGE_COLORS[prospect.stage]}
+                    size="small"
+                    variant={prospect.stage === "activation_ota" ? "filled" : "outlined"}
+                    sx={{ fontWeight: 600, fontSize: "0.6875rem" }}
+                  />
+                </TableCell>
 
-                  {/* Commission */}
-                  <TableCell align="right" sx={{ py: 1.25, whiteSpace: "nowrap" }}>
-                    <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
-                      {prospect.commissionStandard}%
-                    </Typography>
-                    <Typography variant="bodySmall" color="text.secondary">
-                      plancher {prospect.commissionPlancher}%
-                    </Typography>
-                  </TableCell>
+                {/* Commission */}
+                <TableCell align="right" sx={{ py: 1.25, whiteSpace: "nowrap" }}>
+                  <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
+                    {prospect.commissionStandard}%
+                  </Typography>
+                  <Typography variant="bodySmall" color="text.secondary">
+                    plancher {prospect.commissionPlancher}%
+                  </Typography>
+                </TableCell>
 
-                  {/* Date */}
-                  <TableCell sx={{ py: 1.25, whiteSpace: "nowrap" }}>
-                    <Typography variant="bodySmall" color="text.secondary">
-                      {new Date(prospect.dateAjout).toLocaleDateString("fr-FR", {
-                        day: "2-digit", month: "short", year: "numeric",
-                      })}
-                    </Typography>
-                  </TableCell>
+                {/* Date */}
+                <TableCell sx={{ py: 1.25, whiteSpace: "nowrap" }}>
+                  <Typography variant="bodySmall" color="text.secondary">
+                    {new Date(prospect.dateAjout).toLocaleDateString("fr-FR", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </Typography>
+                </TableCell>
 
-                  {/* Type */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Chip
-                      label={PARTNER_TYPE_LABELS[prospect.type]}
-                      color={TYPE_COLORS[prospect.type]}
-                      size="small"
-                      sx={{ fontSize: "0.6875rem" }}
-                    />
-                  </TableCell>
+                {/* Type */}
+                <TableCell sx={{ py: 1.25 }}>
+                  <Chip
+                    label={PARTNER_TYPE_LABELS[prospect.type]}
+                    color={TYPE_COLORS[prospect.type]}
+                    size="small"
+                    sx={{ fontSize: "0.6875rem" }}
+                  />
+                </TableCell>
 
-                  {/* OTAs */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                        {prospect.presenceBooking ? (
+                {/* OTAs */}
+                <TableCell sx={{ py: 1.25 }}>
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+                    {[
+                      { present: prospect.presenceBooking, label: `Booking${prospect.noteBooking ? ` ${prospect.noteBooking}` : ""}` },
+                      { present: prospect.presenceExpedia, label: "Expedia" },
+                    ].map(({ present, label }) => (
+                      <Box key={label} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        {present ? (
                           <CheckIcon sx={{ fontSize: 14, color: "success.main" }} />
                         ) : (
                           <CloseIcon sx={{ fontSize: 14, color: "text.disabled" }} />
                         )}
-                        <Typography variant="bodySmall" color={prospect.presenceBooking ? "text.primary" : "text.disabled"}>
-                          Booking{prospect.noteBooking ? ` ${prospect.noteBooking}` : ""}
+                        <Typography
+                          variant="bodySmall"
+                          color={present ? "text.primary" : "text.disabled"}
+                        >
+                          {label}
                         </Typography>
                       </Box>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                        {prospect.presenceExpedia ? (
-                          <CheckIcon sx={{ fontSize: 14, color: "success.main" }} />
-                        ) : (
-                          <CloseIcon sx={{ fontSize: 14, color: "text.disabled" }} />
-                        )}
-                        <Typography variant="bodySmall" color={prospect.presenceExpedia ? "text.primary" : "text.disabled"}>
-                          Expedia
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
+                    ))}
+                  </Box>
+                </TableCell>
 
-                  {/* Langue */}
-                  <TableCell sx={{ py: 1.25 }}>
-                    <Tooltip title={prospect.langue.toUpperCase()} placement="left">
-                      <Typography component="span" sx={{ fontSize: "1.25rem", lineHeight: 1 }}>
-                        {LANGUAGE_FLAGS[prospect.langue]}
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+                {/* Langue */}
+                <TableCell sx={{ py: 1.25 }}>
+                  <Tooltip title={prospect.langue.toUpperCase()} placement="left">
+                    <Typography component="span" sx={{ fontSize: "1.25rem", lineHeight: 1 }}>
+                      {LANGUAGE_FLAGS[prospect.langue]}
+                    </Typography>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            ))}
 
             {paginated.length === 0 && (
               <TableRow>
                 <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
                   <Typography variant="bodyMedium" color="text.secondary">
-                    Aucun partenaire ne correspond à la recherche.
+                    Aucun partenaire ne correspond aux filtres actifs.
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -379,9 +405,9 @@ export default function ProspectTable() {
 
         <TablePagination
           component="div"
-          count={filtered.length}
+          count={sorted.length}
           rowsPerPage={rowsPerPage}
-          page={page}
+          page={visiblePage}
           onPageChange={(_, p) => setPage(p)}
           rowsPerPageOptions={[rowsPerPage]}
           labelDisplayedRows={({ from, to, count }) =>
