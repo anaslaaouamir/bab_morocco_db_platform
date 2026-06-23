@@ -4,36 +4,25 @@ import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 
-export default function Home() {
+export default function DashboardPage() {
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 3,
-        p: 4,
-        bgcolor: "background.default",
-      }}
-    >
-      <Typography variant="headlineLarge" component="h1" color="primary">
-        Bab Morocco
+    <Box sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
+      <Typography variant="headlineMedium" component="h1" sx={{ mb: 0.5 }}>
+        Dashboard
       </Typography>
-      <Typography variant="titleMedium" color="text.secondary">
-        BD Intelligence Platform — Phase 1
+      <Typography variant="bodyMedium" color="text.secondary" sx={{ mb: 3 }}>
+        Vue d&apos;ensemble du pipeline partenaires — Bab Morocco BD Platform
       </Typography>
 
-      <Card sx={{ maxWidth: 480, width: "100%" }} elevation={1}>
+      <Card elevation={1} sx={{ maxWidth: 520 }}>
         <CardContent sx={{ display: "flex", flexDirection: "column", gap: 2, p: 3 }}>
-          <Typography variant="titleLarge">Bienvenue</Typography>
+          <Typography variant="titleLarge">Phase 1 en cours</Typography>
           <Typography variant="bodyMedium" color="text.secondary">
-            Plateforme interne de prospection, scoring et gestion du pipeline
-            partenaires B2B pour le lancement de l'OTA Bab Morocco.
+            Prospection, scoring et gestion du pipeline partenaires B2B.
+            Objectif : 500 prospects qualifiés avant le lancement de l&apos;OTA.
           </Typography>
           <Button variant="contained" color="primary" sx={{ alignSelf: "flex-start" }}>
-            Accéder au CRM
+            Voir les prospects
           </Button>
         </CardContent>
       </Card>
