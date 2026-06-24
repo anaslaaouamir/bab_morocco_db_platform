@@ -33,7 +33,10 @@ async def generate_j0_variants(
     svc: OutreachService = Depends(get_outreach_service),
 ):
     prospect = await _get_prospect(prospect_id, db)
-    return await svc.generate_j0_variants(db, prospect)
+    try:
+        return await svc.generate_j0_variants(db, prospect)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @router.get("/{prospect_id}/next-step", response_model=NextStepResponse)

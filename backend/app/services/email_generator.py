@@ -101,8 +101,12 @@ Your mission: write a B2B partnership outreach email to a potential partner.
             messages=[{"role": "user", "content": prompt}],
         )
         raw = message.content[0].text.strip()
-        data = json.loads(raw)
-        return data["sujet"], data["corps"]
+        try:
+            data = json.loads(raw)
+            return data["sujet"], data["corps"]
+        except (json.JSONDecodeError, KeyError) as exc:
+            logger.error("ClaudeEmailGenerator invalid response | error=%s | raw=%.300s", exc, raw)
+            raise ValueError(f"Email generation failed — Claude returned unexpected output: {exc}") from exc
 
 
 def get_email_generator() -> EmailGeneratorProtocol:

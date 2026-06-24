@@ -40,7 +40,10 @@ async def submit_message(
     svc: NegotiationService = Depends(get_negotiation_service),
 ):
     prospect = await _get_prospect(prospect_id, db)
-    result = await svc.submit_message(db, prospect, body.corps)
+    try:
+        result = await svc.submit_message(db, prospect, body.corps)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     return MessageAnalysisResponse(
         message_id=result["message_id"],
         intent=result["intent"],
