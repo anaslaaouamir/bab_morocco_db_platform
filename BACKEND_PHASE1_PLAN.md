@@ -379,7 +379,7 @@ test_sequence_respects_date_offsets()           # j3 = date_j0 + 3 jours
 
 ## SP6 — Moteur de Négociation IA
 
-### Statut : `[ ] À faire`
+### Statut : `[x] Terminé`
 
 ### Prérequis : SP2 + SP5 terminées et tests verts
 

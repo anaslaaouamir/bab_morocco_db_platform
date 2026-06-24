@@ -1,5 +1,6 @@
 from app.models.prospect import Prospect  # noqa
 from app.models.scan_job import ScanJob  # noqa
 from app.models.outreach import OutreachEmail  # noqa
+from app.models.negotiation import NegotiationMessage  # noqa
 
-__all__ = ["Prospect", "ScanJob", "OutreachEmail"]
+__all__ = ["Prospect", "ScanJob", "OutreachEmail", "NegotiationMessage"]
