@@ -13,6 +13,11 @@ import AlertTitle from "@mui/material/AlertTitle";
 import Tooltip from "@mui/material/Tooltip";
 import LinearProgress from "@mui/material/LinearProgress";
 import { alpha, useTheme } from "@mui/material/styles";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import IconButton from "@mui/material/IconButton";
+import Avatar from "@mui/material/Avatar";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
@@ -24,12 +29,275 @@ import HandshakeRoundedIcon from "@mui/icons-material/HandshakeRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import EscalatorRoundedIcon from "@mui/icons-material/EscalatorRounded";
 import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
+import ForumRoundedIcon from "@mui/icons-material/ForumRounded";
+import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
+import SendRoundedIcon from "@mui/icons-material/SendRounded";
 
 import mockProspects from "@/data/mockProspects";
 import type { Prospect } from "@/types/prospect";
 import { scoreTotal, scoreColor, PARTNER_TYPE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 import ConfirmationDialog from "@/components/shared/ConfirmationDialog";
+
+// ─── Conversation history mock data ──────────────────────────────────────────
+
+interface Message {
+  id: string;
+  from: "bab" | "partner";
+  senderName: string;
+  date: string;
+  subject?: string;
+  body: string;
+  read: boolean;
+}
+
+const MOCK_CONVERSATIONS: Record<string, Message[]> = {
+  p010: [
+    {
+      id: "m1", from: "bab", senderName: "Équipe BD — Bab Morocco", date: "2026-06-10",
+      subject: "Partenariat OTA Maroc — Terres d'Aventure",
+      body: "Bonjour,\n\nNous lançons Bab Morocco, une OTA 100% dédiée au Maroc destinée à la clientèle européenne et du Golfe. Votre catalogue Maroc est exactement aligné avec notre positionnement.\n\nNous proposons une commission de 12% avec un badge Partenaire Fondateur garantissant une visibilité prioritaire au lancement.\n\nSeriez-vous disponible pour un appel de 20 min cette semaine ?\n\nCordialement,\nBab Morocco BD",
+      read: true,
+    },
+    {
+      id: "m2", from: "partner", senderName: "Sophie Marchand — Terres d'Aventure", date: "2026-06-12",
+      subject: "Re: Partenariat OTA Maroc — Terres d'Aventure",
+      body: "Bonjour,\n\nMerci pour votre message. L'initiative est intéressante. Nous travaillons déjà avec Voyageurs du Monde et quelques OTAs en place.\n\nNous serions ouverts à discuter, mais nous aurions besoin d'au moins 14% de commission pour justifier l'intégration d'une nouvelle plateforme en phase de lancement. Nous avons également des questions sur les garanties de trafic.\n\nCordialement,\nSophie Marchand, Responsable Partenariats",
+      read: true,
+    },
+    {
+      id: "m3", from: "bab", senderName: "Équipe BD — Bab Morocco", date: "2026-06-14",
+      subject: "Re: Partenariat OTA Maroc — Terres d'Aventure",
+      body: "Bonjour Sophie,\n\nMerci pour votre retour. Concernant la commission, notre standard TO Europe est de 12%, mais nous pouvons étudier une commission de lancement à 13% verrouillée 12 mois, couplée à un co-marketing dédié au lancement.\n\nSur les garanties de trafic : nous ne communiquons pas de chiffres avant lancement, mais nous pouvons vous donner accès à notre beta privée pour que vous évaluiez la plateforme en conditions réelles.\n\nUn appel cette semaine pour avancer ?\n\nBab Morocco BD",
+      read: true,
+    },
+    {
+      id: "m4", from: "partner", senderName: "Sophie Marchand — Terres d'Aventure", date: "2026-06-17",
+      subject: "Re: Partenariat OTA Maroc — Terres d'Aventure",
+      body: "Bonjour,\n\nLa proposition à 13% est intéressante. Nous voudrions toutefois 14% si le volume reste sous 50 réservations/mois les 6 premiers mois. Nous avons aussi besoin d'un SLA sur le paiement des commissions.\n\nNous sommes prêts à signer si ces points sont validés.\n\nSophie",
+      read: false,
+    },
+  ],
+  p011: [
+    {
+      id: "m1", from: "bab", senderName: "Équipe BD — Bab Morocco", date: "2026-06-08",
+      subject: "Partenariat stratégique — Sofitel Agadir",
+      body: "Cher Directeur,\n\nBab Morocco est une OTA premium dédiée au Maroc, ciblant une clientèle européenne haut de gamme et du Golfe. Le Sofitel Agadir correspond exactement à notre positionnement 5*.\n\nNous proposons 10% de commission avec une visibilité en page d'accueil au lancement et un co-marketing ciblé EAU/France.\n\nDisponible pour un appel ?\n\nBab Morocco",
+      read: true,
+    },
+    {
+      id: "m2", from: "partner", senderName: "Khalid Benali — Dir. Commercial, Sofitel Agadir", date: "2026-06-11",
+      subject: "Re: Partenariat stratégique — Sofitel Agadir",
+      body: "Bonjour,\n\nMerci. Nous sommes intéressés par votre plateforme. Cependant, étant donné que vous êtes en pré-lancement, nous hésiterions à investir du temps d'intégration sans garantie de retour.\n\nNous acceptons votre offre à 10% si vous nous accordez la commission verrouillée 12 mois ET un accès à votre extranet partenaire dédié pour le suivi en temps réel.\n\nKhalid Benali",
+      read: true,
+    },
+    {
+      id: "m3", from: "bab", senderName: "Équipe BD — Bab Morocco", date: "2026-06-13",
+      subject: "Re: Partenariat stratégique — Sofitel Agadir",
+      body: "Cher Khalid,\n\nNous confirmons la commission à 10% verrouillée 12 mois. Pour l'extranet partenaire dédié, c'est une fonctionnalité en roadmap Q3 — nous pouvons vous promettre un accès bêta prioritaire.\n\nNous préparons un draft de contrat pour la semaine prochaine.\n\nBab Morocco BD",
+      read: true,
+    },
+  ],
+  p012: [
+    {
+      id: "m1", from: "bab", senderName: "Équipe BD — Bab Morocco", date: "2026-06-05",
+      subject: "Collaboration Maroc — Marco Vasco",
+      body: "Bonjour,\n\nVotre expertise sur les circuits Maroc correspond parfaitement à notre plateforme. Nous proposons un partenariat à 12% avec badge Fondateur et accès beta.\n\nBab Morocco",
+      read: true,
+    },
+    {
+      id: "m2", from: "partner", senderName: "Julie Chen — Marco Vasco Partenariats", date: "2026-06-09",
+      subject: "Re: Collaboration Maroc — Marco Vasco",
+      body: "Bonjour,\n\nIntéressant, mais nous avons des engagements avec d'autres OTAs. Nous pourrions envisager un partenariat non-exclusif à 14% minimum. Nous avons également besoin d'un reporting mensuel automatisé des réservations.\n\nJulie Chen",
+      read: false,
+    },
+  ],
+};
+
+// Fallback conversation for any other prospect in négociation
+const FALLBACK_MESSAGES: Message[] = [
+  {
+    id: "f1", from: "bab", senderName: "Équipe BD — Bab Morocco", date: "2026-06-12",
+    subject: "Proposition de partenariat — Bab Morocco",
+    body: "Bonjour,\n\nNous vous contactons au sujet d'un partenariat sur notre plateforme OTA dédiée au Maroc.\n\nBab Morocco BD",
+    read: true,
+  },
+  {
+    id: "f2", from: "partner", senderName: "Contact partenaire", date: "2026-06-15",
+    subject: "Re: Proposition de partenariat — Bab Morocco",
+    body: "Bonjour,\n\nMerci pour votre message. Nous sommes intéressés mais avons quelques questions sur les conditions.\n\nCordialement",
+    read: false,
+  },
+];
+
+// ─── ConversationHistoryDialog ────────────────────────────────────────────────
+
+function ConversationHistoryDialog({
+  open,
+  onClose,
+  prospect,
+}: {
+  open: boolean;
+  onClose: () => void;
+  prospect: Prospect | null;
+}) {
+  const theme = useTheme();
+  if (!prospect) return null;
+
+  const messages = MOCK_CONVERSATIONS[prospect.id] ?? FALLBACK_MESSAGES;
+  const unreadCount = messages.filter((m) => !m.read).length;
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      scroll="paper"
+      PaperProps={{ sx: { borderRadius: 3, maxHeight: "85dvh" } }}
+    >
+      <DialogTitle
+        sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 3, py: 2, borderBottom: 1, borderColor: "divider" }}
+      >
+        <ForumRoundedIcon sx={{ color: "secondary.main" }} />
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="titleLarge" sx={{ fontWeight: 700 }}>
+            Historique des échanges
+          </Typography>
+          <Typography variant="bodySmall" color="text.secondary">
+            {prospect.nom} · {messages.length} message{messages.length > 1 ? "s" : ""}
+            {unreadCount > 0 && (
+              <Typography component="span" variant="bodySmall" sx={{ color: "error.main", fontWeight: 700, ml: 1 }}>
+                · {unreadCount} non lu{unreadCount > 1 ? "s" : ""}
+              </Typography>
+            )}
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose} size="small">
+          <CloseRoundedIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+
+      <DialogContent sx={{ px: 3, py: 3, display: "flex", flexDirection: "column", gap: 2 }}>
+        {messages.map((msg, idx) => {
+          const isBab = msg.from === "bab";
+          return (
+            <Box key={msg.id}>
+              {/* Date separator between days */}
+              {(idx === 0 || messages[idx - 1].date !== msg.date) && (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1, my: 1 }}>
+                  <Divider sx={{ flex: 1 }} />
+                  <Typography variant="labelSmall" color="text.disabled" sx={{ px: 1, flexShrink: 0 }}>
+                    {new Date(msg.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                  </Typography>
+                  <Divider sx={{ flex: 1 }} />
+                </Box>
+              )}
+
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: isBab ? "row-reverse" : "row",
+                  gap: 1.5,
+                  alignItems: "flex-start",
+                }}
+              >
+                <Avatar
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    bgcolor: isBab ? "primary.main" : alpha(theme.palette.secondary.main, 0.15),
+                    color: isBab ? "primary.contrastText" : "secondary.main",
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {isBab ? "BM" : msg.senderName.charAt(0)}
+                </Avatar>
+
+                <Box sx={{ maxWidth: "78%", minWidth: 0 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      mb: 0.5,
+                      flexDirection: isBab ? "row-reverse" : "row",
+                    }}
+                  >
+                    <Typography variant="labelSmall" sx={{ fontWeight: 700 }}>
+                      {msg.senderName}
+                    </Typography>
+                    {!msg.read && !isBab && (
+                      <Chip
+                        label="Non lu"
+                        size="small"
+                        color="error"
+                        sx={{ height: 16, fontSize: "0.5625rem", "& .MuiChip-label": { px: 0.625 } }}
+                      />
+                    )}
+                    {isBab && (
+                      <MarkEmailReadRoundedIcon sx={{ fontSize: 13, color: msg.read ? "success.main" : "text.disabled" }} />
+                    )}
+                  </Box>
+
+                  {msg.subject && (
+                    <Typography
+                      variant="labelSmall"
+                      color="text.secondary"
+                      sx={{ display: "block", mb: 0.75, fontStyle: "italic", textAlign: isBab ? "right" : "left" }}
+                    >
+                      {msg.subject}
+                    </Typography>
+                  )}
+
+                  <Box
+                    sx={{
+                      p: "10px 14px",
+                      borderRadius: isBab ? "12px 4px 12px 12px" : "4px 12px 12px 12px",
+                      bgcolor: isBab
+                        ? alpha(theme.palette.primary.main, 0.1)
+                        : "action.hover",
+                      border: `1px solid ${isBab
+                        ? alpha(theme.palette.primary.main, 0.2)
+                        : theme.palette.divider}`,
+                    }}
+                  >
+                    {msg.body.split("\n").map((line, i) => (
+                      <Typography key={i} variant="bodySmall" sx={{ display: "block", lineHeight: 1.6 }}>
+                        {line || <br />}
+                      </Typography>
+                    ))}
+                  </Box>
+                </Box>
+              </Box>
+            </Box>
+          );
+        })}
+
+        {/* Compose hint */}
+        <Box
+          sx={{
+            mt: 1,
+            p: 1.5,
+            borderRadius: 2,
+            border: `1.5px dashed ${theme.palette.divider}`,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            color: "text.disabled",
+          }}
+        >
+          <SendRoundedIcon sx={{ fontSize: 16 }} />
+          <Typography variant="bodySmall" color="text.disabled">
+            La rédaction de réponses sera disponible après connexion backend (Phase 1).
+          </Typography>
+        </Box>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 // ─── Non-financial perks (spec §6) ───────────────────────────────────────────
 
@@ -374,6 +642,7 @@ export default function NegociationPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [counterparts, setCounterparts] = useState<string[]>([]);
   const [confirmScenario, setConfirmScenario] = useState<Scenario | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const negProspects = useMemo(() => allProspects.filter((p) => p.stage === "negociation"), [allProspects]);
 
@@ -501,9 +770,24 @@ export default function NegociationPage() {
               {/* Response analysis card */}
               <Card elevation={0} variant="outlined" sx={{ borderRadius: 2.5 }}>
                 <CardContent sx={{ p: "16px 20px !important" }}>
-                  <Typography variant="titleMedium" sx={{ fontWeight: 700, mb: 1.5 }}>
-                    Analyse de la réponse — {selectedProspect.nom}
-                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
+                    <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>
+                      Analyse de la réponse — {selectedProspect.nom}
+                    </Typography>
+                    <Tooltip title="Historique des échanges" placement="top">
+                      <IconButton
+                        size="small"
+                        onClick={() => setHistoryOpen(true)}
+                        sx={{
+                          color: "secondary.main",
+                          bgcolor: alpha(theme.palette.secondary.main, 0.08),
+                          "&:hover": { bgcolor: alpha(theme.palette.secondary.main, 0.16) },
+                        }}
+                      >
+                        <ForumRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
 
                   <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, mb: 2 }}>
                     <Box>
@@ -652,6 +936,12 @@ export default function NegociationPage() {
           )}
         </Box>
       </Box>
+
+      <ConversationHistoryDialog
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        prospect={selectedProspect}
+      />
 
       {confirmScenario && selectedProspect && (
         <ConfirmationDialog

@@ -23,6 +23,9 @@ import ProspectTable from "@/components/crm/ProspectTable";
 import KanbanBoard from "@/components/kanban/KanbanBoard";
 import ProspectDrawer from "@/components/crm/ProspectDrawer";
 import AddProspectDialog from "@/components/crm/AddProspectDialog";
+import ProspectionModeDialog from "@/components/crm/ProspectionModeDialog";
+import ScanProspectDialog from "@/components/crm/ScanProspectDialog";
+import type { ProspectionMode } from "@/components/crm/ProspectionModeDialog";
 
 // ─── Page ─────────────────────────────────────────────────────────────────
 
@@ -42,8 +45,16 @@ export default function ProspectionPage() {
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Add Prospect dialog
-  const [dialogOpen, setDialogOpen] = useState(false);
+  // Prospection dialogs
+  const [modeDialogOpen, setModeDialogOpen] = useState(false);
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [scanDialogOpen, setScanDialogOpen] = useState(false);
+
+  function handleModeSelect(mode: ProspectionMode) {
+    setModeDialogOpen(false);
+    if (mode === "manuel") setManualDialogOpen(true);
+    else setScanDialogOpen(true);
+  }
 
   // Filtered subset
   const filteredProspects = useMemo(
@@ -257,12 +268,12 @@ export default function ProspectionPage() {
         )}
       </Box>
 
-      {/* Extended FAB — Ajouter un prospect */}
+      {/* Extended FAB — Nouvelle Prospection */}
       <Fab
         variant="extended"
         color="primary"
-        onClick={() => setDialogOpen(true)}
-        aria-label="Ajouter un prospect"
+        onClick={() => setModeDialogOpen(true)}
+        aria-label="Nouvelle prospection"
         sx={{
           position: "fixed",
           right: { xs: 16, md: 24 },
@@ -283,14 +294,28 @@ export default function ProspectionPage() {
         }}
       >
         <AddRoundedIcon />
-        Ajouter un prospect
+        Nouvelle Prospection
       </Fab>
 
-      {/* Add Prospect dialog */}
+      {/* Mode chooser dialog */}
+      <ProspectionModeDialog
+        open={modeDialogOpen}
+        onClose={() => setModeDialogOpen(false)}
+        onSelect={handleModeSelect}
+      />
+
+      {/* Manual add dialog */}
       <AddProspectDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        open={manualDialogOpen}
+        onClose={() => setManualDialogOpen(false)}
         onAdd={handleAddProspect}
+      />
+
+      {/* Automatic scan dialog */}
+      <ScanProspectDialog
+        open={scanDialogOpen}
+        onClose={() => setScanDialogOpen(false)}
+        onBack={() => { setScanDialogOpen(false); setModeDialogOpen(true); }}
       />
 
       {/* Fiche Partenaire drawer */}
