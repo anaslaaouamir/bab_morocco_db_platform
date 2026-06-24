@@ -1,3 +1,4 @@
-from app.models.prospect import Prospect  # noqa — registers model with Base.metadata
+from app.models.prospect import Prospect  # noqa
+from app.models.scan_job import ScanJob  # noqa
 
-__all__ = ["Prospect"]
+__all__ = ["Prospect", "ScanJob"]
