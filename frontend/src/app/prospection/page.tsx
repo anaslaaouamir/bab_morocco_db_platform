@@ -8,6 +8,8 @@ import Tab from "@mui/material/Tab";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import Button from "@mui/material/Button";
+import Fab from "@mui/material/Fab";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import ViewKanbanOutlinedIcon from "@mui/icons-material/ViewKanbanOutlined";
 
@@ -20,32 +22,36 @@ import FilterBar from "@/components/shared/FilterBar";
 import ProspectTable from "@/components/crm/ProspectTable";
 import KanbanBoard from "@/components/kanban/KanbanBoard";
 import ProspectDrawer from "@/components/crm/ProspectDrawer";
+import AddProspectDialog from "@/components/crm/AddProspectDialog";
 
 // ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function ProspectionPage() {
   const { showSnackbar } = useSnackbar();
 
-  // Source-of-truth for all prospects (stage + notes changes mutate this)
+  // Source-of-truth for all prospects
   const [allProspects, setAllProspects] = useState<Prospect[]>(mockProspects);
 
-  // Filter chips state (shared between CRM table and Kanban)
+  // Filter chips state
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
 
   // Tab: 0 = CRM Table, 1 = Kanban
   const [tab, setTab] = useState(0);
 
-  // Drawer state — single shared instance across both views
+  // Fiche Partenaire drawer
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Filtered subset passed down to both child views
+  // Add Prospect dialog
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  // Filtered subset
   const filteredProspects = useMemo(
     () => applyFilters(allProspects, filters),
     [allProspects, filters]
   );
 
-  // Keep the drawer's prospect reference live (so stage chips update reactively)
+  // Keep drawer reference live so chips update after a stage change
   const liveSelectedProspect = useMemo(
     () =>
       selectedProspect
@@ -54,7 +60,7 @@ export default function ProspectionPage() {
     [allProspects, selectedProspect]
   );
 
-  // KPI chips — reflect the filtered list
+  // KPI chips — reflect filtered list
   const kpiStats = useMemo(() => {
     const total       = filteredProspects.length;
     const qualifies   = filteredProspects.filter((p) => scoreTotal(p.score) >= 75).length;
@@ -68,18 +74,15 @@ export default function ProspectionPage() {
     ];
   }, [filteredProspects]);
 
-  // Open drawer
+  // ── Handlers ────────────────────────────────────────────────
+
   const handleProspectClick = useCallback((prospect: Prospect) => {
     setSelectedProspect(prospect);
     setDrawerOpen(true);
   }, []);
 
-  // Close drawer
-  const handleDrawerClose = useCallback(() => {
-    setDrawerOpen(false);
-  }, []);
+  const handleDrawerClose = useCallback(() => setDrawerOpen(false), []);
 
-  // Stage change — from Kanban drag, Drawer selector, or any future surface
   const handleStageChange = useCallback(
     (id: string, newStage: PipelineStage) => {
       const previous = allProspects.find((p) => p.id === id);
@@ -99,9 +102,7 @@ export default function ProspectionPage() {
             size="small"
             onClick={() =>
               setAllProspects((prev) =>
-                prev.map((p) =>
-                  p.id === id ? { ...p, stage: previous.stage } : p
-                )
+                prev.map((p) => (p.id === id ? { ...p, stage: previous.stage } : p))
               )
             }
           >
@@ -113,16 +114,44 @@ export default function ProspectionPage() {
     [allProspects, showSnackbar]
   );
 
-  // Notes change from drawer text field (on blur)
-  const handleNotesChange = useCallback((id: string, notes: string) => {
-    setAllProspects((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, notes } : p))
-    );
-    showSnackbar({ message: "Note enregistrée", severity: "info", duration: 2500 });
-  }, [showSnackbar]);
+  const handleNotesChange = useCallback(
+    (id: string, notes: string) => {
+      setAllProspects((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, notes } : p))
+      );
+      showSnackbar({ message: "Note enregistrée", severity: "info", duration: 2500 });
+    },
+    [showSnackbar]
+  );
+
+  const handleAddProspect = useCallback(
+    (prospect: Prospect) => {
+      setAllProspects((prev) => [prospect, ...prev]);
+      showSnackbar({
+        message: `${prospect.nom} ajouté au pipeline`,
+        severity: "success",
+        duration: 4000,
+        action: (
+          <Button
+            color="inherit"
+            size="small"
+            onClick={() => {
+              setSelectedProspect(prospect);
+              setDrawerOpen(true);
+            }}
+          >
+            Voir
+          </Button>
+        ),
+      });
+    },
+    [showSnackbar]
+  );
+
+  // ── Render ───────────────────────────────────────────────────
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+    <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100%", position: "relative" }}>
 
       {/* Page header */}
       <Box sx={{ px: { xs: 2, sm: 3, md: 4 }, pt: { xs: 2, md: 3 }, pb: 0 }}>
@@ -133,7 +162,7 @@ export default function ProspectionPage() {
           Pipeline partenaires B2B — Bab Morocco BD Intelligence Platform
         </Typography>
 
-        {/* KPI chips — live-updated by filters */}
+        {/* KPI chips */}
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 2 }}>
           {kpiStats.map((s) => (
             <Chip
@@ -185,7 +214,7 @@ export default function ProspectionPage() {
         </Tabs>
       </Box>
 
-      {/* Filter bar — shared across both views */}
+      {/* Filter bar */}
       <FilterBar
         value={filters}
         onChange={setFilters}
@@ -195,7 +224,7 @@ export default function ProspectionPage() {
 
       <Divider />
 
-      {/* CRM Table */}
+      {/* CRM Table panel */}
       <Box
         role="tabpanel"
         id="panel-crm"
@@ -211,7 +240,7 @@ export default function ProspectionPage() {
         )}
       </Box>
 
-      {/* Kanban Board */}
+      {/* Kanban panel */}
       <Box
         role="tabpanel"
         id="panel-kanban"
@@ -228,7 +257,43 @@ export default function ProspectionPage() {
         )}
       </Box>
 
-      {/* Fiche Partenaire drawer — single shared instance */}
+      {/* Extended FAB — Ajouter un prospect */}
+      <Fab
+        variant="extended"
+        color="primary"
+        onClick={() => setDialogOpen(true)}
+        aria-label="Ajouter un prospect"
+        sx={{
+          position: "fixed",
+          right: { xs: 16, md: 24 },
+          bottom: {
+            xs: "calc(80px + env(safe-area-inset-bottom, 0px) + 16px)",
+            md: 24,
+          },
+          zIndex: (t) => t.zIndex.speedDial,
+          gap: 1,
+          pl: 2,
+          pr: 2.5,
+          boxShadow: 3,
+          textTransform: "none",
+          fontWeight: 700,
+          fontSize: "0.9375rem",
+          height: 56,
+          borderRadius: "16px",
+        }}
+      >
+        <AddRoundedIcon />
+        Ajouter un prospect
+      </Fab>
+
+      {/* Add Prospect dialog */}
+      <AddProspectDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onAdd={handleAddProspect}
+      />
+
+      {/* Fiche Partenaire drawer */}
       <ProspectDrawer
         prospect={liveSelectedProspect}
         open={drawerOpen}
