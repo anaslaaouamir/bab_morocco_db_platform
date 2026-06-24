@@ -8,6 +8,8 @@ from httpx import AsyncClient
 
 from app.models.outreach import OutreachEmail
 from app.models.prospect import Prospect
+from app.services.email_generator import MockEmailGenerator
+from app.services.outreach_service import OutreachService
 
 pytestmark = pytest.mark.anyio
 
@@ -40,14 +42,54 @@ async def _create_prospect(client: AsyncClient, **overrides) -> dict:
     return r.json()
 
 
+def _make_svc() -> OutreachService:
+    """Always use MockEmailGenerator in tests."""
+    return OutreachService(generator=MockEmailGenerator())
+
+
+async def _make_db_with_prospect(**kwargs):
+    """Spin up an isolated in-memory DB with one prospect. Returns (engine, session, prospect)."""
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from app.database import Base
+    from app.models.prospect import Prospect as ProspectModel
+    import app.models  # noqa
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    defaults = dict(
+        nom="Test Hotel",
+        type="hotel_riad",
+        pays="Maroc",
+        ville="Marrakech",
+        adresse_web=f"https://test-{uuid.uuid4().hex[:6]}.ma",
+        email_contact="test@hotel.ma",
+        nom_contact="Ali",
+        poste_contact="DG",
+        commission_standard=10.0,
+        commission_plancher=8.0,
+        langue="fr",
+        date_ajout=date.today(),
+    )
+    defaults.update(kwargs)
+
+    session = SessionLocal()
+    p = ProspectModel(**defaults)
+    session.add(p)
+    await session.commit()
+    await session.refresh(p)
+    return engine, session, p
+
+
 # ── tests ────────────────────────────────────────────────────────────────────
 
 async def test_generate_creates_3_variants(client: AsyncClient):
     p = await _create_prospect(client)
     r = await client.post(f"/outreach/{p['id']}/generate")
     assert r.status_code == 201
-    emails = r.json()
-    assert len(emails) == 3
+    assert len(r.json()) == 3
 
 
 async def test_variant_a_b_c_all_present(client: AsyncClient):
@@ -58,7 +100,6 @@ async def test_variant_a_b_c_all_present(client: AsyncClient):
 
 
 async def test_email_language_matches_prospect_pays(client: AsyncClient):
-    """Prospect in France → langue=fr."""
     p = await _create_prospect(
         client,
         pays="France",
@@ -136,192 +177,88 @@ async def test_next_step_j0_before_any_emails(client: AsyncClient):
 
 
 async def test_sequence_respects_date_offsets(client: AsyncClient):
-    """j3 date_envoi_prevu = date_j0 + 3 days."""
-    from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-    from app.database import Base
-    from app.models.prospect import Prospect as ProspectModel
-    from app.models.outreach import OutreachEmail as OutreachEmailModel
-    from app.services.outreach_service import OutreachService
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
-
-    import app.models  # noqa
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async with SessionLocal() as session:
-        p = ProspectModel(
-            nom="Test Hotel",
-            type="hotel_riad",
-            pays="Maroc",
-            ville="Fes",
-            adresse_web="https://test-offset.ma",
-            email_contact="test@hotel.ma",
-            nom_contact="Ali",
-            poste_contact="DG",
-            commission_standard=10.0,
-            commission_plancher=8.0,
-            langue="fr",
-            date_ajout=date.today(),
-        )
-        session.add(p)
-        await session.commit()
-        await session.refresh(p)
-
-        svc = OutreachService()
+    """j3 date_envoi_prevu = j0 date + 3 days."""
+    engine, session, p = await _make_db_with_prospect()
+    try:
+        svc = _make_svc()
         emails = await svc.generate_j0_variants(session, p)
         j0_date = emails[0].date_envoi_prevu
 
-        # manually create j3 email via service template
-        from app.services.outreach_service import _generate_email
-        j3_data = _generate_email(p, "j3", "A", j0_date)
-        assert j3_data["date_envoi_prevu"] == j0_date + timedelta(days=3)
+        # create j3 via _create_followup and check date
+        j3 = await svc._create_followup(session, p, "j3", "A", j0_date)
+        assert j3.date_envoi_prevu == j0_date + timedelta(days=3)
 
-    await engine.dispose()
+        j7 = await svc._create_followup(session, p, "j7", "A", j0_date)
+        assert j7.date_envoi_prevu == j0_date + timedelta(days=7)
+
+        j30 = await svc._create_followup(session, p, "j30", "A", j0_date)
+        assert j30.date_envoi_prevu == j0_date + timedelta(days=30)
+    finally:
+        await session.close()
+        await engine.dispose()
 
 
 async def test_followup_j3_created_if_j0_not_opened(client: AsyncClient):
-    """trigger-followups creates j3 when j0 sent but not opened (past due)."""
-    from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-    from app.database import Base
-    from app.models.prospect import Prospect as ProspectModel
-    from app.models.outreach import OutreachEmail as OutreachEmailModel
-    from app.services.outreach_service import OutreachService
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
-
-    import app.models  # noqa
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async with SessionLocal() as session:
-        p = ProspectModel(
-            nom="Hotel Marrakech",
-            type="hotel_riad",
-            pays="Maroc",
-            ville="Marrakech",
-            adresse_web="https://hotel-mksh-followup.ma",
-            email_contact="hello@hotel.ma",
-            nom_contact="Fatima",
-            poste_contact="Manager",
-            commission_standard=10.0,
-            commission_plancher=8.0,
-            langue="fr",
-            date_ajout=date.today(),
-        )
-        session.add(p)
-        await session.commit()
-        await session.refresh(p)
-
-        svc = OutreachService()
+    """trigger-followups creates j3 when j0 sent but not opened and past due."""
+    engine, session, p = await _make_db_with_prospect()
+    try:
+        svc = _make_svc()
         emails = await svc.generate_j0_variants(session, p)
         j0 = emails[0]
-
-        # simulate: validated + sent + date_envoi_reel 4 days ago
         j0.statut = "sent"
         j0.date_envoi_reel = datetime.utcnow() - timedelta(days=4)
         await session.commit()
 
         result = await svc.trigger_followups(session)
         assert result["created"] >= 1
-        steps_created = [d["step"] for d in result["details"]]
-        assert "j3" in steps_created
-
-    await engine.dispose()
+        assert "j3" in [d["step"] for d in result["details"]]
+    finally:
+        await session.close()
+        await engine.dispose()
 
 
 async def test_followup_not_created_if_j0_opened(client: AsyncClient):
-    """No j3 when j0 is already opened."""
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-    from app.database import Base
-    from app.models.prospect import Prospect as ProspectModel
-    from app.services.outreach_service import OutreachService
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
-
-    import app.models  # noqa
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async with SessionLocal() as session:
-        p = ProspectModel(
-            nom="Opened Hotel",
-            type="hotel_riad",
-            pays="Maroc",
-            ville="Agadir",
-            adresse_web="https://opened-hotel.ma",
-            email_contact="open@hotel.ma",
-            nom_contact="Karim",
-            poste_contact="DG",
-            commission_standard=10.0,
-            commission_plancher=8.0,
-            langue="fr",
-            date_ajout=date.today(),
-        )
-        session.add(p)
-        await session.commit()
-        await session.refresh(p)
-
-        svc = OutreachService()
+    """No j3 when j0 status is 'opened'."""
+    engine, session, p = await _make_db_with_prospect(adresse_web="https://opened-hotel-unique.ma")
+    try:
+        svc = _make_svc()
         emails = await svc.generate_j0_variants(session, p)
         j0 = emails[0]
-        j0.statut = "opened"  # opened — no followup expected from trigger
+        j0.statut = "opened"
         j0.date_envoi_reel = datetime.utcnow() - timedelta(days=4)
         await session.commit()
 
-        # trigger-followups only looks at "sent" j0s — opened ones are skipped
         result = await svc.trigger_followups(session)
-        steps_created = [d["step"] for d in result["details"] if d["prospect_id"] == str(p.id)]
-        assert "j3" not in steps_created
-
-    await engine.dispose()
+        steps = [d["step"] for d in result["details"] if d["prospect_id"] == str(p.id)]
+        assert "j3" not in steps
+    finally:
+        await session.close()
+        await engine.dispose()
 
 
 async def test_j30_reactivation_for_veille_prospects(client: AsyncClient):
-    """Prospects in 'veille' stage get j30 email on trigger-followups."""
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-    from app.database import Base
-    from app.models.prospect import Prospect as ProspectModel
-    from app.services.outreach_service import OutreachService
-
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
-
-    import app.models  # noqa
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async with SessionLocal() as session:
-        p = ProspectModel(
-            nom="Veille Hotel",
-            type="hotel_riad",
-            pays="Maroc",
-            ville="Tanger",
-            adresse_web="https://veille-hotel.ma",
-            email_contact="veille@hotel.ma",
-            nom_contact="Said",
-            poste_contact="DG",
-            stage="veille",
-            commission_standard=10.0,
-            commission_plancher=8.0,
-            langue="fr",
-            date_ajout=date.today(),
-        )
-        session.add(p)
-        await session.commit()
-        await session.refresh(p)
-
-        svc = OutreachService()
+    """Prospects in 'veille' stage get a j30 email on trigger-followups."""
+    engine, session, p = await _make_db_with_prospect(
+        stage="veille",
+        adresse_web="https://veille-hotel-unique.ma",
+    )
+    try:
+        svc = _make_svc()
         result = await svc.trigger_followups(session)
-        steps_created = [d["step"] for d in result["details"] if d["prospect_id"] == str(p.id)]
-        assert "j30" in steps_created
+        steps = [d["step"] for d in result["details"] if d["prospect_id"] == str(p.id)]
+        assert "j30" in steps
+    finally:
+        await session.close()
+        await engine.dispose()
 
-    await engine.dispose()
+
+async def test_mock_email_contains_prospect_name(client: AsyncClient):
+    """Generated email body mentions the prospect name."""
+    p = await _create_prospect(client, nom="Riad Specifique")
+    r = await client.post(f"/outreach/{p['id']}/generate")
+    assert r.status_code == 201
+    for email in r.json():
+        assert "Riad Specifique" in email["corps"] or "Riad Specifique" in email["sujet"]
 
 
 async def test_generate_unknown_prospect_returns_404(client: AsyncClient):
