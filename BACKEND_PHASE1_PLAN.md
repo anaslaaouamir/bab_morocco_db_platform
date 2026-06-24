@@ -21,7 +21,7 @@
 
 ## SP1 — Fondations : Setup FastAPI + PostgreSQL
 
-### Statut : `[ ] À faire`
+### Statut : `[x] Terminé`
 
 ### Objectif
 Mettre en place le squelette complet du projet backend : structure des dossiers, configuration par variables d'environnement, connexion base de données, migrations Alembic, et premier endpoint de santé.
@@ -73,7 +73,7 @@ test_cors_header_present()             # Origin: localhost:3000 → Access-Contr
 
 ## SP2 — Modèles de données + CRUD Prospects
 
-### Statut : `[ ] À faire`
+### Statut : `[x] Terminé`
 
 ### Prérequis : SP1 terminée et tests verts
 
@@ -165,7 +165,7 @@ test_stats_endpoint()                  # GET /stats → structure correcte
 
 ## SP3 — Moteur de Scoring
 
-### Statut : `[ ] À faire`
+### Statut : `[x] Terminé`
 
 ### Prérequis : SP2 terminée et tests verts
 
@@ -224,7 +224,7 @@ test_score_preview_endpoint()            # POST /score-preview → score sans in
 
 ## SP4 — Pipeline de Scan (Mock Google Maps)
 
-### Statut : `[ ] À faire`
+### Statut : `[x] Terminé`
 
 ### Prérequis : SP2 + SP3 terminées et tests verts
 
@@ -299,7 +299,7 @@ test_scan_pipeline_end_to_end()             # scan complet → prospects en base
 
 ## SP5 — Moteur Outreach (Génération emails + Séquences)
 
-### Statut : `[ ] À faire`
+### Statut : `[x] Terminé`
 
 ### Prérequis : SP2 + SP3 terminées et tests verts
 
