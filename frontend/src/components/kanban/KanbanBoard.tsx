@@ -15,11 +15,14 @@ import Chip from "@mui/material/Chip";
 import Tooltip from "@mui/material/Tooltip";
 import Badge from "@mui/material/Badge";
 import Divider from "@mui/material/Divider";
+import Collapse from "@mui/material/Collapse";
 import { alpha, useTheme } from "@mui/material/styles";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import StarRateRoundedIcon from "@mui/icons-material/StarRateRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 
 import type { Prospect, PipelineStage } from "@/types/prospect";
 import {
@@ -333,14 +336,151 @@ function KanbanColumnComponent({
   );
 }
 
+// ─── Mobile list view (<600px) ────────────────────────────────────────────────
+
+function KanbanMobileList({
+  prospects,
+  onProspectClick,
+}: {
+  prospects: Prospect[];
+  onProspectClick?: (p: Prospect) => void;
+}) {
+  const theme = useTheme();
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>(
+    Object.fromEntries(COLUMNS.map((c) => [c.id, true]))
+  );
+
+  return (
+    <Box sx={{ px: 2, py: 2, display: "flex", flexDirection: "column", gap: 1.5 }}>
+      {COLUMNS.map((col) => {
+        const colProspects = prospects.filter((p) => col.stages.includes(p.stage));
+        if (colProspects.length === 0) return null;
+        const isOpen = expanded[col.id] ?? true;
+
+        return (
+          <Box key={col.id}>
+            <Box
+              onClick={() => setExpanded((prev) => ({ ...prev, [col.id]: !isOpen }))}
+              sx={{
+                display: "flex", alignItems: "center", gap: 1, px: 1, py: 0.75,
+                borderRadius: 2, cursor: "pointer", bgcolor: alpha(col.accent, 0.08),
+                "&:hover": { bgcolor: alpha(col.accent, 0.14) },
+                mb: isOpen ? 0.75 : 0, transition: "background-color 150ms ease",
+              }}
+            >
+              <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: col.accent, flexShrink: 0 }} />
+              <Typography variant="titleSmall" sx={{ fontWeight: 700, flex: 1 }}>{col.label}</Typography>
+              <Badge
+                badgeContent={colProspects.length}
+                sx={{
+                  "& .MuiBadge-badge": {
+                    position: "static", transform: "none",
+                    bgcolor: alpha(col.accent, 0.18),
+                    color: col.accent === "#BDBDBD" ? "text.secondary" : col.accent,
+                    fontWeight: 700, fontSize: "0.6875rem", minWidth: 20, height: 20, borderRadius: 10, px: 0.5,
+                  },
+                }}
+              />
+              <ExpandMoreRoundedIcon
+                sx={{
+                  fontSize: 20, color: "text.secondary",
+                  transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 200ms ease",
+                }}
+              />
+            </Box>
+
+            <Collapse in={isOpen}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.875 }}>
+                {colProspects.map((p) => {
+                  const total = scoreTotal(p.score);
+                  const color = scoreColor(total);
+                  return (
+                    <Card
+                      key={p.id}
+                      elevation={0}
+                      variant="outlined"
+                      onClick={() => onProspectClick?.(p)}
+                      sx={{
+                        borderRadius: 2,
+                        cursor: onProspectClick ? "pointer" : "default",
+                        "&:hover": onProspectClick ? { boxShadow: theme.shadows[2] } : {},
+                      }}
+                    >
+                      <CardContent sx={{ p: "10px 12px !important" }}>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.375 }}>
+                          <Typography variant="bodySmall" sx={{ fontWeight: 700, flex: 1 }} noWrap>
+                            {p.nom}
+                          </Typography>
+                          <Box
+                            sx={{
+                              px: 0.625, py: 0.125, borderRadius: 1, flexShrink: 0,
+                              bgcolor: alpha(theme.palette[color].main, 0.12),
+                              border: `1px solid ${alpha(theme.palette[color].main, 0.25)}`,
+                              display: "flex", alignItems: "center", gap: 0.25,
+                            }}
+                          >
+                            <StarRateRoundedIcon sx={{ fontSize: 10, color: `${color}.main` }} />
+                            <Typography sx={{ fontSize: "0.625rem", fontWeight: 700, color: `${color}.main`, lineHeight: 1 }}>
+                              {total}
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                          <Chip
+                            label={PARTNER_TYPE_LABELS[p.type]}
+                            size="small"
+                            sx={{ height: 16, fontSize: "0.5625rem", fontWeight: 600, "& .MuiChip-label": { px: 0.625 } }}
+                          />
+                          <PlaceOutlinedIcon sx={{ fontSize: 11, color: "text.disabled" }} />
+                          <Typography variant="bodySmall" color="text.secondary" noWrap sx={{ flex: 1 }}>
+                            {p.ville}
+                          </Typography>
+                          <Typography component="span" sx={{ fontSize: "0.875rem" }}>
+                            {LANGUAGE_FLAGS[p.langue]}
+                          </Typography>
+                        </Box>
+                        {p.notes?.includes("VALIDATION HUMAINE REQUISE") && (
+                          <Box
+                            sx={{
+                              mt: 0.5, px: 0.625, py: 0.25, borderRadius: 0.75,
+                              bgcolor: alpha(theme.palette.error.main, 0.08),
+                              border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
+                            }}
+                          >
+                            <Typography variant="labelSmall" sx={{ color: "error.main", fontWeight: 700, fontSize: "0.5625rem" }}>
+                              ⚠ VALIDATION HUMAINE REQUISE
+                            </Typography>
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </Box>
+            </Collapse>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
 // ─── Board root ────────────────────────────────────────────────────────────
 
 export default function KanbanBoard({ prospects, onStageChange, onProspectClick }: KanbanBoardProps) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+
   function handleDragEnd(result: DropResult) {
     if (!result.destination) return;
     const col = COLUMNS.find((c) => c.id === result.destination!.droppableId);
     if (!col) return;
     onStageChange(result.draggableId, col.targetStage);
+  }
+
+  if (isMobile) {
+    return <KanbanMobileList prospects={prospects} onProspectClick={onProspectClick} />;
   }
 
   return (

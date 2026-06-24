@@ -244,7 +244,7 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
         component={Paper}
         elevation={0}
         variant="outlined"
-        sx={{ borderRadius: 2, mx: { xs: 2, md: 4 }, width: "auto" }}
+        sx={{ borderRadius: 2, mx: { xs: 2, md: 4 }, width: "auto", overflowX: "auto" }}
       >
         <Table size="small" stickyHeader aria-label="CRM Prospects">
           <TableHead>
@@ -254,7 +254,20 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
                   key={col.id}
                   align={col.align}
                   sortDirection={orderBy === col.id ? order : false}
-                  sx={{ whiteSpace: "nowrap", py: 1.5 }}
+                  sx={{
+                    whiteSpace: "nowrap",
+                    py: 1.5,
+                    ...(col.id === "nom"
+                      ? {
+                          position: "sticky",
+                          left: 0,
+                          zIndex: 4,
+                          bgcolor: "background.paper",
+                          borderRight: 1,
+                          borderRightColor: "divider",
+                        }
+                      : {}),
+                  }}
                 >
                   <TableSortLabel
                     active={orderBy === col.id}
@@ -279,7 +292,14 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
           </TableHead>
 
           <TableBody>
-            {paginated.map((prospect) => (
+            {paginated.map((prospect) => {
+              const isOverdue =
+                prospect.dateProchainContact != null &&
+                prospect.dateProchainContact < "2026-06-24" &&
+                prospect.stage !== "veille" &&
+                prospect.stage !== "perdu";
+
+              return (
               <TableRow
                 key={prospect.id}
                 hover
@@ -289,8 +309,19 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
                   "&:last-child td": { borderBottom: 0 },
                 }}
               >
-                {/* Partenaire */}
-                <TableCell sx={{ py: 1.25, maxWidth: 220 }}>
+                {/* Partenaire — sticky first column */}
+                <TableCell
+                  sx={{
+                    py: 1.25,
+                    maxWidth: 220,
+                    position: "sticky",
+                    left: 0,
+                    zIndex: 1,
+                    bgcolor: "background.paper",
+                    borderRight: 1,
+                    borderRightColor: "divider",
+                  }}
+                >
                   <Typography variant="bodySmall" sx={{ fontWeight: 600, display: "block" }}>
                     {prospect.nom}
                   </Typography>
@@ -335,7 +366,7 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
                   </Typography>
                 </TableCell>
 
-                {/* Date */}
+                {/* Date ajouté + prochain contact */}
                 <TableCell sx={{ py: 1.25, whiteSpace: "nowrap" }}>
                   <Typography variant="bodySmall" color="text.secondary">
                     {new Date(prospect.dateAjout).toLocaleDateString("fr-FR", {
@@ -344,6 +375,29 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
                       year: "numeric",
                     })}
                   </Typography>
+                  {prospect.dateProchainContact && (
+                    <Tooltip
+                      title={
+                        isOverdue
+                          ? `Prochain contact en retard — prévu le ${prospect.dateProchainContact}`
+                          : `Prochain contact : ${prospect.dateProchainContact}`
+                      }
+                      placement="left"
+                    >
+                      <Typography
+                        variant="labelSmall"
+                        sx={{
+                          display: "block",
+                          mt: 0.25,
+                          fontWeight: isOverdue ? 700 : 500,
+                          color: isOverdue ? "error.main" : "text.secondary",
+                        }}
+                      >
+                        {isOverdue ? "⚠ " : ""}
+                        {prospect.dateProchainContact}
+                      </Typography>
+                    </Tooltip>
+                  )}
                 </TableCell>
 
                 {/* Type */}
@@ -389,7 +443,8 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
                   </Tooltip>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
 
             {paginated.length === 0 && (
               <TableRow>
