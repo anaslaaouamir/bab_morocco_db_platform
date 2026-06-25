@@ -207,6 +207,7 @@ class OutreachService:
         email.date_envoi_reel = datetime.utcnow()
         await db.commit()
         await db.refresh(email)
+        await self.auto_trigger_followup(db, prospect)
         return email
 
     # ── Batch scheduler operation ─────────────────────────────────────────────
@@ -257,7 +258,8 @@ class OutreachService:
             )).scalars().first()
             if existing:
                 continue
-            if j0.date_envoi_reel and (datetime.utcnow() - j0.date_envoi_reel).days >= 3:
+            sent_dt = j0.date_envoi_reel if isinstance(j0.date_envoi_reel, datetime) else datetime.fromisoformat(str(j0.date_envoi_reel))
+            if j0.date_envoi_reel and (datetime.utcnow() - sent_dt).days >= 3:
                 prospect = await db.get(Prospect, j0.prospect_id)
                 if prospect:
                     for variant in ("A", "B", "C"):
@@ -280,7 +282,8 @@ class OutreachService:
             )).scalars().first()
             if existing:
                 continue
-            if j3.date_envoi_reel and (datetime.utcnow() - j3.date_envoi_reel).days >= 4:
+            sent_dt = j3.date_envoi_reel if isinstance(j3.date_envoi_reel, datetime) else datetime.fromisoformat(str(j3.date_envoi_reel))
+            if j3.date_envoi_reel and (datetime.utcnow() - sent_dt).days >= 4:
                 prospect = await db.get(Prospect, j3.prospect_id)
                 if prospect:
                     for variant in ("A", "B", "C"):
