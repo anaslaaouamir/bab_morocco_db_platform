@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 _STEP_OFFSETS = {"j0": 0, "j3": 3, "j7": 7, "j30": 30}
 
+# j3 triggers 3 days after j0 sent; j7 triggers 4 days after j3 sent (= 7 days after j0)
+_FOLLOWUP_DELAY_DAYS = {"j3": 3, "j7": 4, "j30": 0}
+
 
 class MockEmailSender:
     async def send(self, email: OutreachEmail) -> bool:
@@ -35,31 +38,117 @@ class OutreachService:
         self._generator = generator or MockEmailGenerator()
         self._sender = sender or MockEmailSender()
 
-    async def generate_j0_variants(
-        self, db: AsyncSession, prospect: Prospect
+    # ── Core generation ──────────────────────────────────────────────────────
+
+    async def generate_step_variants(
+        self,
+        db: AsyncSession,
+        prospect: Prospect,
+        step: str,
+        base_date: Optional[date] = None,
     ) -> list[OutreachEmail]:
-        today = date.today()
+        """
+        Generate draft variants A, B, C for any sequence step.
+        Uses MockEmailGenerator now; swap get_email_generator() env flag to
+        switch to ClaudeEmailGenerator in production — no other code change needed.
+        """
+        if base_date is None:
+            base_date = date.today()
+        offset = _STEP_OFFSETS.get(step, 0)
+        planned_date = base_date + timedelta(days=offset)
+
         emails = []
         for variant in ("A", "B", "C"):
-            sujet, corps = await self._generator.generate(prospect, "j0", variant)
+            sujet, corps = await self._generator.generate(prospect, step, variant)
             email = OutreachEmail(
                 id=uuid.uuid4(),
                 prospect_id=prospect.id,
-                sequence_step="j0",
+                sequence_step=step,
                 variant=variant,
                 langue=prospect.langue,
                 sujet=sujet,
                 corps=corps,
                 statut="draft",
-                date_envoi_prevu=today,
+                date_envoi_prevu=planned_date,
                 created_at=datetime.utcnow(),
             )
             db.add(email)
             emails.append(email)
+
         await db.commit()
         for e in emails:
             await db.refresh(e)
         return emails
+
+    async def generate_j0_variants(
+        self, db: AsyncSession, prospect: Prospect
+    ) -> list[OutreachEmail]:
+        """Backward-compatible wrapper — generates J0 A/B/C variants."""
+        return await self.generate_step_variants(db, prospect, "j0")
+
+    # ── Per-prospect auto-trigger ─────────────────────────────────────────────
+
+    async def auto_trigger_followup(
+        self, db: AsyncSession, prospect: Prospect
+    ) -> list[OutreachEmail]:
+        """
+        Check whether the next follow-up step is due for this prospect and, if so,
+        generate its 3 variants (A/B/C) as drafts for human review.
+
+        Timing rules (from spec §5):
+          J+3  — j0 sent (not opened) for >= 3 days
+          J+7  — j3 sent for >= 4 days  (= 7 days total from j0)
+          J+30 — prospect in 'veille' stage and no j30 yet
+
+        Idempotent: does nothing if the step already exists.
+        Returns newly created emails (empty list if nothing was due or generated).
+        """
+        emails = await self.list_emails(db, prospect.id)
+        if not emails:
+            return []
+
+        # Group by step; pick best (highest-progress statut) per step
+        by_step: dict[str, OutreachEmail] = {}
+        statut_order = ["draft", "validated", "sent", "opened", "clicked"]
+        for e in emails:
+            prev = by_step.get(e.sequence_step)
+            if prev is None:
+                by_step[e.sequence_step] = e
+            else:
+                e_idx   = statut_order.index(e.statut)   if e.statut   in statut_order else -1
+                prv_idx = statut_order.index(prev.statut) if prev.statut in statut_order else -1
+                if e_idx > prv_idx:
+                    by_step[e.sequence_step] = e
+
+        # Infer j0 base date for planned-date calculation
+        j0_ref = by_step.get("j0")
+        base_date = j0_ref.date_envoi_prevu if j0_ref else date.today()
+        now = datetime.utcnow()
+
+        # ── J+3: j0 sent (not opened/clicked), 3+ days ago, no j3 yet ──────
+        if "j3" not in by_step:
+            j0 = by_step.get("j0")
+            if j0 and j0.statut == "sent" and j0.date_envoi_reel:
+                if (now - j0.date_envoi_reel).days >= _FOLLOWUP_DELAY_DAYS["j3"]:
+                    logger.info("auto_trigger: generating j3 for prospect %s", prospect.id)
+                    return await self.generate_step_variants(db, prospect, "j3", base_date)
+
+        # ── J+7: j3 sent, 4+ days ago (7 days total), no j7 yet ─────────────
+        if "j7" not in by_step:
+            j3 = by_step.get("j3")
+            if j3 and j3.statut == "sent" and j3.date_envoi_reel:
+                if (now - j3.date_envoi_reel).days >= _FOLLOWUP_DELAY_DAYS["j7"]:
+                    logger.info("auto_trigger: generating j7 for prospect %s", prospect.id)
+                    return await self.generate_step_variants(db, prospect, "j7", base_date)
+
+        # ── J+30: prospect in 'veille', no j30 yet ───────────────────────────
+        if "j30" not in by_step and prospect.stage == "veille":
+            logger.info("auto_trigger: generating j30 reactivation for prospect %s", prospect.id)
+            return await self.generate_step_variants(db, prospect, "j30", base_date)
+
+        return []
+
+    # ── Queries ───────────────────────────────────────────────────────────────
 
     async def list_emails(
         self, db: AsyncSession, prospect_id: uuid.UUID
@@ -67,7 +156,7 @@ class OutreachService:
         result = await db.execute(
             select(OutreachEmail)
             .where(OutreachEmail.prospect_id == prospect_id)
-            .order_by(OutreachEmail.date_envoi_prevu)
+            .order_by(OutreachEmail.date_envoi_prevu, OutreachEmail.variant)
         )
         return list(result.scalars().all())
 
@@ -87,8 +176,14 @@ class OutreachService:
         if last_sent.statut in ("opened", "clicked"):
             return {"next_step": None, "reason": "Prospect engaged — no follow-up needed", "emails": emails}
         if current_idx < len(steps_order) - 1:
-            return {"next_step": steps_order[current_idx + 1], "reason": f"{last_sent.sequence_step} sent but not opened", "emails": emails}
+            return {
+                "next_step": steps_order[current_idx + 1],
+                "reason": f"{last_sent.sequence_step} sent but not opened",
+                "emails": emails,
+            }
         return {"next_step": None, "reason": "Sequence complete", "emails": emails}
+
+    # ── Validate / Send ───────────────────────────────────────────────────────
 
     async def validate(self, db: AsyncSession, email_id: uuid.UUID) -> OutreachEmail:
         email = await db.get(OutreachEmail, email_id)
@@ -114,9 +209,12 @@ class OutreachService:
         await db.refresh(email)
         return email
 
+    # ── Batch scheduler operation ─────────────────────────────────────────────
+
     async def _create_followup(
         self, db: AsyncSession, prospect: Prospect, step: str, variant: str, base_date: date
     ) -> OutreachEmail:
+        """Create a single variant email for a follow-up step (used by trigger_followups)."""
         offset = _STEP_OFFSETS[step]
         sujet, corps = await self._generator.generate(prospect, step, variant)
         email = OutreachEmail(
@@ -135,10 +233,15 @@ class OutreachService:
         return email
 
     async def trigger_followups(self, db: AsyncSession) -> dict:
+        """
+        Batch scheduler operation (called by n8n / cron) — creates A/B/C draft variants
+        for all due follow-up steps across all outreach prospects.
+        The per-prospect equivalent is auto_trigger_followup().
+        """
         today = date.today()
         created = []
 
-        # j0 sent + not opened → j3
+        # ── J0 sent + not opened >= 3 days → generate j3 (A/B/C) ───────────
         result = await db.execute(
             select(OutreachEmail).where(
                 OutreachEmail.sequence_step == "j0",
@@ -157,10 +260,11 @@ class OutreachService:
             if j0.date_envoi_reel and (datetime.utcnow() - j0.date_envoi_reel).days >= 3:
                 prospect = await db.get(Prospect, j0.prospect_id)
                 if prospect:
-                    await self._create_followup(db, prospect, "j3", j0.variant, j0.date_envoi_prevu)
+                    for variant in ("A", "B", "C"):
+                        await self._create_followup(db, prospect, "j3", variant, j0.date_envoi_prevu)
                     created.append({"prospect_id": str(j0.prospect_id), "step": "j3"})
 
-        # j3 sent → j7
+        # ── J3 sent >= 4 days → generate j7 (A/B/C) ─────────────────────────
         result = await db.execute(
             select(OutreachEmail).where(
                 OutreachEmail.sequence_step == "j3",
@@ -179,10 +283,11 @@ class OutreachService:
             if j3.date_envoi_reel and (datetime.utcnow() - j3.date_envoi_reel).days >= 4:
                 prospect = await db.get(Prospect, j3.prospect_id)
                 if prospect:
-                    await self._create_followup(db, prospect, "j7", j3.variant, j3.date_envoi_prevu)
+                    for variant in ("A", "B", "C"):
+                        await self._create_followup(db, prospect, "j7", variant, j3.date_envoi_prevu)
                     created.append({"prospect_id": str(j3.prospect_id), "step": "j7"})
 
-        # veille prospects → j30
+        # ── Veille prospects → generate j30 reactivation (A/B/C) ─────────────
         result = await db.execute(select(Prospect).where(Prospect.stage == "veille"))
         for prospect in result.scalars().all():
             existing = (await db.execute(
@@ -193,7 +298,8 @@ class OutreachService:
             )).scalars().first()
             if existing:
                 continue
-            await self._create_followup(db, prospect, "j30", "A", today)
+            for variant in ("A", "B", "C"):
+                await self._create_followup(db, prospect, "j30", variant, today)
             created.append({"prospect_id": str(prospect.id), "step": "j30"})
 
         await db.commit()

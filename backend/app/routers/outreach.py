@@ -87,6 +87,17 @@ async def send_email(
         raise HTTPException(status_code=403, detail=str(e))
 
 
+@router.post("/{prospect_id}/trigger-followup", response_model=list[OutreachEmailResponse])
+async def trigger_followup_for_prospect(
+    prospect_id: uuid.UUID,
+    db: AsyncSession = Depends(get_session),
+    svc: OutreachService = Depends(get_outreach_service),
+):
+    """Per-prospect idempotent check — generates next due follow-up step (A/B/C) if timing is met."""
+    prospect = await _get_prospect(prospect_id, db)
+    return await svc.auto_trigger_followup(db, prospect)
+
+
 @router.post("/trigger-followups", response_model=TriggerFollowupsResponse)
 async def trigger_followups(
     db: AsyncSession = Depends(get_session),

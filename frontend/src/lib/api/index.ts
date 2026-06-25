@@ -189,6 +189,11 @@ export const outreachApi = {
   send: (emailId: string): Promise<RawOutreachEmail> =>
     apiFetch<RawOutreachEmail>(`/outreach/${emailId}/send`, { method: "POST" }),
 
+  triggerFollowup: (prospectId: string): Promise<RawOutreachEmail[]> =>
+    apiFetch<RawOutreachEmail[]>(`/outreach/${prospectId}/trigger-followup`, {
+      method: "POST",
+    }),
+
   triggerFollowups: (): Promise<RawTriggerFollowupsResponse> =>
     apiFetch<RawTriggerFollowupsResponse>("/outreach/trigger-followups", {
       method: "POST",
