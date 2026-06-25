@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Tabs from "@mui/material/Tabs";
@@ -9,14 +9,16 @@ import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import Button from "@mui/material/Button";
 import Fab from "@mui/material/Fab";
+import Skeleton from "@mui/material/Skeleton";
+import Alert from "@mui/material/Alert";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import ViewKanbanOutlinedIcon from "@mui/icons-material/ViewKanbanOutlined";
 
-import mockProspects from "@/data/mockProspects";
 import type { Prospect, PipelineStage } from "@/types/prospect";
 import { scoreTotal, STAGE_LABELS } from "@/types/prospect";
 import { EMPTY_FILTERS, applyFilters, type FilterState } from "@/lib/filters";
+import { prospectsApi, ApiError } from "@/lib/api";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 import FilterBar from "@/components/shared/FilterBar";
 import ProspectTable from "@/components/crm/ProspectTable";
@@ -27,28 +29,63 @@ import ProspectionModeDialog from "@/components/crm/ProspectionModeDialog";
 import ScanProspectDialog from "@/components/crm/ScanProspectDialog";
 import type { ProspectionMode } from "@/components/crm/ProspectionModeDialog";
 
-// ─── Page ─────────────────────────────────────────────────────────────────
+// ─── Loading skeleton ──────────────────────────────────────────────────────
+
+function ProspectionSkeleton() {
+  return (
+    <Box sx={{ px: { xs: 2, sm: 3, md: 4 }, pt: 2, display: "flex", flexDirection: "column", gap: 1.5 }}>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} variant="rounded" height={52} sx={{ borderRadius: 2 }} />
+      ))}
+    </Box>
+  );
+}
+
+// ─── Page ──────────────────────────────────────────────────────────────────
 
 export default function ProspectionPage() {
   const { showSnackbar } = useSnackbar();
 
-  // Source-of-truth for all prospects
-  const [allProspects, setAllProspects] = useState<Prospect[]>(mockProspects);
+  // ── Remote state ─────────────────────────────────────────────────────────
+  const [allProspects, setAllProspects] = useState<Prospect[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [fetchError, setFetchError]     = useState<string | null>(null);
 
-  // Filter chips state
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  useEffect(() => {
+    let cancelled = false;
 
-  // Tab: 0 = CRM Table, 1 = Kanban
-  const [tab, setTab] = useState(0);
+    async function load() {
+      setLoading(true);
+      setFetchError(null);
+      try {
+        // Fetch up to 100 prospects; enough for Phase 1 pipeline
+        const result = await prospectsApi.list({ pageSize: 100 });
+        if (!cancelled) setAllProspects(result.items);
+      } catch (err) {
+        if (!cancelled) {
+          const msg =
+            err instanceof ApiError
+              ? err.detail
+              : "Impossible de charger les prospects. Vérifiez que le backend est démarré.";
+          setFetchError(msg);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
 
-  // Fiche Partenaire drawer
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── UI state ─────────────────────────────────────────────────────────────
+  const [filters, setFilters]                   = useState<FilterState>(EMPTY_FILTERS);
+  const [tab, setTab]                           = useState(0);
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
-  // Prospection dialogs
-  const [modeDialogOpen, setModeDialogOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen]             = useState(false);
+  const [modeDialogOpen, setModeDialogOpen]     = useState(false);
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
-  const [scanDialogOpen, setScanDialogOpen] = useState(false);
+  const [scanDialogOpen, setScanDialogOpen]     = useState(false);
 
   function handleModeSelect(mode: ProspectionMode) {
     setModeDialogOpen(false);
@@ -56,22 +93,20 @@ export default function ProspectionPage() {
     else setScanDialogOpen(true);
   }
 
-  // Filtered subset
+  // ── Derived ───────────────────────────────────────────────────────────────
   const filteredProspects = useMemo(
     () => applyFilters(allProspects, filters),
-    [allProspects, filters]
+    [allProspects, filters],
   );
 
-  // Keep drawer reference live so chips update after a stage change
   const liveSelectedProspect = useMemo(
     () =>
       selectedProspect
         ? (allProspects.find((p) => p.id === selectedProspect.id) ?? null)
         : null,
-    [allProspects, selectedProspect]
+    [allProspects, selectedProspect],
   );
 
-  // KPI chips — reflect filtered list
   const kpiStats = useMemo(() => {
     const total       = filteredProspects.length;
     const qualifies   = filteredProspects.filter((p) => scoreTotal(p.score) >= 75).length;
@@ -85,7 +120,7 @@ export default function ProspectionPage() {
     ];
   }, [filteredProspects]);
 
-  // ── Handlers ────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleProspectClick = useCallback((prospect: Prospect) => {
     setSelectedProspect(prospect);
@@ -94,15 +129,21 @@ export default function ProspectionPage() {
 
   const handleDrawerClose = useCallback(() => setDrawerOpen(false), []);
 
+  /**
+   * Optimistic stage change: update UI immediately, then persist to backend.
+   * On failure: rollback to previous stage and show an error toast.
+   */
   const handleStageChange = useCallback(
-    (id: string, newStage: PipelineStage) => {
+    async (id: string, newStage: PipelineStage) => {
       const previous = allProspects.find((p) => p.id === id);
       if (!previous || previous.stage === newStage) return;
 
+      // 1 — Optimistic update
       setAllProspects((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, stage: newStage } : p))
+        prev.map((p) => (p.id === id ? { ...p, stage: newStage } : p)),
       );
 
+      // 2 — Undo action shown in the snackbar while the request is in-flight
       showSnackbar({
         message: `${previous.nom} → ${STAGE_LABELS[newStage]}`,
         severity: "success",
@@ -113,7 +154,7 @@ export default function ProspectionPage() {
             size="small"
             onClick={() =>
               setAllProspects((prev) =>
-                prev.map((p) => (p.id === id ? { ...p, stage: previous.stage } : p))
+                prev.map((p) => (p.id === id ? { ...p, stage: previous.stage } : p)),
               )
             }
           >
@@ -121,18 +162,37 @@ export default function ProspectionPage() {
           </Button>
         ),
       });
+
+      // 3 — Persist to backend
+      try {
+        const updated = await prospectsApi.patchStage(id, newStage);
+        // Replace with server-confirmed data (timestamps, etc.)
+        setAllProspects((prev) =>
+          prev.map((p) => (p.id === id ? updated : p)),
+        );
+      } catch (err) {
+        // 4 — Rollback on error
+        setAllProspects((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, stage: previous.stage } : p)),
+        );
+        const detail =
+          err instanceof ApiError
+            ? err.detail
+            : "Erreur réseau — changement de stage annulé.";
+        showSnackbar({ message: detail, severity: "error", duration: 6000 });
+      }
     },
-    [allProspects, showSnackbar]
+    [allProspects, showSnackbar],
   );
 
   const handleNotesChange = useCallback(
     (id: string, notes: string) => {
       setAllProspects((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, notes } : p))
+        prev.map((p) => (p.id === id ? { ...p, notes } : p)),
       );
       showSnackbar({ message: "Note enregistrée", severity: "info", duration: 2500 });
     },
-    [showSnackbar]
+    [showSnackbar],
   );
 
   const handleAddProspect = useCallback(
@@ -156,10 +216,10 @@ export default function ProspectionPage() {
         ),
       });
     },
-    [showSnackbar]
+    [showSnackbar],
   );
 
-  // ── Render ───────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100%", position: "relative" }}>
@@ -175,27 +235,31 @@ export default function ProspectionPage() {
 
         {/* KPI chips */}
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 2 }}>
-          {kpiStats.map((s) => (
-            <Chip
-              key={s.label}
-              label={
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                  <Typography
-                    component="span"
-                    sx={{ fontWeight: 800, fontSize: "0.875rem", lineHeight: 1 }}
-                  >
-                    {s.value}
-                  </Typography>
-                  <Typography component="span" sx={{ fontSize: "0.75rem", opacity: 0.85 }}>
-                    {s.label}
-                  </Typography>
-                </Box>
-              }
-              color={s.color}
-              variant="outlined"
-              sx={{ height: 30, "& .MuiChip-label": { px: 1.25 } }}
-            />
-          ))}
+          {loading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} variant="rounded" width={120} height={30} sx={{ borderRadius: 4 }} />
+              ))
+            : kpiStats.map((s) => (
+                <Chip
+                  key={s.label}
+                  label={
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                      <Typography
+                        component="span"
+                        sx={{ fontWeight: 800, fontSize: "0.875rem", lineHeight: 1 }}
+                      >
+                        {s.value}
+                      </Typography>
+                      <Typography component="span" sx={{ fontSize: "0.75rem", opacity: 0.85 }}>
+                        {s.label}
+                      </Typography>
+                    </Box>
+                  }
+                  color={s.color}
+                  variant="outlined"
+                  sx={{ height: 30, "& .MuiChip-label": { px: 1.25 } }}
+                />
+              ))}
         </Box>
 
         {/* Tab switcher */}
@@ -235,38 +299,77 @@ export default function ProspectionPage() {
 
       <Divider />
 
+      {/* Error state */}
+      {fetchError && (
+        <Box sx={{ px: { xs: 2, sm: 3, md: 4 }, pt: 2 }}>
+          <Alert
+            severity="error"
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => {
+                  setLoading(true);
+                  setFetchError(null);
+                  prospectsApi
+                    .list({ pageSize: 100 })
+                    .then((r) => setAllProspects(r.items))
+                    .catch((e) =>
+                      setFetchError(
+                        e instanceof ApiError ? e.detail : "Erreur réseau.",
+                      ),
+                    )
+                    .finally(() => setLoading(false));
+                }}
+              >
+                Réessayer
+              </Button>
+            }
+          >
+            {fetchError}
+          </Alert>
+        </Box>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && <ProspectionSkeleton />}
+
       {/* CRM Table panel */}
-      <Box
-        role="tabpanel"
-        id="panel-crm"
-        aria-labelledby="tab-crm"
-        hidden={tab !== 0}
-        sx={{ pt: 2, flex: 1 }}
-      >
-        {tab === 0 && (
-          <ProspectTable
-            prospects={filteredProspects}
-            onProspectClick={handleProspectClick}
-          />
-        )}
-      </Box>
+      {!loading && !fetchError && (
+        <Box
+          role="tabpanel"
+          id="panel-crm"
+          aria-labelledby="tab-crm"
+          hidden={tab !== 0}
+          sx={{ pt: 2, flex: 1 }}
+        >
+          {tab === 0 && (
+            <ProspectTable
+              prospects={filteredProspects}
+              onProspectClick={handleProspectClick}
+            />
+          )}
+        </Box>
+      )}
 
       {/* Kanban panel */}
-      <Box
-        role="tabpanel"
-        id="panel-kanban"
-        aria-labelledby="tab-kanban"
-        hidden={tab !== 1}
-        sx={{ flex: 1, overflow: "hidden" }}
-      >
-        {tab === 1 && (
-          <KanbanBoard
-            prospects={filteredProspects}
-            onStageChange={handleStageChange}
-            onProspectClick={handleProspectClick}
-          />
-        )}
-      </Box>
+      {!loading && !fetchError && (
+        <Box
+          role="tabpanel"
+          id="panel-kanban"
+          aria-labelledby="tab-kanban"
+          hidden={tab !== 1}
+          sx={{ flex: 1, overflow: "hidden" }}
+        >
+          {tab === 1 && (
+            <KanbanBoard
+              prospects={filteredProspects}
+              onStageChange={handleStageChange}
+              onProspectClick={handleProspectClick}
+            />
+          )}
+        </Box>
+      )}
 
       {/* Extended FAB — Nouvelle Prospection */}
       <Fab
