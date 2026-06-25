@@ -640,21 +640,45 @@ export default function NegociationPage() {
 
   useEffect(() => { setCounterparts([]); }, [selectedId]);
 
-  // Lazy-load analysis when prospect is selected
+  // Lazy-load analysis + history when prospect is selected.
+  // History is needed to derive the responded state on refresh:
+  // if the last persisted message is outbound, the user already responded.
   useEffect(() => {
     if (!selectedId) return;
     if (analysisCache[selectedId] !== undefined) return;
 
     setLoadingAnalysis(true);
-    negotiationApi.analysis(selectedId)
-      .then((a) => setAnalysisCache((prev) => ({ ...prev, [selectedId]: a })))
-      .catch((err) => {
-        const isNoAnalysis = err instanceof ApiError && err.status === 404;
-        if (!isNoAnalysis) showSnackbar({ message: "Impossible de charger l'analyse.", severity: "error" });
-        setAnalysisCache((prev) => ({ ...prev, [selectedId]: null }));
-      })
-      .finally(() => setLoadingAnalysis(false));
-  }, [selectedId, analysisCache, showSnackbar]);
+
+    const analysisPromise = negotiationApi.analysis(selectedId).catch((err) => {
+      const isNoAnalysis = err instanceof ApiError && err.status === 404;
+      if (!isNoAnalysis) showSnackbar({ message: "Impossible de charger l'analyse.", severity: "error" });
+      return null;
+    });
+
+    const historyPromise = negotiationApi.history(selectedId).catch(() => [] as typeof historyCache[string]);
+
+    Promise.all([analysisPromise, historyPromise]).then(([a, msgs]) => {
+      setAnalysisCache((prev) => ({ ...prev, [selectedId]: a }));
+      setHistoryCache((prev) => ({ ...prev, [selectedId]: msgs }));
+
+      // Derive responded state from persisted history — survives page refresh
+      if (msgs.length > 0) {
+        const last = msgs[msgs.length - 1];
+        if (last.direction === "outbound") {
+          const isEscalation = last.corps.startsWith("[Réponse — Scénario C]") ||
+            last.corps.includes("responsable commercial");
+          setRespondedCache((prev) => ({
+            ...prev,
+            [selectedId]: {
+              scenarioChosen: isEscalation ? "C" : "?",
+              sentMessage: last.corps,
+              isEscalation,
+            },
+          }));
+        }
+      }
+    }).finally(() => setLoadingAnalysis(false));
+  }, [selectedId, analysisCache, historyCache, showSnackbar]);
 
   const selectedProspect = useMemo(() => prospects.find((p) => p.id === selectedId) ?? null, [selectedId, prospects]);
   const analysis = selectedId !== null ? (analysisCache[selectedId] ?? null) : null;
