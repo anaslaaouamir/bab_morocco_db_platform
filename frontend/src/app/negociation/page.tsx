@@ -763,10 +763,17 @@ export default function NegociationPage() {
 
   function handleAnalysisReady(newAnalysis: RawMessageAnalysis) {
     if (!selectedId) return;
+    // Set new analysis, clear responded + manual flag so scenarios panel appears
     setAnalysisCache((prev) => ({ ...prev, [selectedId]: newAnalysis }));
     setRespondedCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
     setHistoryCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
     setManualSubmitIds((prev) => { const n = new Set(prev); n.delete(selectedId); return n; });
+  }
+
+  function handleRespondDone(id: string, state: RespondedState) {
+    setRespondedCache((prev) => ({ ...prev, [id]: state }));
+    setHistoryCache((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    setManualSubmitIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
   }
 
   // ── "Send another note" button ────────────────────────────────────
@@ -795,11 +802,7 @@ export default function NegociationPage() {
     setConfirming(true);
     try {
       const msg = await negotiationApi.respond(selectedId, confirmScenario.scenario as "A" | "B" | "C");
-      setRespondedCache((prev) => ({
-        ...prev,
-        [selectedId]: { scenarioChosen: confirmScenario.scenario, sentMessage: msg.corps, isEscalation: false },
-      }));
-      setHistoryCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+      handleRespondDone(selectedId, { scenarioChosen: confirmScenario.scenario, sentMessage: msg.corps, isEscalation: false });
       showSnackbar({ message: `Scénario ${confirmScenario.scenario} envoyé à ${selectedProspect?.nom}.`, severity: "success", duration: 5000 });
       setConfirmScenario(null);
     } catch (err) {
@@ -819,11 +822,7 @@ export default function NegociationPage() {
     setEscalading(true);
     try {
       const msg = await negotiationApi.respond(selectedId, "C", message);
-      setRespondedCache((prev) => ({
-        ...prev,
-        [selectedId]: { scenarioChosen: "C", sentMessage: msg.corps, isEscalation: true },
-      }));
-      setHistoryCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+      handleRespondDone(selectedId, { scenarioChosen: "C", sentMessage: msg.corps, isEscalation: true });
       showSnackbar({ message: "Escalade confirmée — Responsable commercial en charge.", severity: "warning", duration: 6000 });
       setEscaladeScenario(null);
     } catch (err) {
