@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -20,15 +20,19 @@ import Slider from "@mui/material/Slider";
 import Alert from "@mui/material/Alert";
 import LinearProgress from "@mui/material/LinearProgress";
 import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
 import { alpha, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import TravelExploreRoundedIcon from "@mui/icons-material/TravelExploreRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 
 import type { PartnerType } from "@/types/prospect";
 import { PARTNER_TYPE_LABELS } from "@/types/prospect";
+import { scanApi, ApiError, type RawScanJob } from "@/lib/api";
+import { useSnackbar } from "@/contexts/SnackbarContext";
 
 // ─── Config maps ──────────────────────────────────────────────────────────────
 
@@ -41,7 +45,6 @@ const COUNTRIES_BY_MARKET = [
   { group: "Golfe", countries: ["Émirats Arabes Unis", "Arabie Saoudite", "Qatar", "Koweït", "Bahreïn"] },
 ];
 
-// Suggested cities per country
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
   "Maroc": ["Marrakech", "Casablanca", "Fès", "Agadir", "Tanger", "Essaouira", "Chefchaouen", "Ouarzazate", "Merzouga", "Rabat", "Meknès", "Dakhla", "Taroudant", "El Jadida", "Tétouan"],
   "France": ["Paris", "Lyon", "Marseille", "Bordeaux", "Nice", "Toulouse", "Nantes", "Strasbourg", "Lille", "Montpellier"],
@@ -73,7 +76,6 @@ const CITIES_BY_COUNTRY: Record<string, string[]> = {
   "Colombie": ["Bogotá", "Medellín", "Cartagena", "Cali"],
 };
 
-// Google Maps search query template per type
 const TYPE_QUERY: Record<PartnerType, string> = {
   hotel_riad:             "hôtels riads",
   hotel_luxe:             "hôtels luxe 5 étoiles",
@@ -85,17 +87,19 @@ const TYPE_QUERY: Record<PartnerType, string> = {
   mice:                   "agences MICE incentive événementiel",
 };
 
-// ─── Scan simulation steps ────────────────────────────────────────────────────
+// ─── Step label derived from job progression ──────────────────────────────────
 
-const SCAN_STEPS = [
-  "Connexion Google Maps API…",
-  "Recherche en cours…",
-  "Récupération des résultats…",
-  "Enrichissement des données (site web, OTAs)…",
-  "Calcul du scoring IA…",
-  "Dédoublonnage et insertion…",
-  "Scan terminé ✓",
-];
+function stepLabel(job: RawScanJob): string {
+  if (job.statut === "done")  return "Scan terminé ✓";
+  if (job.statut === "error") return `Erreur : ${job.erreur ?? "inconnue"}`;
+  const p = job.progression;
+  if (p < 10) return "Connexion Google Maps API…";
+  if (p < 30) return "Recherche en cours…";
+  if (p < 50) return "Récupération des résultats…";
+  if (p < 70) return "Enrichissement des données (site web, OTAs)…";
+  if (p < 85) return "Calcul du scoring IA…";
+  return "Dédoublonnage et insertion…";
+}
 
 // ─── Form types ───────────────────────────────────────────────────────────────
 
@@ -103,22 +107,19 @@ interface ScanForm {
   pays: string;
   ville: string;
   type: PartnerType | "";
+  // Backend caps at 100; slider max matches
   limite: number;
 }
 
 const INITIAL: ScanForm = { pays: "", ville: "", type: "", limite: 50 };
 
-interface FormErrors {
-  pays?: string;
-  ville?: string;
-  type?: string;
-}
+interface FormErrors { pays?: string; ville?: string; type?: string; }
 
 function validate(v: ScanForm): FormErrors {
   const e: FormErrors = {};
-  if (!v.pays)       e.pays  = "Le pays est requis.";
+  if (!v.pays)         e.pays  = "Le pays est requis.";
   if (!v.ville.trim()) e.ville = "La ville est requise.";
-  if (!v.type)       e.type  = "Le type de partenaire est requis.";
+  if (!v.type)         e.type  = "Le type de partenaire est requis.";
   return e;
 }
 
@@ -135,40 +136,84 @@ interface ScanProspectDialogProps {
 export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspectDialogProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const { showSnackbar } = useSnackbar();
 
-  const [form, setForm] = useState<ScanForm>(INITIAL);
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [form, setForm]           = useState<ScanForm>(INITIAL);
+  const [errors, setErrors]       = useState<FormErrors>({});
   const [attempted, setAttempted] = useState(false);
 
-  // Scan simulation state
-  const [scanning, setScanning] = useState(false);
-  const [stepIdx, setStepIdx] = useState(0);
-  const [done, setDone] = useState(false);
+  // Scan lifecycle
+  const [submitting, setSubmitting] = useState(false); // "Lancer" button spinner
+  const [scanning, setScanning]     = useState(false); // scan in-progress panel visible
+  const [job, setJob]               = useState<RawScanJob | null>(null);
+  const [done, setDone]             = useState(false);
+  const [scanError, setScanError]   = useState<string | null>(null);
 
-  const suggestedCities = CITIES_BY_COUNTRY[form.pays] ?? [];
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  function stopPolling() {
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }
+
+  // Reset everything when dialog opens
   useEffect(() => {
     if (open) {
       setForm(INITIAL);
       setErrors({});
       setAttempted(false);
+      setSubmitting(false);
       setScanning(false);
-      setStepIdx(0);
+      setJob(null);
       setDone(false);
+      setScanError(null);
+      stopPolling();
     }
+    return stopPolling; // cleanup on unmount
   }, [open]);
 
-  // Advance scan simulation step by step
+  // Polling: start when we have a jobId and are not yet done
   useEffect(() => {
-    if (!scanning || done) return;
-    if (stepIdx >= SCAN_STEPS.length - 1) {
-      setDone(true);
-      return;
-    }
-    const delay = stepIdx === 0 ? 600 : stepIdx < 3 ? 900 : 1100;
-    const t = setTimeout(() => setStepIdx((i) => i + 1), delay);
-    return () => clearTimeout(t);
-  }, [scanning, stepIdx, done]);
+    if (!job?.id || done) return;
+
+    intervalRef.current = setInterval(async () => {
+      try {
+        const updated = await scanApi.status(job.id);
+        setJob(updated);
+
+        if (updated.statut === "done") {
+          stopPolling();
+          setDone(true);
+          showSnackbar({
+            message: `Scan terminé — ${updated.nb_ajoutes} prospect(s) ajouté(s) au pipeline.`,
+            severity: "success",
+            duration: 6000,
+          });
+        } else if (updated.statut === "error") {
+          stopPolling();
+          setDone(true);
+          setScanError(updated.erreur ?? "Erreur inconnue lors du scan.");
+          showSnackbar({
+            message: `Erreur scan : ${updated.erreur ?? "inconnue"}`,
+            severity: "error",
+            duration: 8000,
+          });
+        }
+      } catch (err) {
+        stopPolling();
+        const msg =
+          err instanceof ApiError ? err.detail : "Erreur réseau lors du suivi du scan.";
+        setScanError(msg);
+        setDone(true);
+        showSnackbar({ message: msg, severity: "error", duration: 8000 });
+      }
+    }, 2000);
+
+    return stopPolling;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.id, done]);
 
   function set<K extends keyof ScanForm>(key: K, value: ScanForm[K]) {
     setForm((prev) => {
@@ -179,16 +224,37 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
     if (attempted) setErrors((prev) => { const e = { ...prev }; delete e[key as keyof FormErrors]; return e; });
   }
 
-  function handleLaunch() {
+  async function handleLaunch() {
     setAttempted(true);
     const errs = validate(form);
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
-    setScanning(true);
-    setStepIdx(0);
+
+    setSubmitting(true);
+    try {
+      const started = await scanApi.start({
+        ville:          form.ville,
+        pays:           form.pays,
+        typePartenaire: form.type as PartnerType,
+        limite:         form.limite, // slider already capped at 100
+      });
+      setJob(started);
+      setScanning(true);
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.detail
+          : "Erreur réseau — impossible de lancer le scan.";
+      showSnackbar({ message: msg, severity: "error", duration: 6000 });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  const progress = done ? 100 : Math.round((stepIdx / (SCAN_STEPS.length - 1)) * 90);
+  const suggestedCities = CITIES_BY_COUNTRY[form.pays] ?? [];
+  const progress = job ? job.progression : 0;
+  const isRunning = scanning && !done;
+
   const queryPreview =
     form.type && form.ville && form.pays
       ? `"${TYPE_QUERY[form.type as PartnerType]} ${form.ville} ${form.pays}"`
@@ -197,7 +263,7 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
   return (
     <Dialog
       open={open}
-      onClose={!scanning || done ? onClose : undefined}
+      onClose={isRunning ? undefined : onClose}
       fullScreen={isMobile}
       maxWidth="sm"
       fullWidth
@@ -208,7 +274,7 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
       <DialogTitle
         sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 3, py: 2, borderBottom: 1, borderColor: "divider" }}
       >
-        <IconButton size="small" onClick={onBack} disabled={scanning && !done}>
+        <IconButton size="small" onClick={onBack} disabled={isRunning}>
           <ArrowBackRoundedIcon fontSize="small" />
         </IconButton>
         <Box
@@ -228,7 +294,7 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
             Alimenté par Google Maps API + Agent IA
           </Typography>
         </Box>
-        <IconButton onClick={onClose} size="small" disabled={scanning && !done}>
+        <IconButton onClick={onClose} size="small" disabled={isRunning}>
           <CloseRoundedIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
@@ -238,7 +304,7 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
 
         {!scanning ? (
           <>
-            {/* ── Paramètres de scan ─────────────────────────────────── */}
+            {/* ── Paramètres de scan ──────────────────────────────────── */}
             <Box>
               <Typography variant="titleSmall" sx={{ fontWeight: 700, color: "secondary.main", mb: 2, display: "block" }}>
                 ① Cible géographique
@@ -281,9 +347,7 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
                     onChange={(e) => set("ville", e.target.value)}
                     error={!!errors.ville}
                     helperText={errors.ville ?? (form.pays ? undefined : "Sélectionnez un pays d'abord.")}
-                    size="small"
-                    fullWidth
-                    disabled={!form.pays}
+                    size="small" fullWidth disabled={!form.pays}
                     placeholder="Ex : Marrakech"
                   />
                 )}
@@ -292,7 +356,7 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
 
             <Divider />
 
-            {/* ── Type de partenaire ─────────────────────────────────── */}
+            {/* ── Type de partenaire ──────────────────────────────────── */}
             <Box>
               <Typography variant="titleSmall" sx={{ fontWeight: 700, color: "secondary.main", mb: 2, display: "block" }}>
                 ② Type de partenaire
@@ -320,7 +384,7 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
 
             <Divider />
 
-            {/* ── Limite ──────────────────────────────────────────────── */}
+            {/* ── Limite ─────────────────────────────────────────────── */}
             <Box>
               <Typography variant="titleSmall" sx={{ fontWeight: 700, color: "secondary.main", mb: 2, display: "block" }}>
                 ③ Nombre de prospects à scanner
@@ -334,16 +398,13 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
                 </Box>
                 <Slider
                   value={form.limite}
-                  min={10}
-                  max={200}
-                  step={10}
+                  min={10} max={100} step={10}
                   color="secondary"
                   valueLabelDisplay="auto"
                   marks={[
-                    { value: 10, label: "10" },
-                    { value: 50, label: "50" },
+                    { value: 10,  label: "10"  },
+                    { value: 50,  label: "50"  },
                     { value: 100, label: "100" },
-                    { value: 200, label: "200" },
                   ]}
                   onChange={(_, v) => set("limite", v as number)}
                   sx={{ "& .MuiSlider-markLabel": { fontSize: "0.625rem" } }}
@@ -355,34 +416,36 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
             </Box>
           </>
         ) : (
-          /* ── Scan in progress / done ────────────────────────────── */
+          /* ── Scan in progress / done ──────────────────────────────── */
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5, py: 1 }}>
+            {/* Hero icon + title */}
             <Box sx={{ textAlign: "center", py: 2 }}>
-              {done ? (
+              {scanError ? (
+                <ErrorOutlineRoundedIcon sx={{ fontSize: 52, color: "error.main", mb: 1 }} />
+              ) : done ? (
                 <CheckCircleRoundedIcon sx={{ fontSize: 52, color: "success.main", mb: 1 }} />
               ) : (
                 <TravelExploreRoundedIcon
                   sx={{
-                    fontSize: 52,
-                    color: "secondary.main",
-                    mb: 1,
+                    fontSize: 52, color: "secondary.main", mb: 1,
                     animation: "spin 2s linear infinite",
                     "@keyframes spin": { from: { transform: "rotate(0deg)" }, to: { transform: "rotate(360deg)" } },
                   }}
                 />
               )}
               <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>
-                {done ? "Scan terminé !" : "Scan en cours…"}
+                {scanError ? "Scan échoué" : done ? "Scan terminé !" : "Scan en cours…"}
               </Typography>
               <Typography variant="bodySmall" color="text.secondary">
                 {form.ville}, {form.pays} · {PARTNER_TYPE_LABELS[form.type as PartnerType]} · {form.limite} max
               </Typography>
             </Box>
 
+            {/* Progress bar */}
             <Box>
               <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.75 }}>
                 <Typography variant="labelSmall" color="text.secondary">
-                  {SCAN_STEPS[stepIdx]}
+                  {job ? stepLabel(job) : "Initialisation…"}
                 </Typography>
                 <Typography variant="labelSmall" sx={{ fontWeight: 700, color: "secondary.main" }}>
                   {progress}%
@@ -391,39 +454,93 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
               <LinearProgress
                 variant="determinate"
                 value={progress}
-                color={done ? "success" : "secondary"}
+                color={scanError ? "error" : done ? "success" : "secondary"}
                 sx={{ height: 8, borderRadius: 4, "& .MuiLinearProgress-bar": { borderRadius: 4 } }}
               />
             </Box>
 
-            {done && (
+            {/* Result summary when done */}
+            {done && job && !scanError && (
               <Alert severity="success">
-                <strong>Scan simulé terminé.</strong> En production, les prospects trouvés et scorés seront
-                automatiquement ajoutés au pipeline. Le backend API n'est pas encore connecté.
+                <Typography variant="bodySmall" sx={{ fontWeight: 700, mb: 0.5, display: "block" }}>
+                  Scan terminé avec succès
+                </Typography>
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 0.75 }}>
+                  <Chip
+                    label={`${job.nb_trouves} trouvés`}
+                    size="small" variant="outlined"
+                    sx={{ fontSize: "0.625rem", height: 20, "& .MuiChip-label": { px: 0.75 } }}
+                  />
+                  <Chip
+                    label={`${job.nb_ajoutes} ajoutés au pipeline`}
+                    size="small" color="success"
+                    sx={{ fontSize: "0.625rem", height: 20, "& .MuiChip-label": { px: 0.75 } }}
+                  />
+                  <Chip
+                    label={`${job.nb_veille} mis en veille`}
+                    size="small" color="warning" variant="outlined"
+                    sx={{ fontSize: "0.625rem", height: 20, "& .MuiChip-label": { px: 0.75 } }}
+                  />
+                  {job.nb_doublons > 0 && (
+                    <Chip
+                      label={`${job.nb_doublons} doublons ignorés`}
+                      size="small" variant="outlined"
+                      sx={{ fontSize: "0.625rem", height: 20, "& .MuiChip-label": { px: 0.75 } }}
+                    />
+                  )}
+                </Box>
               </Alert>
             )}
 
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              {SCAN_STEPS.slice(0, stepIdx + 1).map((step, i) => (
-                <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                  <CheckCircleRoundedIcon sx={{ fontSize: 14, color: i < stepIdx ? "success.main" : "secondary.main" }} />
-                  <Typography variant="bodySmall" color={i < stepIdx ? "text.secondary" : "text.primary"}>
-                    {step}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
+            {/* Error detail */}
+            {scanError && (
+              <Alert severity="error">
+                {scanError}
+              </Alert>
+            )}
+
+            {/* Live step log */}
+            {!done && job && (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {[
+                  "Connexion Google Maps API",
+                  "Recherche en cours",
+                  "Récupération des résultats",
+                  "Enrichissement des données",
+                  "Calcul du scoring IA",
+                  "Dédoublonnage et insertion",
+                ].map((label, i) => {
+                  const thresholds = [0, 10, 30, 50, 70, 85];
+                  const completed = progress > thresholds[i];
+                  const active    = progress >= thresholds[i] && !completed;
+                  if (progress < thresholds[i]) return null;
+                  return (
+                    <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      {active ? (
+                        <CircularProgress size={12} color="secondary" />
+                      ) : (
+                        <CheckCircleRoundedIcon sx={{ fontSize: 14, color: "success.main" }} />
+                      )}
+                      <Typography
+                        variant="bodySmall"
+                        color={active ? "text.primary" : "text.secondary"}
+                      >
+                        {label}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
           </Box>
         )}
       </DialogContent>
 
       {/* Actions */}
-      <DialogActions
-        sx={{ px: { xs: 2.5, md: 4 }, py: 2, borderTop: 1, borderColor: "divider", gap: 1.5 }}
-      >
+      <DialogActions sx={{ px: { xs: 2.5, md: 4 }, py: 2, borderTop: 1, borderColor: "divider", gap: 1.5 }}>
         {!scanning ? (
           <>
-            <Button onClick={onBack} variant="text">
+            <Button onClick={onBack} variant="text" disabled={submitting}>
               Retour
             </Button>
             <Button
@@ -431,10 +548,15 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
               variant="contained"
               color="secondary"
               disableElevation
-              startIcon={<TravelExploreRoundedIcon />}
+              disabled={submitting}
+              startIcon={
+                submitting
+                  ? <CircularProgress size={16} color="inherit" />
+                  : <TravelExploreRoundedIcon />
+              }
               sx={{ minWidth: 160 }}
             >
-              Lancer le scan
+              {submitting ? "Lancement…" : "Lancer le scan"}
             </Button>
           </>
         ) : (

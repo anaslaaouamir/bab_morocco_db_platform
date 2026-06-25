@@ -22,6 +22,7 @@ import Divider from "@mui/material/Divider";
 import LinearProgress from "@mui/material/LinearProgress";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
 import Tooltip from "@mui/material/Tooltip";
 import { alpha, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -38,6 +39,8 @@ import {
   LANGUAGE_FLAGS,
   scoreColor,
 } from "@/types/prospect";
+import { prospectsApi, ApiError } from "@/lib/api";
+import { useSnackbar } from "@/contexts/SnackbarContext";
 
 // ─── Auto-fill maps ───────────────────────────────────────────────────────
 
@@ -192,13 +195,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function Field2Col({ children }: { children: React.ReactNode }) {
   return (
-    <Box
-      sx={{
-        display: "grid",
-        gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-        gap: 2,
-      }}
-    >
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
       {children}
     </Box>
   );
@@ -228,7 +225,6 @@ function ScorePreview({ score }: { score: ScoreBreakdown }) {
         mb: 2.5,
       }}
     >
-      {/* Header row */}
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {total >= 75 ? (
@@ -244,25 +240,20 @@ function ScorePreview({ score }: { score: ScoreBreakdown }) {
           <Typography sx={{ fontSize: "1.75rem", fontWeight: 800, lineHeight: 1, color: muiColor }}>
             {total}
           </Typography>
-          <Typography variant="bodySmall" color="text.secondary">
-            /100
-          </Typography>
+          <Typography variant="bodySmall" color="text.secondary">/100</Typography>
         </Box>
       </Box>
 
-      {/* Global progress bar */}
       <LinearProgress
         variant="determinate"
         value={total}
         sx={{
-          height: 8,
-          borderRadius: 4,
+          height: 8, borderRadius: 4,
           bgcolor: alpha(muiColor, 0.15),
           "& .MuiLinearProgress-bar": { bgcolor: muiColor, borderRadius: 4 },
         }}
       />
 
-      {/* Threshold markers */}
       <Box sx={{ position: "relative", height: 16, mt: 0.25 }}>
         {[75, 85].map((threshold) => (
           <Box
@@ -271,9 +262,7 @@ function ScorePreview({ score }: { score: ScoreBreakdown }) {
               position: "absolute",
               left: `${threshold}%`,
               transform: "translateX(-50%)",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
+              display: "flex", flexDirection: "column", alignItems: "center",
             }}
           >
             <Box sx={{ width: 1, height: 6, bgcolor: "text.disabled" }} />
@@ -284,7 +273,6 @@ function ScorePreview({ score }: { score: ScoreBreakdown }) {
         ))}
       </Box>
 
-      {/* Mini breakdown chips */}
       <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 1.25 }}>
         {SCORE_CRITERIA.map(({ key, label: cLabel, max }) => {
           const val = score[key];
@@ -319,93 +307,87 @@ export interface AddProspectDialogProps {
 export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectDialogProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const { showSnackbar } = useSnackbar();
 
-  const [values, setValues] = useState<FormValues>(INITIAL_FORM);
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [values, setValues]       = useState<FormValues>(INITIAL_FORM);
+  const [errors, setErrors]       = useState<FormErrors>({});
   const [attempted, setAttempted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Reset form each time dialog opens
   useEffect(() => {
     if (open) {
       setValues(INITIAL_FORM);
       setErrors({});
       setAttempted(false);
+      setSubmitting(false);
     }
   }, [open]);
 
-  // Generic field setter
   const set = useCallback(<K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((prev) => {
       const next = { ...prev, [key]: value };
-
-      // Auto-fill commission when type changes
       if (key === "type" && value) {
         const comm = TYPE_COMMISSION[value as PartnerType];
         next.commissionStandard = String(comm.standard);
         next.commissionPlancher = String(comm.plancher);
       }
-
-      // Auto-fill langue when pays changes
       if (key === "pays" && value) {
         const suggestedLangue = PAYS_LANGUE[value as string];
         if (suggestedLangue) next.langue = suggestedLangue;
       }
-
-      // Live re-validate if submit was already attempted
       return next;
     });
-
     if (attempted) {
-      setErrors((prev) => {
-        const errs = { ...prev };
-        delete errs[key];
-        return errs;
-      });
+      setErrors((prev) => { const e = { ...prev }; delete e[key]; return e; });
     }
   }, [attempted]);
 
-  // Score slider setter
   const setScore = useCallback((key: keyof ScoreBreakdown, value: number) => {
-    setValues((prev) => ({
-      ...prev,
-      score: { ...prev.score, [key]: value },
-    }));
+    setValues((prev) => ({ ...prev, score: { ...prev.score, [key]: value } }));
   }, []);
 
-  function handleSubmit() {
+  async function handleSubmit() {
     setAttempted(true);
     const errs = validate(values);
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
-    const newProspect: Prospect = {
-      id: `p-${Date.now()}`,
-      nom:                values.nom.trim(),
-      type:               values.type as PartnerType,
-      pays:               values.pays,
-      ville:              values.ville.trim(),
-      region:             values.region.trim() || undefined,
-      adresseWeb:         values.adresseWeb.trim(),
-      emailContact:       values.emailContact.trim(),
-      linkedinContact:    values.linkedinContact.trim() || undefined,
-      nomContact:         values.nomContact.trim(),
-      posteContact:       values.posteContact.trim(),
-      nbChambres:         values.nbChambres ? Number(values.nbChambres) : undefined,
-      capaciteDescription:values.capaciteDescription.trim() || undefined,
-      presenceBooking:    values.presenceBooking,
-      noteBooking:        values.noteBooking ? Number(values.noteBooking) : undefined,
-      presenceExpedia:    values.presenceExpedia,
-      score:              values.score,
-      stage:              values.stage,
-      commissionStandard: Number(values.commissionStandard) || TYPE_COMMISSION[values.type as PartnerType].standard,
-      commissionPlancher: Number(values.commissionPlancher) || TYPE_COMMISSION[values.type as PartnerType].plancher,
-      langue:             values.langue,
-      dateAjout:          new Date().toISOString().split("T")[0],
-      notes:              values.notes.trim() || undefined,
-    };
-
-    onAdd(newProspect);
-    onClose();
+    setSubmitting(true);
+    try {
+      const created = await prospectsApi.create({
+        nom:                values.nom.trim(),
+        type:               values.type as PartnerType,
+        pays:               values.pays,
+        ville:              values.ville.trim(),
+        region:             values.region.trim() || undefined,
+        adresseWeb:         values.adresseWeb.trim(),
+        emailContact:       values.emailContact.trim(),
+        linkedinContact:    values.linkedinContact.trim() || undefined,
+        nomContact:         values.nomContact.trim(),
+        posteContact:       values.posteContact.trim(),
+        nbChambres:         values.nbChambres ? Number(values.nbChambres) : undefined,
+        capaciteDescription:values.capaciteDescription.trim() || undefined,
+        presenceBooking:    values.presenceBooking,
+        noteBooking:        values.noteBooking ? Number(values.noteBooking) : undefined,
+        presenceExpedia:    values.presenceExpedia,
+        stage:              values.stage,
+        commissionStandard: Number(values.commissionStandard) || TYPE_COMMISSION[values.type as PartnerType].standard,
+        commissionPlancher: Number(values.commissionPlancher) || TYPE_COMMISSION[values.type as PartnerType].plancher,
+        langue:             values.langue,
+        dateAjout:          new Date().toISOString().split("T")[0],
+        notes:              values.notes.trim() || undefined,
+      });
+      onAdd(created);
+      onClose();
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.detail
+          : "Erreur réseau — impossible d'ajouter le prospect.";
+      showSnackbar({ message: msg, severity: "error", duration: 6000 });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const scoreTotal =
@@ -416,7 +398,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={submitting ? undefined : onClose}
       fullScreen={isMobile}
       maxWidth="md"
       fullWidth
@@ -428,25 +410,15 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
       {/* ── Title bar ─────────────────────────────────────────── */}
       <DialogTitle
         sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: 1.5,
-          px: 3,
-          py: 2,
-          borderBottom: 1,
-          borderColor: "divider",
+          display: "flex", alignItems: "center", gap: 1.5,
+          px: 3, py: 2, borderBottom: 1, borderColor: "divider",
         }}
       >
         <Box
           sx={{
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
+            width: 36, height: 36, borderRadius: "50%",
             bgcolor: alpha(theme.palette.primary.main, 0.12),
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
           }}
         >
           <AddRoundedIcon sx={{ color: "primary.main", fontSize: 20 }} />
@@ -460,7 +432,6 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
           </Typography>
         </Box>
 
-        {/* Live score badge in title bar */}
         {scoreTotal > 0 && (
           <Chip
             label={`Score ${scoreTotal}/100`}
@@ -470,7 +441,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
           />
         )}
 
-        <IconButton onClick={onClose} size="small" aria-label="Fermer">
+        <IconButton onClick={onClose} size="small" aria-label="Fermer" disabled={submitting}>
           <CloseRoundedIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
@@ -492,9 +463,8 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
               onChange={(e) => set("nom", e.target.value)}
               error={!!errors.nom}
               helperText={errors.nom}
-              fullWidth
-              size="small"
-              autoFocus
+              fullWidth size="small" autoFocus
+              disabled={submitting}
             />
 
             <Field2Col>
@@ -504,11 +474,10 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                   value={values.type}
                   label="Type de partenaire *"
                   onChange={(e) => set("type", e.target.value as PartnerType)}
+                  disabled={submitting}
                 >
                   {(Object.keys(PARTNER_TYPE_LABELS) as PartnerType[]).map((t) => (
-                    <MenuItem key={t} value={t}>
-                      {PARTNER_TYPE_LABELS[t]}
-                    </MenuItem>
+                    <MenuItem key={t} value={t}>{PARTNER_TYPE_LABELS[t]}</MenuItem>
                   ))}
                 </Select>
                 {errors.type && <FormHelperText>{errors.type}</FormHelperText>}
@@ -520,6 +489,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                   value={values.pays}
                   label="Pays *"
                   onChange={(e) => set("pays", e.target.value)}
+                  disabled={submitting}
                 >
                   {COUNTRIES.map((c) => (
                     <MenuItem key={c} value={c}>{c}</MenuItem>
@@ -536,13 +506,13 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                 onChange={(e) => set("ville", e.target.value)}
                 error={!!errors.ville}
                 helperText={errors.ville}
-                size="small"
+                size="small" disabled={submitting}
               />
               <TextField
                 label="Région"
                 value={values.region}
                 onChange={(e) => set("region", e.target.value)}
-                size="small"
+                size="small" disabled={submitting}
               />
             </Field2Col>
 
@@ -550,9 +520,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
               label="Site web"
               value={values.adresseWeb}
               onChange={(e) => set("adresseWeb", e.target.value)}
-              size="small"
-              placeholder="exemple.com"
-              fullWidth
+              size="small" placeholder="exemple.com" fullWidth disabled={submitting}
             />
 
           </Box>
@@ -572,7 +540,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                 onChange={(e) => set("nomContact", e.target.value)}
                 error={!!errors.nomContact}
                 helperText={errors.nomContact}
-                size="small"
+                size="small" disabled={submitting}
               />
               <TextField
                 label="Poste *"
@@ -580,7 +548,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                 onChange={(e) => set("posteContact", e.target.value)}
                 error={!!errors.posteContact}
                 helperText={errors.posteContact}
-                size="small"
+                size="small" disabled={submitting}
               />
             </Field2Col>
 
@@ -591,17 +559,16 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
               onChange={(e) => set("emailContact", e.target.value)}
               error={!!errors.emailContact}
               helperText={errors.emailContact}
-              size="small"
-              fullWidth
+              size="small" fullWidth disabled={submitting}
             />
 
             <TextField
               label="LinkedIn (URL ou profil)"
               value={values.linkedinContact}
               onChange={(e) => set("linkedinContact", e.target.value)}
-              size="small"
-              fullWidth
+              size="small" fullWidth
               placeholder="linkedin.com/in/prenom-nom"
+              disabled={submitting}
             />
 
           </Box>
@@ -622,6 +589,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                 onChange={(e) => set("nbChambres", e.target.value)}
                 size="small"
                 slotProps={{ htmlInput: { min: 0 } }}
+                disabled={submitting}
               />
               <TextField
                 label="Description de la capacité"
@@ -629,19 +597,14 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                 onChange={(e) => set("capaciteDescription", e.target.value)}
                 size="small"
                 placeholder="Ex : 8 tentes · 24 personnes"
+                disabled={submitting}
               />
             </Field2Col>
 
-            {/* Booking */}
             <Box
               sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-                p: 1.5,
-                borderRadius: 2,
-                bgcolor: "action.hover",
-                flexWrap: "wrap",
+                display: "flex", alignItems: "center", gap: 2,
+                p: 1.5, borderRadius: 2, bgcolor: "action.hover", flexWrap: "wrap",
               }}
             >
               <FormControlLabel
@@ -649,7 +612,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                   <Switch
                     checked={values.presenceBooking}
                     onChange={(e) => set("presenceBooking", e.target.checked)}
-                    size="small"
+                    size="small" disabled={submitting}
                   />
                 }
                 label={<Typography variant="bodySmall">Booking.com</Typography>}
@@ -665,6 +628,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                   sx={{ width: 130 }}
                   slotProps={{ htmlInput: { min: 0, max: 10, step: 0.1 } }}
                   placeholder="8.5"
+                  disabled={submitting}
                 />
               )}
               <FormControlLabel
@@ -672,7 +636,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                   <Switch
                     checked={values.presenceExpedia}
                     onChange={(e) => set("presenceExpedia", e.target.checked)}
-                    size="small"
+                    size="small" disabled={submitting}
                   />
                 }
                 label={<Typography variant="bodySmall">Expedia</Typography>}
@@ -691,13 +655,13 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
 
             <Field2Col>
-              {/* Stage */}
               <FormControl size="small" fullWidth>
                 <InputLabel>Étape initiale</InputLabel>
                 <Select
                   value={values.stage}
                   label="Étape initiale"
                   onChange={(e) => set("stage", e.target.value as PipelineStage)}
+                  disabled={submitting}
                 >
                   {PIPELINE_STAGES.map((s) => (
                     <MenuItem key={s} value={s}>{STAGE_LABELS[s]}</MenuItem>
@@ -705,13 +669,13 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                 </Select>
               </FormControl>
 
-              {/* Langue — auto-filled + manual override */}
               <FormControl size="small" fullWidth>
                 <InputLabel>Langue d'outreach</InputLabel>
                 <Select
                   value={values.langue}
                   label="Langue d'outreach"
                   onChange={(e) => set("langue", e.target.value as OutreachLanguage)}
+                  disabled={submitting}
                   startAdornment={
                     <Typography sx={{ pl: 1, fontSize: "1rem" }}>
                       {LANGUAGE_FLAGS[values.langue]}
@@ -727,7 +691,6 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
               </FormControl>
             </Field2Col>
 
-            {/* Commission — auto-filled when type is selected */}
             <Field2Col>
               <Box sx={{ position: "relative" }}>
                 <TextField
@@ -735,21 +698,17 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                   type="number"
                   value={values.commissionStandard}
                   onChange={(e) => set("commissionStandard", e.target.value)}
-                  size="small"
-                  fullWidth
+                  size="small" fullWidth
                   slotProps={{ htmlInput: { min: 0, max: 30, step: 0.5 } }}
+                  disabled={submitting}
                 />
                 {values.type && values.commissionStandard && (
                   <Tooltip title="Rempli automatiquement selon le type" placement="top">
                     <AutoAwesomeRoundedIcon
                       sx={{
-                        position: "absolute",
-                        right: 36,
-                        top: "50%",
+                        position: "absolute", right: 36, top: "50%",
                         transform: "translateY(-50%)",
-                        fontSize: 14,
-                        color: "primary.main",
-                        pointerEvents: "none",
+                        fontSize: 14, color: "primary.main", pointerEvents: "none",
                       }}
                     />
                   </Tooltip>
@@ -761,21 +720,17 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                   type="number"
                   value={values.commissionPlancher}
                   onChange={(e) => set("commissionPlancher", e.target.value)}
-                  size="small"
-                  fullWidth
+                  size="small" fullWidth
                   slotProps={{ htmlInput: { min: 0, max: 30, step: 0.5 } }}
+                  disabled={submitting}
                 />
                 {values.type && values.commissionPlancher && (
                   <Tooltip title="Rempli automatiquement selon le type" placement="top">
                     <AutoAwesomeRoundedIcon
                       sx={{
-                        position: "absolute",
-                        right: 36,
-                        top: "50%",
+                        position: "absolute", right: 36, top: "50%",
                         transform: "translateY(-50%)",
-                        fontSize: 14,
-                        color: "primary.main",
-                        pointerEvents: "none",
+                        fontSize: 14, color: "primary.main", pointerEvents: "none",
                       }}
                     />
                   </Tooltip>
@@ -797,25 +752,19 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
         {/* ── 5. Scoring ─────────────────────────────────────────── */}
         <Box>
           <SectionLabel>⑤ Scoring manuel (0–100)</SectionLabel>
-
-          {/* Live score preview */}
           <ScorePreview score={values.score} />
 
-          {/* Sliders */}
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {SCORE_CRITERIA.map(({ key, label, max, hint }) => {
               const val = values.score[key];
               const pct = (val / max) * 100;
-              const sliderColor =
-                pct >= 80 ? "success" : pct >= 50 ? "warning" : "primary";
+              const sliderColor = pct >= 80 ? "success" : pct >= 50 ? "warning" : "primary";
 
               return (
                 <Box key={key}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
                     <Box>
-                      <Typography variant="bodySmall" sx={{ fontWeight: 600 }}>
-                        {label}
-                      </Typography>
+                      <Typography variant="bodySmall" sx={{ fontWeight: 600 }}>{label}</Typography>
                       <Typography variant="bodySmall" color="text.secondary" sx={{ display: "block" }}>
                         {hint}
                       </Typography>
@@ -823,29 +772,21 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                     <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.25, flexShrink: 0 }}>
                       <Typography
                         sx={{
-                          fontSize: "1.25rem",
-                          fontWeight: 800,
-                          lineHeight: 1,
+                          fontSize: "1.25rem", fontWeight: 800, lineHeight: 1,
                           color:
-                            pct >= 80
-                              ? theme.palette.success.main
-                              : pct >= 50
-                              ? theme.palette.warning.main
-                              : theme.palette.text.secondary,
+                            pct >= 80 ? theme.palette.success.main
+                            : pct >= 50 ? theme.palette.warning.main
+                            : theme.palette.text.secondary,
                         }}
                       >
                         {val}
                       </Typography>
-                      <Typography variant="bodySmall" color="text.disabled">
-                        /{max}
-                      </Typography>
+                      <Typography variant="bodySmall" color="text.disabled">/{max}</Typography>
                     </Box>
                   </Box>
                   <Slider
                     value={val}
-                    min={0}
-                    max={max}
-                    step={1}
+                    min={0} max={max} step={1}
                     color={sliderColor}
                     valueLabelDisplay="auto"
                     marks={[
@@ -854,9 +795,8 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                       { value: max, label: String(max) },
                     ]}
                     onChange={(_, v) => setScore(key, v as number)}
-                    sx={{
-                      "& .MuiSlider-markLabel": { fontSize: "0.625rem" },
-                    }}
+                    disabled={submitting}
+                    sx={{ "& .MuiSlider-markLabel": { fontSize: "0.625rem" } }}
                   />
                 </Box>
               );
@@ -870,18 +810,15 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
         <Box>
           <SectionLabel>⑥ Notes internes</SectionLabel>
           <TextField
-            multiline
-            minRows={3}
-            fullWidth
-            size="small"
+            multiline minRows={3} fullWidth size="small"
             placeholder="Observations, contexte de découverte, points d'attention…"
             value={values.notes}
             onChange={(e) => set("notes", e.target.value)}
+            disabled={submitting}
             sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
           />
         </Box>
 
-        {/* Validation summary */}
         {attempted && Object.keys(errors).length > 0 && (
           <Alert severity="error" sx={{ borderRadius: 2 }}>
             {Object.keys(errors).length} champ(s) requis manquant(s) — veuillez les corriger avant de soumettre.
@@ -893,16 +830,13 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
       {/* ── Action bar ─────────────────────────────────────────── */}
       <DialogActions
         sx={{
-          px: { xs: 2.5, md: 4 },
-          py: 2,
-          borderTop: 1,
-          borderColor: "divider",
+          px: { xs: 2.5, md: 4 }, py: 2,
+          borderTop: 1, borderColor: "divider",
           gap: 1.5,
           flexDirection: { xs: "column", sm: "row" },
           alignItems: { xs: "stretch", sm: "center" },
         }}
       >
-        {/* Score summary in actions */}
         <Box sx={{ flex: 1 }}>
           {scoreTotal > 0 && (
             <Typography variant="bodySmall" color="text.secondary">
@@ -910,10 +844,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
               <Typography
                 component="span"
                 variant="bodySmall"
-                sx={{
-                  fontWeight: 700,
-                  color: theme.palette[scoreColor(scoreTotal)].main,
-                }}
+                sx={{ fontWeight: 700, color: theme.palette[scoreColor(scoreTotal)].main }}
               >
                 {scoreTotal}/100
               </Typography>{" "}
@@ -923,17 +854,22 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
             </Typography>
           )}
         </Box>
-        <Button onClick={onClose} variant="text" sx={{ minWidth: 90 }}>
+        <Button onClick={onClose} variant="text" sx={{ minWidth: 90 }} disabled={submitting}>
           Annuler
         </Button>
         <Button
           onClick={handleSubmit}
           variant="contained"
           disableElevation
-          startIcon={<AddRoundedIcon />}
+          disabled={submitting}
+          startIcon={
+            submitting
+              ? <CircularProgress size={16} color="inherit" />
+              : <AddRoundedIcon />
+          }
           sx={{ minWidth: 180 }}
         >
-          Ajouter au pipeline
+          {submitting ? "Enregistrement…" : "Ajouter au pipeline"}
         </Button>
       </DialogActions>
     </Dialog>
