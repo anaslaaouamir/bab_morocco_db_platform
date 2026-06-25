@@ -859,6 +859,18 @@ export default function OutreachPage() {
     try {
       const result = await prospectsApi.list({ stage: "outreach", pageSize: 100 });
       setProspects(result.items);
+
+      // Prefetch emails for all prospects in parallel so the timeline cards
+      // show the correct step state (done/current/upcoming) without requiring a click.
+      const emailFetches = result.items.map((p) =>
+        outreachApi.nextStep(p.id)
+          .then((r) => ({ id: p.id, emails: r.emails }))
+          .catch(() => ({ id: p.id, emails: [] })),
+      );
+      const allEmails = await Promise.all(emailFetches);
+      setEmailsCache(
+        Object.fromEntries(allEmails.map(({ id, emails }) => [id, emails])),
+      );
     } catch (err) {
       setFetchError(err instanceof ApiError ? err.detail : "Impossible de charger les prospects.");
     } finally {
