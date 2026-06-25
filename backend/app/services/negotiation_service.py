@@ -140,15 +140,29 @@ class NegotiationService:
         return list(result.scalars().all())
 
     async def respond(
-        self, db: AsyncSession, prospect: Prospect, scenario_letter: str, last_analysis: dict
+        self,
+        db: AsyncSession,
+        prospect: Prospect,
+        scenario_letter: str,
+        last_analysis: dict,
+        custom_message: Optional[str] = None,
     ) -> NegotiationMessage:
-        """Validate chosen scenario, generate outbound message, persist it."""
-        if last_analysis["requires_human"]:
+        """Validate chosen scenario, persist outbound message."""
+        # Scenario C (escalation) is always allowed — it IS the human-override path.
+        # A and B are blocked when requires_human is True.
+        if last_analysis["requires_human"] and scenario_letter != "C":
             raise PermissionError("Human validation required before responding")
 
-        response_text = await self._generator.generate_response(
-            prospect, scenario_letter, last_analysis
-        )
+        if custom_message:
+            # Human wrote the message directly (scenario C or manual override)
+            response_text = custom_message
+        else:
+            # Extract message_propose from stored scenarios — no second AI call
+            scenarios = last_analysis.get("scenarios", [])
+            match = next((s for s in scenarios if s.get("scenario") == scenario_letter), None)
+            response_text = match["message_propose"] if match else await self._generator.generate_response(
+                prospect, scenario_letter, last_analysis
+            )
 
         msg = NegotiationMessage(
             id=uuid.uuid4(),

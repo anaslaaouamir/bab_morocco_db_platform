@@ -19,6 +19,7 @@ import { alpha, useTheme } from "@mui/material/styles";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
 import IconButton from "@mui/material/IconButton";
 import Avatar from "@mui/material/Avatar";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
@@ -37,6 +38,9 @@ import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import InboxRoundedIcon from "@mui/icons-material/InboxRounded";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import HourglassEmptyRoundedIcon from "@mui/icons-material/HourglassEmptyRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
 
 import type { Prospect } from "@/types/prospect";
 import { scoreTotal, scoreColor, PARTNER_TYPE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
@@ -45,7 +49,7 @@ import ConfirmationDialog from "@/components/shared/ConfirmationDialog";
 import { prospectsApi, negotiationApi, ApiError } from "@/lib/api";
 import type { RawMessageAnalysis, RawNegotiationMessage, RawScenario } from "@/lib/api";
 
-// ─── Non-financial perks (spec §6) ───────────────────────────────────────────
+// ─── Non-financial perks ──────────────────────────────────────────────────────
 
 const NON_FINANCIAL_PERKS = [
   { id: "badge",       label: "Badge Partenaire Fondateur",     desc: "Visibilité maximale au lancement" },
@@ -70,14 +74,23 @@ function intentDisplay(intent: string | null) {
   return INTENT_MAP[intent] ?? { label: intent, color: "info" as const };
 }
 
+// ─── Prospect card state ──────────────────────────────────────────────────────
+
+type ProspectNegState = "nouveau" | "analyse" | "repondu" | "escalade";
+
+function prospectStateLabel(state: ProspectNegState): { label: string; color: "default" | "secondary" | "success" | "warning" } {
+  switch (state) {
+    case "nouveau":  return { label: "Nouveau",           color: "default" };
+    case "analyse":  return { label: "Analyse disponible", color: "secondary" };
+    case "repondu":  return { label: "Réponse envoyée",   color: "success" };
+    case "escalade": return { label: "Escalade en cours", color: "warning" };
+  }
+}
+
 // ─── ConversationHistoryDialog ────────────────────────────────────────────────
 
 function ConversationHistoryDialog({
-  open,
-  onClose,
-  prospect,
-  messages,
-  loading,
+  open, onClose, prospect, messages, loading,
 }: {
   open: boolean;
   onClose: () => void;
@@ -89,29 +102,17 @@ function ConversationHistoryDialog({
   if (!prospect) return null;
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      scroll="paper"
-      PaperProps={{ sx: { borderRadius: 3, maxHeight: "85dvh" } }}
-    >
-      <DialogTitle
-        sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 3, py: 2, borderBottom: 1, borderColor: "divider" }}
-      >
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth scroll="paper"
+      PaperProps={{ sx: { borderRadius: 3, maxHeight: "85dvh" } }}>
+      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 3, py: 2, borderBottom: 1, borderColor: "divider" }}>
         <ForumRoundedIcon sx={{ color: "secondary.main" }} />
         <Box sx={{ flex: 1 }}>
-          <Typography variant="titleLarge" sx={{ fontWeight: 700 }}>
-            Historique des échanges
-          </Typography>
+          <Typography variant="titleLarge" sx={{ fontWeight: 700 }}>Historique des échanges</Typography>
           <Typography variant="bodySmall" color="text.secondary">
             {prospect.nom} · {messages.length} message{messages.length !== 1 ? "s" : ""}
           </Typography>
         </Box>
-        <IconButton onClick={onClose} size="small">
-          <CloseRoundedIcon fontSize="small" />
-        </IconButton>
+        <IconButton onClick={onClose} size="small"><CloseRoundedIcon fontSize="small" /></IconButton>
       </DialogTitle>
 
       <DialogContent sx={{ px: 3, py: 3, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -121,87 +122,53 @@ function ConversationHistoryDialog({
           <Box sx={{ py: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5, color: "text.disabled" }}>
             <InboxRoundedIcon sx={{ fontSize: 40 }} />
             <Typography variant="bodyMedium">Aucun message enregistré</Typography>
-            <Typography variant="bodySmall" color="text.disabled">
-              Soumettez le premier message du partenaire pour démarrer la négociation.
-            </Typography>
           </Box>
         ) : (
           messages.map((msg, idx) => {
             const isBab = msg.direction === "outbound";
-            const dateStr = new Date(msg.date_message).toLocaleDateString("fr-FR", {
-              day: "numeric", month: "long", year: "numeric",
-            });
+            const dateStr = new Date(msg.date_message).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
             const prevDate = idx > 0
               ? new Date(messages[idx - 1].date_message).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
               : null;
-
             return (
               <Box key={msg.id}>
                 {(idx === 0 || prevDate !== dateStr) && (
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1, my: 1 }}>
                     <Divider sx={{ flex: 1 }} />
-                    <Typography variant="labelSmall" color="text.disabled" sx={{ px: 1, flexShrink: 0 }}>
-                      {dateStr}
-                    </Typography>
+                    <Typography variant="labelSmall" color="text.disabled" sx={{ px: 1, flexShrink: 0 }}>{dateStr}</Typography>
                     <Divider sx={{ flex: 1 }} />
                   </Box>
                 )}
-
                 <Box sx={{ display: "flex", flexDirection: isBab ? "row-reverse" : "row", gap: 1.5, alignItems: "flex-start" }}>
-                  <Avatar
-                    sx={{
-                      width: 32, height: 32,
-                      bgcolor: isBab ? "primary.main" : alpha(theme.palette.secondary.main, 0.15),
-                      color: isBab ? "primary.contrastText" : "secondary.main",
-                      fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
-                    }}
-                  >
+                  <Avatar sx={{
+                    width: 32, height: 32,
+                    bgcolor: isBab ? "primary.main" : alpha(theme.palette.secondary.main, 0.15),
+                    color: isBab ? "primary.contrastText" : "secondary.main",
+                    fontSize: "0.75rem", fontWeight: 700, flexShrink: 0,
+                  }}>
                     {isBab ? "BM" : prospect.nomContact.charAt(0)}
                   </Avatar>
-
                   <Box sx={{ maxWidth: "78%", minWidth: 0 }}>
-                    <Box
-                      sx={{
-                        display: "flex", alignItems: "center", gap: 1, mb: 0.5,
-                        flexDirection: isBab ? "row-reverse" : "row",
-                      }}
-                    >
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5, flexDirection: isBab ? "row-reverse" : "row" }}>
                       <Typography variant="labelSmall" sx={{ fontWeight: 700 }}>
                         {isBab ? "Équipe BD — Bab Morocco" : prospect.nomContact}
                       </Typography>
                       {!isBab && msg.analyse_intent && (
-                        <Chip
-                          label={intentDisplay(msg.analyse_intent).label}
-                          color={intentDisplay(msg.analyse_intent).color}
-                          size="small"
-                          sx={{ height: 16, fontSize: "0.5625rem", "& .MuiChip-label": { px: 0.625 } }}
-                        />
+                        <Chip label={intentDisplay(msg.analyse_intent).label} color={intentDisplay(msg.analyse_intent).color}
+                          size="small" sx={{ height: 16, fontSize: "0.5625rem", "& .MuiChip-label": { px: 0.625 } }} />
                       )}
-                      {isBab && (
-                        <MarkEmailReadRoundedIcon sx={{ fontSize: 13, color: "success.main" }} />
-                      )}
+                      {isBab && <MarkEmailReadRoundedIcon sx={{ fontSize: 13, color: "success.main" }} />}
                     </Box>
-
-                    <Box
-                      sx={{
-                        p: "10px 14px",
-                        borderRadius: isBab ? "12px 4px 12px 12px" : "4px 12px 12px 12px",
-                        bgcolor: isBab ? alpha(theme.palette.primary.main, 0.1) : "action.hover",
-                        border: `1px solid ${isBab ? alpha(theme.palette.primary.main, 0.2) : theme.palette.divider}`,
-                      }}
-                    >
+                    <Box sx={{
+                      p: "10px 14px",
+                      borderRadius: isBab ? "12px 4px 12px 12px" : "4px 12px 12px 12px",
+                      bgcolor: isBab ? alpha(theme.palette.primary.main, 0.1) : "action.hover",
+                      border: `1px solid ${isBab ? alpha(theme.palette.primary.main, 0.2) : theme.palette.divider}`,
+                    }}>
                       {msg.corps.split("\n").map((line, i) => (
-                        <Typography key={i} variant="bodySmall" sx={{ display: "block", lineHeight: 1.6 }}>
-                          {line || <br />}
-                        </Typography>
+                        <Typography key={i} variant="bodySmall" sx={{ display: "block", lineHeight: 1.6 }}>{line || <br />}</Typography>
                       ))}
                     </Box>
-
-                    {!isBab && msg.analyse_objection && (
-                      <Typography variant="labelSmall" color="text.disabled" sx={{ mt: 0.5, display: "block", fontStyle: "italic" }}>
-                        Objection : {msg.analyse_objection}
-                      </Typography>
-                    )}
                   </Box>
                 </Box>
               </Box>
@@ -213,12 +180,109 @@ function ConversationHistoryDialog({
   );
 }
 
+// ─── EscaladeDialog ───────────────────────────────────────────────────────────
+
+function EscaladeDialog({
+  open,
+  onClose,
+  onConfirm,
+  scenario,
+  confirming,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (message: string, note: string) => void;
+  scenario: RawScenario | null;
+  confirming: boolean;
+}) {
+  const [message, setMessage] = useState("");
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (open && scenario) {
+      setMessage(scenario.message_propose);
+      setNote("");
+    }
+  }, [open, scenario]);
+
+  if (!scenario) return null;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth
+      PaperProps={{ sx: { borderRadius: 3 } }}>
+      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5, pb: 1 }}>
+        <EscalatorRoundedIcon sx={{ color: "warning.main" }} />
+        <Box>
+          <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>Escalade vers le responsable commercial</Typography>
+          <Typography variant="bodySmall" color="text.secondary">
+            Rédigez ou modifiez le message à envoyer au partenaire
+          </Typography>
+        </Box>
+      </DialogTitle>
+
+      <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+        <Alert severity="warning" sx={{ "& .MuiAlert-message": { fontSize: "0.8125rem" } }}>
+          <strong>Responsable commercial en charge</strong> — Vous prenez le contrôle total de cette négociation.
+          Le message ci-dessous sera envoyé au partenaire en votre nom.
+        </Alert>
+
+        <Box>
+          <Typography variant="labelMedium" sx={{ fontWeight: 700, mb: 0.75, display: "block" }}>
+            Message au partenaire
+          </Typography>
+          <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 1 }}>
+            Pré-rempli avec le brouillon IA — modifiez-le librement :
+          </Typography>
+          <TextField
+            multiline
+            minRows={7}
+            fullWidth
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            disabled={confirming}
+            sx={{ "& .MuiInputBase-root": { fontSize: "0.8125rem", fontFamily: "inherit" } }}
+          />
+        </Box>
+
+        <Box>
+          <Typography variant="labelMedium" sx={{ fontWeight: 700, mb: 0.75, display: "block" }}>
+            Note interne (non envoyée au partenaire)
+          </Typography>
+          <TextField
+            multiline
+            minRows={2}
+            fullWidth
+            placeholder="Contexte pour l'équipe, décision prise, conditions particulières…"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            disabled={confirming}
+            sx={{ "& .MuiInputBase-root": { fontSize: "0.8125rem" } }}
+          />
+        </Box>
+      </DialogContent>
+
+      <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+        <Button onClick={onClose} disabled={confirming} variant="outlined" sx={{ fontWeight: 600, textTransform: "none" }}>
+          Annuler
+        </Button>
+        <Button
+          variant="contained"
+          color="warning"
+          disabled={confirming || !message.trim()}
+          startIcon={confirming ? <CircularProgress size={16} color="inherit" /> : <SendRoundedIcon />}
+          onClick={() => onConfirm(message, note)}
+          sx={{ fontWeight: 700, textTransform: "none" }}
+        >
+          {confirming ? "Envoi…" : "Confirmer l'escalade"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // ─── SubmitMessagePanel ───────────────────────────────────────────────────────
 
-function SubmitMessagePanel({
-  prospect,
-  onAnalysisReady,
-}: {
+function SubmitMessagePanel({ prospect, onAnalysisReady }: {
   prospect: Prospect;
   onAnalysisReady: (analysis: RawMessageAnalysis) => void;
 }) {
@@ -254,12 +318,11 @@ function SubmitMessagePanel({
           </Typography>
         </Box>
         <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 1.5 }}>
-          Collez le message reçu de <strong>{prospect.nom}</strong> — l&apos;IA analysera l&apos;intention, l&apos;objection et générera 3 scénarios de réponse.
+          Collez le message reçu de <strong>{prospect.nom}</strong> — l&apos;IA analysera l&apos;intention
+          et générera 3 scénarios de réponse.
         </Typography>
         <TextField
-          multiline
-          minRows={5}
-          fullWidth
+          multiline minRows={5} fullWidth
           placeholder="Collez le message du partenaire ici…"
           value={messageText}
           onChange={(e) => setMessageText(e.target.value)}
@@ -267,8 +330,7 @@ function SubmitMessagePanel({
           sx={{ mb: 1.5, "& .MuiInputBase-root": { fontSize: "0.8125rem" } }}
         />
         <Button
-          variant="contained"
-          color="secondary"
+          variant="contained" color="secondary"
           startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeRoundedIcon />}
           onClick={handleSubmit}
           disabled={submitting || !messageText.trim()}
@@ -281,22 +343,91 @@ function SubmitMessagePanel({
   );
 }
 
+// ─── WaitingForReplyPanel ─────────────────────────────────────────────────────
+
+function WaitingForReplyPanel({
+  prospect,
+  scenarioChosen,
+  sentMessage,
+  isEscalation,
+  onPartnerReplied,
+}: {
+  prospect: Prospect;
+  scenarioChosen: string;
+  sentMessage: string;
+  isEscalation: boolean;
+  onPartnerReplied: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Card elevation={0} variant="outlined" sx={{
+      borderRadius: 2.5,
+      borderLeft: `4px solid ${isEscalation ? theme.palette.warning.main : theme.palette.success.main}`,
+    }}>
+      <CardContent sx={{ p: "16px 20px !important" }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+          {isEscalation
+            ? <EscalatorRoundedIcon sx={{ color: "warning.main", fontSize: 24 }} />
+            : <HourglassEmptyRoundedIcon sx={{ color: "success.main", fontSize: 24 }} />
+          }
+          <Box>
+            <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>
+              {isEscalation ? "Escalade en cours — Responsable commercial en charge" : "Réponse envoyée — En attente du partenaire"}
+            </Typography>
+            <Typography variant="bodySmall" color="text.secondary">
+              {isEscalation
+                ? "Le responsable commercial a pris en charge ce dossier."
+                : `Scénario ${scenarioChosen} envoyé à ${prospect.nom}. En attente de sa réponse.`}
+            </Typography>
+          </Box>
+        </Box>
+
+        <Divider sx={{ mb: 1.5 }} />
+
+        <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
+          Message envoyé
+        </Typography>
+        <Box sx={{
+          p: "10px 14px",
+          borderRadius: 2,
+          bgcolor: alpha(theme.palette.primary.main, 0.06),
+          border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
+          mb: 2,
+        }}>
+          {sentMessage.split("\n").map((line, i) => (
+            <Typography key={i} variant="bodySmall" sx={{ display: "block", lineHeight: 1.6, fontFamily: "inherit" }}>
+              {line || <br />}
+            </Typography>
+          ))}
+        </Box>
+
+        {!isEscalation && (
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<ReplyRoundedIcon />}
+            onClick={onPartnerReplied}
+            sx={{ fontWeight: 700, textTransform: "none" }}
+          >
+            Le partenaire a répondu → Soumettre son message
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── ScenarioCard ─────────────────────────────────────────────────────────────
 
-const SCENARIO_DISPLAY: Record<string, {
-  icon: React.ReactNode;
-  severity: "success" | "warning" | "error" | "info";
-}> = {
+const SCENARIO_META: Record<string, { icon: React.ReactNode; severity: "success" | "warning" | "error" | "info" }> = {
   A: { icon: <HandshakeRoundedIcon />, severity: "success" },
   B: { icon: <SwapHorizRoundedIcon />, severity: "success" },
   C: { icon: <EscalatorRoundedIcon />, severity: "info" },
 };
 
 function ScenarioCard({
-  scenario,
-  requiresHuman,
-  taux,
-  onValidate,
+  scenario, requiresHuman, taux, onValidate,
 }: {
   scenario: RawScenario;
   requiresHuman: boolean;
@@ -304,33 +435,29 @@ function ScenarioCard({
   onValidate: (s: RawScenario) => void;
 }) {
   const theme = useTheme();
-  const display = SCENARIO_DISPLAY[scenario.scenario] ?? { icon: <HandshakeRoundedIcon />, severity: "info" as const };
-  const isEscalation = scenario.scenario === "C";
-  const severity = scenario.scenario === "A" && requiresHuman ? "error" as const : display.severity;
+  const meta = SCENARIO_META[scenario.scenario] ?? { icon: <HandshakeRoundedIcon />, severity: "info" as const };
+  const severity = scenario.scenario === "A" && requiresHuman ? "error" as const : meta.severity;
   const palette = theme.palette[severity];
+  const isEscalation = scenario.scenario === "C";
 
   return (
-    <Card
-      elevation={0}
-      variant="outlined"
-      sx={{ borderRadius: 2.5, borderLeft: `4px solid ${palette.main}`, height: "100%", display: "flex", flexDirection: "column" }}
-    >
+    <Card elevation={0} variant="outlined" sx={{
+      borderRadius: 2.5,
+      borderLeft: `4px solid ${palette.main}`,
+      height: "100%", display: "flex", flexDirection: "column",
+    }}>
       <CardContent sx={{ p: "14px 16px !important", flex: 1, display: "flex", flexDirection: "column" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-          <Box sx={{ color: `${severity}.main`, display: "flex", flexShrink: 0 }}>
-            {display.icon}
-          </Box>
+          <Box sx={{ color: `${severity}.main`, display: "flex", flexShrink: 0 }}>{meta.icon}</Box>
           <Box sx={{ flex: 1 }}>
             <Typography variant="titleSmall" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
               {scenario.scenario} — {scenario.titre}
             </Typography>
             <Typography variant="bodySmall" color="text.secondary">{scenario.description}</Typography>
           </Box>
-          {taux !== null && scenario.scenario !== "C" && (
+          {taux !== null && !isEscalation && (
             <Box sx={{ px: 1, py: 0.25, borderRadius: 1.5, bgcolor: alpha(palette.main, 0.12), flexShrink: 0 }}>
-              <Typography sx={{ fontSize: "0.875rem", fontWeight: 800, color: `${severity}.main` }}>
-                {taux}%
-              </Typography>
+              <Typography sx={{ fontSize: "0.875rem", fontWeight: 800, color: `${severity}.main` }}>{taux}%</Typography>
             </Box>
           )}
         </Box>
@@ -344,13 +471,30 @@ function ScenarioCard({
           ))}
         </Box>
 
-        <Box sx={{ mb: 1.5 }}>
+        <Box sx={{ mb: 1 }}>
           {scenario.risques.split(".").filter(Boolean).map((con) => (
             <Box key={con} sx={{ display: "flex", alignItems: "flex-start", gap: 0.75, mb: 0.375 }}>
               <CloseRoundedIcon sx={{ fontSize: 14, color: "error.main", mt: "2px", flexShrink: 0 }} />
               <Typography variant="bodySmall" color="text.secondary">{con.trim()}</Typography>
             </Box>
           ))}
+        </Box>
+
+        {/* Preview of the message that will be sent */}
+        <Box sx={{
+          p: "8px 10px", borderRadius: 1.5, mb: 1.5,
+          bgcolor: "action.hover",
+          border: `1px solid ${theme.palette.divider}`,
+        }}>
+          <Typography variant="labelSmall" color="text.disabled" sx={{ display: "block", mb: 0.375 }}>
+            {isEscalation ? "Brouillon modifiable avant envoi :" : "Message qui sera envoyé :"}
+          </Typography>
+          <Typography variant="bodySmall" color="text.secondary" sx={{
+            display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+            fontStyle: "italic", lineHeight: 1.5,
+          }}>
+            {scenario.message_propose}
+          </Typography>
         </Box>
 
         {scenario.scenario === "A" && requiresHuman && (
@@ -363,12 +507,12 @@ function ScenarioCard({
           <Button
             variant={isEscalation ? "outlined" : "contained"}
             color={severity === "error" ? "error" : severity === "info" ? "inherit" : severity}
-            size="small"
-            fullWidth
+            size="small" fullWidth
+            startIcon={isEscalation ? <EditRoundedIcon /> : <SendRoundedIcon />}
             onClick={() => onValidate(scenario)}
             sx={{ fontWeight: 700, textTransform: "none" }}
           >
-            Choisir le scénario {scenario.scenario}
+            {isEscalation ? "Rédiger et escalader" : `Envoyer le scénario ${scenario.scenario}`}
           </Button>
         </Box>
       </CardContent>
@@ -378,81 +522,55 @@ function ScenarioCard({
 
 // ─── NegotiationProspectCard ──────────────────────────────────────────────────
 
-function NegotiationProspectCard({
-  prospect,
-  selected,
-  hasAnalysis,
-  onSelect,
-}: {
+function NegotiationProspectCard({ prospect, selected, state, onSelect }: {
   prospect: Prospect;
   selected: boolean;
-  hasAnalysis: boolean;
+  state: ProspectNegState;
   onSelect: () => void;
 }) {
   const theme = useTheme();
   const total = scoreTotal(prospect.score);
   const color = scoreColor(total);
+  const { label, color: stateColor } = prospectStateLabel(state);
 
   return (
-    <Card
-      elevation={0}
-      variant="outlined"
-      onClick={onSelect}
-      sx={{
-        borderRadius: 2.5,
-        borderColor: selected ? "secondary.main" : "divider",
-        borderWidth: selected ? 2 : 1,
-        bgcolor: selected ? alpha(theme.palette.secondary.main, 0.04) : "background.paper",
-        transition: "border-color 150ms ease, background-color 150ms ease",
-        cursor: "pointer",
-        "&:hover": { boxShadow: theme.shadows[2] },
-      }}
-    >
+    <Card elevation={0} variant="outlined" onClick={onSelect} sx={{
+      borderRadius: 2.5,
+      borderColor: selected ? "secondary.main" : "divider",
+      borderWidth: selected ? 2 : 1,
+      bgcolor: selected ? alpha(theme.palette.secondary.main, 0.04) : "background.paper",
+      transition: "border-color 150ms ease, background-color 150ms ease",
+      cursor: "pointer",
+      "&:hover": { boxShadow: theme.shadows[2] },
+    }}>
       <CardContent sx={{ p: "12px 14px !important" }}>
         <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1, mb: 0.75 }}>
-          <Typography variant="titleSmall" sx={{ fontWeight: 700, lineHeight: 1.3, flex: 1 }}>
-            {prospect.nom}
-          </Typography>
-          <Box
-            sx={{
-              px: 0.75, py: 0.125, borderRadius: 1,
-              bgcolor: alpha(theme.palette[color].main, 0.12),
-              border: `1px solid ${alpha(theme.palette[color].main, 0.3)}`,
-              display: "flex", alignItems: "center", gap: 0.25, flexShrink: 0,
-            }}
-          >
+          <Typography variant="titleSmall" sx={{ fontWeight: 700, lineHeight: 1.3, flex: 1 }}>{prospect.nom}</Typography>
+          <Box sx={{
+            px: 0.75, py: 0.125, borderRadius: 1,
+            bgcolor: alpha(theme.palette[color].main, 0.12),
+            border: `1px solid ${alpha(theme.palette[color].main, 0.3)}`,
+            display: "flex", alignItems: "center", gap: 0.25, flexShrink: 0,
+          }}>
             <StarRateRoundedIcon sx={{ fontSize: 11, color: `${color}.main` }} />
-            <Typography sx={{ fontSize: "0.6875rem", fontWeight: 700, color: `${color}.main`, lineHeight: 1 }}>
-              {total}
-            </Typography>
+            <Typography sx={{ fontSize: "0.6875rem", fontWeight: 700, color: `${color}.main`, lineHeight: 1 }}>{total}</Typography>
           </Box>
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1 }}>
-          <Chip
-            label={PARTNER_TYPE_LABELS[prospect.type]}
-            size="small"
-            sx={{ height: 18, fontSize: "0.5938rem", fontWeight: 600, "& .MuiChip-label": { px: 0.75 } }}
-          />
+          <Chip label={PARTNER_TYPE_LABELS[prospect.type]} size="small"
+            sx={{ height: 18, fontSize: "0.5938rem", fontWeight: 600, "& .MuiChip-label": { px: 0.75 } }} />
           <PlaceOutlinedIcon sx={{ fontSize: 11, color: "text.disabled" }} />
-          <Typography variant="bodySmall" color="text.secondary" noWrap sx={{ flex: 1 }}>
-            {prospect.ville}
-          </Typography>
-          <Typography component="span" sx={{ fontSize: "0.875rem", flexShrink: 0 }}>
-            {LANGUAGE_FLAGS[prospect.langue]}
-          </Typography>
+          <Typography variant="bodySmall" color="text.secondary" noWrap sx={{ flex: 1 }}>{prospect.ville}</Typography>
+          <Typography component="span" sx={{ fontSize: "0.875rem", flexShrink: 0 }}>{LANGUAGE_FLAGS[prospect.langue]}</Typography>
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Typography variant="labelSmall" color="text.secondary">
             {prospect.commissionStandard}% std · {prospect.commissionPlancher}% plancher
           </Typography>
-          <Chip
-            label={hasAnalysis ? "Analyse dispo" : "Nouveau"}
-            color={hasAnalysis ? "secondary" : "default"}
-            size="small"
-            sx={{ height: 18, fontSize: "0.5625rem", fontWeight: 700, "& .MuiChip-label": { px: 0.75 } }}
-          />
+          <Chip label={label} color={stateColor} size="small"
+            sx={{ height: 18, fontSize: "0.5625rem", fontWeight: 700, "& .MuiChip-label": { px: 0.75 } }} />
         </Box>
       </CardContent>
     </Card>
@@ -461,31 +579,45 @@ function NegotiationProspectCard({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+interface RespondedState {
+  scenarioChosen: string;
+  sentMessage: string;
+  isEscalation: boolean;
+}
+
 export default function NegociationPage() {
   const { showSnackbar } = useSnackbar();
   const theme = useTheme();
 
-  // ── Prospects ────────────────────────────────────────────────────
   const [prospects, setProspects]   = useState<Prospect[]>([]);
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // ── Analysis (per selected prospect) ─────────────────────────────
-  const [analysisCache, setAnalysisCache] = useState<Record<string, RawMessageAnalysis | null>>({});
+  // analysis per prospect (undefined = not fetched yet, null = no analysis exists)
+  const [analysisCache, setAnalysisCache] = useState<Record<string, RawMessageAnalysis | null | undefined>>({});
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
 
-  // ── History dialog ────────────────────────────────────────────────
-  const [historyOpen, setHistoryOpen] = useState(false);
+  // responded state per prospect: set after user sends a scenario
+  const [respondedCache, setRespondedCache] = useState<Record<string, RespondedState>>({});
+
+  // history dialog
+  const [historyOpen, setHistoryOpen]   = useState(false);
   const [historyCache, setHistoryCache] = useState<Record<string, RawNegotiationMessage[]>>({});
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // ── Non-financial counterparts ────────────────────────────────────
+  // non-financial counterparts reference
   const [counterparts, setCounterparts] = useState<string[]>([]);
 
-  // ── Confirm scenario ──────────────────────────────────────────────
+  // scenario confirm (A or B)
   const [confirmScenario, setConfirmScenario] = useState<RawScenario | null>(null);
   const [confirming, setConfirming] = useState(false);
+
+  // escalade dialog (C)
+  const [escaladeScenario, setEscaladeScenario] = useState<RawScenario | null>(null);
+  const [escalading, setEscalading] = useState(false);
+
+  // ── Data fetching ─────────────────────────────────────────────────
 
   async function fetchProspects() {
     setLoading(true);
@@ -506,38 +638,30 @@ export default function NegociationPage() {
     if (!selectedId && prospects.length > 0) setSelectedId(prospects[0].id);
   }, [prospects, selectedId]);
 
-  useEffect(() => {
-    setCounterparts([]);
-  }, [selectedId]);
+  useEffect(() => { setCounterparts([]); }, [selectedId]);
 
-  const selectedProspect = useMemo(
-    () => prospects.find((p) => p.id === selectedId) ?? null,
-    [selectedId, prospects],
-  );
-
-  // Load analysis when prospect is selected
+  // Lazy-load analysis when prospect is selected
   useEffect(() => {
     if (!selectedId) return;
-    if (analysisCache[selectedId] !== undefined) return; // already loaded (null = no analysis, object = has analysis)
+    if (analysisCache[selectedId] !== undefined) return;
 
     setLoadingAnalysis(true);
     negotiationApi.analysis(selectedId)
-      .then((analysis) => setAnalysisCache((prev) => ({ ...prev, [selectedId]: analysis })))
+      .then((a) => setAnalysisCache((prev) => ({ ...prev, [selectedId]: a })))
       .catch((err) => {
-        // 404 = no analysis yet (normal state for new prospects)
-        if (err instanceof ApiError && err.status === 404) {
-          setAnalysisCache((prev) => ({ ...prev, [selectedId]: null }));
-        } else {
-          showSnackbar({ message: "Impossible de charger l'analyse.", severity: "error" });
-          setAnalysisCache((prev) => ({ ...prev, [selectedId]: null }));
-        }
+        const isNoAnalysis = err instanceof ApiError && err.status === 404;
+        if (!isNoAnalysis) showSnackbar({ message: "Impossible de charger l'analyse.", severity: "error" });
+        setAnalysisCache((prev) => ({ ...prev, [selectedId]: null }));
       })
       .finally(() => setLoadingAnalysis(false));
   }, [selectedId, analysisCache, showSnackbar]);
 
-  const analysis = selectedId ? (analysisCache[selectedId] ?? null) : null;
+  const selectedProspect = useMemo(() => prospects.find((p) => p.id === selectedId) ?? null, [selectedId, prospects]);
+  const analysis = selectedId !== null ? (analysisCache[selectedId] ?? null) : null;
+  const responded = selectedId !== null ? (respondedCache[selectedId] ?? null) : null;
 
-  // Load history when dialog opens
+  // ── History ───────────────────────────────────────────────────────
+
   async function openHistory() {
     if (!selectedId) return;
     setHistoryOpen(true);
@@ -553,38 +677,54 @@ export default function NegociationPage() {
     }
   }
 
+  // ── Analysis ready (after submit message) ────────────────────────
+
   function handleAnalysisReady(newAnalysis: RawMessageAnalysis) {
     if (!selectedId) return;
     setAnalysisCache((prev) => ({ ...prev, [selectedId]: newAnalysis }));
-    // Invalidate history cache so it reloads next time
-    setHistoryCache((prev) => {
-      const next = { ...prev };
-      delete next[selectedId];
-      return next;
-    });
+    // clear responded state — new message = new round
+    setRespondedCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+    setHistoryCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+  }
+
+  // ── Partner replied again → reset to submit panel ─────────────────
+
+  function handlePartnerReplied() {
+    if (!selectedId) return;
+    setAnalysisCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+    setRespondedCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+    setHistoryCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+  }
+
+  // ── New message button (top-right icon) ───────────────────────────
+
+  function handleResetForNewMessage() {
+    if (!selectedId) return;
+    setAnalysisCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+    setRespondedCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
   }
 
   const toggleCounterpart = useCallback((id: string) => {
     setCounterparts((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }, []);
 
+  // ── Confirm scenario A or B ────────────────────────────────────────
+
   async function handleConfirm() {
     if (!confirmScenario || !selectedId) return;
     setConfirming(true);
     try {
-      await negotiationApi.respond(selectedId, confirmScenario.scenario as "A" | "B" | "C");
-      showSnackbar({
-        message: `Scénario ${confirmScenario.scenario} envoyé — réponse enregistrée.`,
-        severity: confirmScenario.scenario === "C" ? "warning" : "success",
-        duration: 5000,
-      });
-      // Invalidate analysis + history for this prospect so they reload
-      setAnalysisCache((prev) => { const next = { ...prev }; delete next[selectedId]; return next; });
-      setHistoryCache((prev) => { const next = { ...prev }; delete next[selectedId]; return next; });
+      const msg = await negotiationApi.respond(selectedId, confirmScenario.scenario as "A" | "B" | "C");
+      setRespondedCache((prev) => ({
+        ...prev,
+        [selectedId]: { scenarioChosen: confirmScenario.scenario, sentMessage: msg.corps, isEscalation: false },
+      }));
+      setHistoryCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+      showSnackbar({ message: `Scénario ${confirmScenario.scenario} envoyé à ${selectedProspect?.nom}.`, severity: "success", duration: 5000 });
       setConfirmScenario(null);
     } catch (err) {
       showSnackbar({
-        message: err instanceof ApiError ? err.detail : "Erreur lors de l'envoi du scénario.",
+        message: err instanceof ApiError ? err.detail : "Erreur lors de l'envoi.",
         severity: "error",
       });
     } finally {
@@ -592,50 +732,81 @@ export default function NegociationPage() {
     }
   }
 
-  // ── Derived stats ─────────────────────────────────────────────────
+  // ── Confirm escalade (C) ───────────────────────────────────────────
+
+  async function handleEscaladeConfirm(message: string) {
+    if (!escaladeScenario || !selectedId) return;
+    setEscalading(true);
+    try {
+      const msg = await negotiationApi.respond(selectedId, "C", message);
+      setRespondedCache((prev) => ({
+        ...prev,
+        [selectedId]: { scenarioChosen: "C", sentMessage: msg.corps, isEscalation: true },
+      }));
+      setHistoryCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+      showSnackbar({ message: "Escalade confirmée — Responsable commercial en charge.", severity: "warning", duration: 6000 });
+      setEscaladeScenario(null);
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de l'escalade.",
+        severity: "error",
+      });
+    } finally {
+      setEscalading(false);
+    }
+  }
+
+  function handleScenarioValidate(scenario: RawScenario) {
+    if (scenario.scenario === "C") {
+      setEscaladeScenario(scenario);
+    } else {
+      setConfirmScenario(scenario);
+    }
+  }
+
+  // ── Derived: card state per prospect ──────────────────────────────
+
+  function prospectState(p: Prospect): ProspectNegState {
+    const r = respondedCache[p.id];
+    if (r?.isEscalation) return "escalade";
+    if (r) return "repondu";
+    if (analysisCache[p.id]) return "analyse";
+    return "nouveau";
+  }
+
   const humanValidationCount = useMemo(
     () => Object.values(analysisCache).filter((a) => a?.requires_human).length,
     [analysisCache],
   );
 
+  // ─────────────────────────────────────────────────────────────────
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       {/* Header */}
       <Box sx={{ px: { xs: 2, sm: 3, md: 4 }, pt: { xs: 2, md: 3 }, pb: 2 }}>
-        <Typography variant="headlineMedium" component="h1" sx={{ mb: 0.5 }}>
-          Négociation
-        </Typography>
+        <Typography variant="headlineMedium" component="h1" sx={{ mb: 0.5 }}>Négociation</Typography>
         <Typography variant="bodyMedium" color="text.secondary" sx={{ mb: 2 }}>
-          Analyse sémantique des réponses · 3 scénarios IA · Contreparties non-financières prioritaires (Spec §6)
+          Analyse sémantique · 3 scénarios IA · Contreparties non-financières prioritaires (Spec §6)
         </Typography>
 
         {loading ? (
           <Box sx={{ display: "flex", gap: 1 }}>
-            {[100, 140].map((w) => (
-              <Skeleton key={w} variant="rounded" width={w} height={30} sx={{ borderRadius: 4 }} />
-            ))}
+            {[100, 140].map((w) => <Skeleton key={w} variant="rounded" width={w} height={30} sx={{ borderRadius: 4 }} />)}
           </Box>
         ) : (
           <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
             {[
-              { label: "En négociation",     value: prospects.length,      color: "secondary" as const },
+              { label: "En négociation",     value: prospects.length,     color: "secondary" as const },
               { label: "Validation requise", value: humanValidationCount, color: "error" as const },
             ].map((s) => (
-              <Chip
-                key={s.label}
+              <Chip key={s.label} color={s.color} variant="outlined" sx={{ height: 30, "& .MuiChip-label": { px: 1.25 } }}
                 label={
                   <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                    <Typography component="span" sx={{ fontWeight: 800, fontSize: "0.875rem", lineHeight: 1 }}>
-                      {s.value}
-                    </Typography>
-                    <Typography component="span" sx={{ fontSize: "0.75rem", opacity: 0.85 }}>
-                      {s.label}
-                    </Typography>
+                    <Typography component="span" sx={{ fontWeight: 800, fontSize: "0.875rem", lineHeight: 1 }}>{s.value}</Typography>
+                    <Typography component="span" sx={{ fontSize: "0.75rem", opacity: 0.85 }}>{s.label}</Typography>
                   </Box>
                 }
-                color={s.color}
-                variant="outlined"
-                sx={{ height: 30, "& .MuiChip-label": { px: 1.25 } }}
               />
             ))}
           </Box>
@@ -644,36 +815,21 @@ export default function NegociationPage() {
 
       <Divider />
 
-      {/* Error banner */}
       {fetchError && (
         <Box sx={{ px: { xs: 2, md: 4 }, pt: 2 }}>
-          <Alert
-            severity="error"
-            action={<Button color="inherit" size="small" onClick={fetchProspects}>Réessayer</Button>}
-            sx={{ borderRadius: 2 }}
-          >
+          <Alert severity="error" action={<Button color="inherit" size="small" onClick={fetchProspects}>Réessayer</Button>} sx={{ borderRadius: 2 }}>
             {fetchError}
           </Alert>
         </Box>
       )}
 
       {/* Main 2-panel layout */}
-      <Box
-        sx={{
-          display: "flex",
-          flexDirection: { xs: "column", md: "row" },
-          gap: 2,
-          flex: 1,
-          px: { xs: 2, md: 4 },
-          py: 2,
-        }}
-      >
+      <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, gap: 2, flex: 1, px: { xs: 2, md: 4 }, py: 2 }}>
+
         {/* Left: prospect list */}
         <Box sx={{ width: { md: 340 }, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1.5 }}>
           {loading ? (
-            [1, 2, 3].map((i) => (
-              <Skeleton key={i} variant="rounded" height={110} sx={{ borderRadius: 2.5 }} />
-            ))
+            [1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={110} sx={{ borderRadius: 2.5 }} />)
           ) : prospects.length === 0 ? (
             <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", py: 6, gap: 1, color: "text.disabled" }}>
               <InboxRoundedIcon sx={{ fontSize: 40 }} />
@@ -685,7 +841,7 @@ export default function NegociationPage() {
                 key={p.id}
                 prospect={p}
                 selected={selectedId === p.id}
-                hasAnalysis={!!analysisCache[p.id]}
+                state={prospectState(p)}
                 onSelect={() => setSelectedId(p.id)}
               />
             ))
@@ -695,64 +851,60 @@ export default function NegociationPage() {
         {/* Right: analysis panel */}
         <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
           {!selectedProspect ? (
-            <Box
-              sx={{
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                flex: 1, minHeight: 320, borderRadius: 2.5, border: `2px dashed ${theme.palette.divider}`,
-                color: "text.disabled", gap: 2,
-              }}
-            >
+            <Box sx={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              flex: 1, minHeight: 320, borderRadius: 2.5, border: `2px dashed ${theme.palette.divider}`,
+              color: "text.disabled", gap: 2,
+            }}>
               <PersonRoundedIcon sx={{ fontSize: 48, opacity: 0.4 }} />
               <Typography variant="titleSmall" color="text.disabled">
-                Sélectionnez un partenaire pour voir l&apos;analyse de négociation
+                Sélectionnez un partenaire pour voir l&apos;analyse
               </Typography>
             </Box>
           ) : loadingAnalysis ? (
-            [1, 2].map((i) => (
-              <Skeleton key={i} variant="rounded" height={i === 1 ? 180 : 120} sx={{ borderRadius: 2.5 }} />
-            ))
+            [1, 2].map((i) => <Skeleton key={i} variant="rounded" height={i === 1 ? 180 : 120} sx={{ borderRadius: 2.5 }} />)
+          ) : responded ? (
+            // ── Responded state ──────────────────────────────────────
+            <WaitingForReplyPanel
+              prospect={selectedProspect}
+              scenarioChosen={responded.scenarioChosen}
+              sentMessage={responded.sentMessage}
+              isEscalation={responded.isEscalation}
+              onPartnerReplied={handlePartnerReplied}
+            />
           ) : !analysis ? (
+            // ── No analysis yet ──────────────────────────────────────
             <SubmitMessagePanel prospect={selectedProspect} onAnalysisReady={handleAnalysisReady} />
           ) : (
+            // ── Analysis + scenarios ─────────────────────────────────
             <>
-              {/* VALIDATION HUMAINE banner */}
               {analysis.requires_human && (
                 <Alert severity="error" icon={<WarningAmberRoundedIcon />}>
-                  <AlertTitle>
-                    <strong>VALIDATION HUMAINE REQUISE — {selectedProspect.nom}</strong>
-                  </AlertTitle>
-                  Commission demandée ({analysis.taux_demande ?? "—"}%) sous le plancher absolu ({selectedProspect.commissionPlancher}%) ou dossier signalé.
-                  Aucun accord ne peut être conclu sans validation d&apos;un responsable commercial.
+                  <AlertTitle><strong>VALIDATION HUMAINE REQUISE — {selectedProspect.nom}</strong></AlertTitle>
+                  Commission demandée ({analysis.taux_demande ?? "—"}%) sous le plancher absolu ({selectedProspect.commissionPlancher}%).
+                  Seule l&apos;escalade (Scénario C) est disponible.
                 </Alert>
               )}
 
-              {/* Response analysis card */}
+              {/* Analysis card */}
               <Card elevation={0} variant="outlined" sx={{ borderRadius: 2.5 }}>
                 <CardContent sx={{ p: "16px 20px !important" }}>
                   <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1.5 }}>
                     <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>
-                      Analyse de la réponse — {selectedProspect.nom}
+                      Analyse — {selectedProspect.nom}
                     </Typography>
                     <Box sx={{ display: "flex", gap: 1 }}>
                       <Tooltip title="Soumettre un nouveau message" placement="top">
-                        <IconButton
-                          size="small"
-                          onClick={() => setAnalysisCache((prev) => { const next = { ...prev }; delete next[selectedProspect.id]; return next; })}
-                          sx={{ color: "text.secondary" }}
-                        >
+                        <IconButton size="small" onClick={handleResetForNewMessage} sx={{ color: "text.secondary" }}>
                           <AutoAwesomeRoundedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Historique des échanges" placement="top">
-                        <IconButton
-                          size="small"
-                          onClick={openHistory}
-                          sx={{
-                            color: "secondary.main",
-                            bgcolor: alpha(theme.palette.secondary.main, 0.08),
-                            "&:hover": { bgcolor: alpha(theme.palette.secondary.main, 0.16) },
-                          }}
-                        >
+                        <IconButton size="small" onClick={openHistory} sx={{
+                          color: "secondary.main",
+                          bgcolor: alpha(theme.palette.secondary.main, 0.08),
+                          "&:hover": { bgcolor: alpha(theme.palette.secondary.main, 0.16) },
+                        }}>
                           <ForumRoundedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -761,9 +913,7 @@ export default function NegociationPage() {
 
                   <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, mb: 2 }}>
                     <Box>
-                      <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                        Niveau d&apos;intérêt
-                      </Typography>
+                      <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>Niveau d&apos;intérêt</Typography>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                         {(() => {
                           const { label, color } = intentDisplay(analysis.intent);
@@ -772,15 +922,12 @@ export default function NegociationPage() {
                               <Chip label={label} color={color} size="small" sx={{ fontWeight: 700 }} />
                               <Box sx={{ display: "flex", gap: 0.375 }}>
                                 {Array.from({ length: 5 }).map((_, i) => (
-                                  <Box
-                                    key={i}
-                                    sx={{
-                                      width: 8, height: 8, borderRadius: "50%",
-                                      bgcolor: i < (analysis.intent_score ?? 0)
-                                        ? theme.palette[color].main
-                                        : theme.palette.action.disabledBackground,
-                                    }}
-                                  />
+                                  <Box key={i} sx={{
+                                    width: 8, height: 8, borderRadius: "50%",
+                                    bgcolor: i < (analysis.intent_score ?? 0)
+                                      ? theme.palette[color].main
+                                      : theme.palette.action.disabledBackground,
+                                  }} />
                                 ))}
                               </Box>
                             </>
@@ -788,19 +935,11 @@ export default function NegociationPage() {
                         })()}
                       </Box>
                     </Box>
-
                     {analysis.objection_type && (
                       <Box sx={{ flex: 1, minWidth: 180 }}>
-                        <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                          Type d&apos;objection
-                        </Typography>
-                        <Chip
-                          label={analysis.objection_type}
-                          size="small"
-                          variant="outlined"
-                          icon={<GavelRoundedIcon sx={{ fontSize: "14px !important" }} />}
-                          sx={{ fontWeight: 600 }}
-                        />
+                        <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>Type d&apos;objection</Typography>
+                        <Chip label={analysis.objection_type} size="small" variant="outlined"
+                          icon={<GavelRoundedIcon sx={{ fontSize: "14px !important" }} />} sx={{ fontWeight: 600 }} />
                       </Box>
                     )}
                   </Box>
@@ -811,72 +950,45 @@ export default function NegociationPage() {
                     </Typography>
                   )}
 
-                  {/* Commission comparison */}
                   <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: "action.hover", display: "flex", gap: 2, flexWrap: "wrap" }}>
                     {[
-                      { label: "Standard",          value: selectedProspect.commissionStandard, colorKey: "primary.main" },
-                      { label: "Plancher absolu",   value: selectedProspect.commissionPlancher, colorKey: "error.main" },
+                      { label: "Standard",        value: selectedProspect.commissionStandard, colorKey: "primary.main" },
+                      { label: "Plancher absolu",  value: selectedProspect.commissionPlancher, colorKey: "error.main" },
                       ...(analysis.taux_demande != null ? [{
-                        label: "Demande partenaire",
-                        value: analysis.taux_demande,
-                        colorKey:
-                          analysis.taux_demande < selectedProspect.commissionPlancher
-                            ? "error.main"
-                            : analysis.taux_demande > selectedProspect.commissionStandard
-                            ? "warning.main"
-                            : "success.main",
+                        label: "Demande partenaire", value: analysis.taux_demande,
+                        colorKey: analysis.taux_demande < selectedProspect.commissionPlancher ? "error.main"
+                          : analysis.taux_demande > selectedProspect.commissionStandard ? "warning.main" : "success.main",
                       }] : []),
                     ].map((item) => (
                       <Box key={item.label} sx={{ flex: 1, minWidth: 90 }}>
-                        <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
-                          {item.label}
-                        </Typography>
-                        <Typography sx={{ fontSize: "1.25rem", fontWeight: 800, color: item.colorKey, lineHeight: 1 }}>
-                          {item.value}%
-                        </Typography>
-                        <LinearProgress
-                          variant="determinate"
-                          value={Math.min(100, (item.value / 25) * 100)}
-                          sx={{
-                            mt: 0.5, height: 4, borderRadius: 2,
-                            bgcolor: alpha(theme.palette.divider, 0.5),
-                            "& .MuiLinearProgress-bar": { bgcolor: item.colorKey, borderRadius: 2 },
-                          }}
-                        />
+                        <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>{item.label}</Typography>
+                        <Typography sx={{ fontSize: "1.25rem", fontWeight: 800, color: item.colorKey, lineHeight: 1 }}>{item.value}%</Typography>
+                        <LinearProgress variant="determinate" value={Math.min(100, (item.value / 25) * 100)}
+                          sx={{ mt: 0.5, height: 4, borderRadius: 2, bgcolor: alpha(theme.palette.divider, 0.5), "& .MuiLinearProgress-bar": { bgcolor: item.colorKey, borderRadius: 2 } }} />
                       </Box>
                     ))}
                   </Box>
-
-                  {analysis.taux_demande != null && analysis.taux_demande < selectedProspect.commissionPlancher && (
-                    <Alert severity="error" icon={<WarningAmberRoundedIcon fontSize="small" />} sx={{ mt: 1.5, "& .MuiAlert-message": { fontSize: "0.8125rem" } }}>
-                      <strong>Commission sous le plancher absolu ({selectedProspect.commissionPlancher}%)</strong> — Tout accord à{" "}
-                      {analysis.taux_demande}% nécessite une validation humaine avant toute réponse.
-                    </Alert>
-                  )}
                 </CardContent>
               </Card>
 
-              {/* Non-financial counterparts */}
+              {/* Non-financial perks */}
               <Card elevation={0} variant="outlined" sx={{ borderRadius: 2.5 }}>
                 <CardContent sx={{ p: "16px 20px !important" }}>
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
                     <EmojiEventsRoundedIcon sx={{ color: "warning.main", fontSize: 20 }} />
-                    <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
-                      Contreparties non-financières
-                    </Typography>
+                    <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>Contreparties non-financières</Typography>
                     <Typography variant="labelSmall" color="text.secondary" sx={{ ml: "auto", display: { xs: "none", sm: "block" } }}>
-                      Priorité avant toute concession commission (Spec §6)
+                      Priorité avant concession commission (Spec §6)
                     </Typography>
                   </Box>
                   <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 1.5 }}>
-                    Référence pour la rédaction du Scénario B :
+                    Référence pour le Scénario B :
                   </Typography>
                   <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
                     {NON_FINANCIAL_PERKS.map((perk) => (
                       <Tooltip key={perk.id} title={perk.desc} placement="top" arrow>
                         <Chip
-                          label={perk.label}
-                          size="small"
+                          label={perk.label} size="small"
                           variant={counterparts.includes(perk.id) ? "filled" : "outlined"}
                           color={counterparts.includes(perk.id) ? "success" : "default"}
                           onClick={() => toggleCounterpart(perk.id)}
@@ -902,7 +1014,7 @@ export default function NegociationPage() {
                         scenario={s}
                         requiresHuman={analysis.requires_human}
                         taux={analysis.taux_demande}
-                        onValidate={setConfirmScenario}
+                        onValidate={handleScenarioValidate}
                       />
                     ))}
                   </Box>
@@ -913,6 +1025,8 @@ export default function NegociationPage() {
         </Box>
       </Box>
 
+      {/* ── Dialogs ────────────────────────────────────────────────── */}
+
       <ConversationHistoryDialog
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
@@ -921,36 +1035,55 @@ export default function NegociationPage() {
         loading={loadingHistory}
       />
 
+      {/* Scenario A / B confirmation */}
       {confirmScenario && selectedProspect && (
         <ConfirmationDialog
           open
           onClose={() => { if (!confirming) setConfirmScenario(null); }}
           onConfirm={handleConfirm}
-          title={`Valider le scénario ${confirmScenario.scenario} ?`}
+          title={`Envoyer le scénario ${confirmScenario.scenario} ?`}
           description={
             <Box>
-              <Typography variant="bodyMedium" color="text.secondary" sx={{ mb: 1 }}>
-                <strong>{confirmScenario.scenario} — {confirmScenario.titre}</strong>
+              <Typography variant="bodyMedium" sx={{ fontWeight: 700, mb: 0.5 }}>
+                {confirmScenario.scenario} — {confirmScenario.titre}
               </Typography>
-              <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 1 }}>
+              <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 1.5 }}>
                 {confirmScenario.description}
               </Typography>
+              <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                Message qui sera envoyé :
+              </Typography>
+              <Box sx={{
+                p: "10px 12px", borderRadius: 2,
+                bgcolor: "action.hover", border: `1px solid ${theme.palette.divider}`,
+                maxHeight: 160, overflow: "auto",
+              }}>
+                {confirmScenario.message_propose.split("\n").map((line, i) => (
+                  <Typography key={i} variant="bodySmall" sx={{ display: "block", lineHeight: 1.6, fontFamily: "inherit" }}>
+                    {line || <br />}
+                  </Typography>
+                ))}
+              </Box>
               {analysis?.requires_human && confirmScenario.scenario === "A" && (
-                <Typography variant="bodySmall" color="error.main" sx={{ fontWeight: 600 }}>
+                <Typography variant="bodySmall" color="error.main" sx={{ fontWeight: 600, mt: 1 }}>
                   ⚠ Validation humaine obligatoire avant toute réponse au partenaire.
-                </Typography>
-              )}
-              {confirmScenario.scenario === "C" && (
-                <Typography variant="bodySmall" color="warning.main" sx={{ fontWeight: 600 }}>
-                  Ce scénario transmet le dossier au responsable commercial.
                 </Typography>
               )}
             </Box>
           }
-          confirmLabel={confirming ? "Envoi…" : `Valider scénario ${confirmScenario.scenario}`}
+          confirmLabel={confirming ? "Envoi…" : `Envoyer scénario ${confirmScenario.scenario}`}
           confirmColor={analysis?.requires_human && confirmScenario.scenario === "A" ? "error" : "primary"}
         />
       )}
+
+      {/* Scenario C — escalade dialog */}
+      <EscaladeDialog
+        open={escaladeScenario !== null}
+        onClose={() => { if (!escalading) setEscaladeScenario(null); }}
+        onConfirm={handleEscaladeConfirm}
+        scenario={escaladeScenario}
+        confirming={escalading}
+      />
     </Box>
   );
 }
