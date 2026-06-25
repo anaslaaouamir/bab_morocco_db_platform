@@ -52,7 +52,6 @@ _DEFAULT_CONFIG: dict[str, Any] = {
               "Zeta", "Eta", "Theta", "Iota", "Kappa"],
     "domain": "com",
     "email_domain": "com",
-    "pays": "Maroc",
 }
 
 
@@ -121,7 +120,7 @@ class MockGoogleMapsProvider:
                 "adresse_web": adresse_web,
                 "email_contact": email_contact,
                 "ville": ville,
-                "pays": cfg.get("pays", pays),
+                "pays": pays,
                 "type": type_partenaire,
                 "_index": i,
                 "_rng_state": rng.getstate(),
