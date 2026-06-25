@@ -412,7 +412,9 @@ function WaitingForReplyPanel({
             <Typography variant="bodySmall" color="text.secondary">
               {isEscalation
                 ? "Le responsable commercial a pris en charge ce dossier."
-                : `Scénario ${scenarioChosen} envoyé à ${prospect.nom}. En attente de sa réponse.`}
+                : scenarioChosen !== "?"
+                ? `Scénario ${scenarioChosen} envoyé à ${prospect.nom}. En attente de sa réponse.`
+                : `Message envoyé à ${prospect.nom}. En attente de sa réponse.`}
             </Typography>
           </Box>
         </Box>
