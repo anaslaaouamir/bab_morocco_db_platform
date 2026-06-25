@@ -445,7 +445,7 @@ function WaitingForReplyPanel({
           onClick={onPartnerReplied}
           sx={{ fontWeight: 700, textTransform: "none" }}
         >
-          Le partenaire a répondu → Soumettre son message
+          Envoyer une autre note ou message
         </Button>
 
         {IS_DEV && (
@@ -654,6 +654,9 @@ export default function NegociationPage() {
   // responded state per prospect: set after user sends a scenario
   const [respondedCache, setRespondedCache] = useState<Record<string, RespondedState>>({});
 
+  // prospects where the user explicitly clicked "send another note" — overrides respondedCache
+  const [manualSubmitIds, setManualSubmitIds] = useState<Set<string>>(new Set());
+
   // history dialog
   const [historyOpen, setHistoryOpen]   = useState(false);
   const [historyCache, setHistoryCache] = useState<Record<string, RawNegotiationMessage[]>>({});
@@ -735,7 +738,9 @@ export default function NegociationPage() {
 
   const selectedProspect = useMemo(() => prospects.find((p) => p.id === selectedId) ?? null, [selectedId, prospects]);
   const analysis = selectedId !== null ? (analysisCache[selectedId] ?? null) : null;
-  const responded = selectedId !== null ? (respondedCache[selectedId] ?? null) : null;
+  const responded = selectedId !== null && !manualSubmitIds.has(selectedId)
+    ? (respondedCache[selectedId] ?? null)
+    : null;
 
   // ── History ───────────────────────────────────────────────────────
 
@@ -759,18 +764,16 @@ export default function NegociationPage() {
   function handleAnalysisReady(newAnalysis: RawMessageAnalysis) {
     if (!selectedId) return;
     setAnalysisCache((prev) => ({ ...prev, [selectedId]: newAnalysis }));
-    // clear responded state — new message = new round
     setRespondedCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
     setHistoryCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+    setManualSubmitIds((prev) => { const n = new Set(prev); n.delete(selectedId); return n; });
   }
 
-  // ── Partner replied again → reset to submit panel ─────────────────
+  // ── "Send another note" button ────────────────────────────────────
 
   function handlePartnerReplied() {
     if (!selectedId) return;
-    setAnalysisCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
-    setRespondedCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
-    setHistoryCache((prev) => { const n = { ...prev }; delete n[selectedId]; return n; });
+    setManualSubmitIds((prev) => new Set(prev).add(selectedId));
   }
 
   // ── New message button (top-right icon) ───────────────────────────
