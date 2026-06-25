@@ -129,11 +129,12 @@ interface ScanProspectDialogProps {
   open: boolean;
   onClose: () => void;
   onBack: () => void;
+  onScanComplete?: () => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspectDialogProps) {
+export default function ScanProspectDialog({ open, onClose, onBack, onScanComplete }: ScanProspectDialogProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { showSnackbar } = useSnackbar();
@@ -186,6 +187,7 @@ export default function ScanProspectDialog({ open, onClose, onBack }: ScanProspe
         if (updated.statut === "done") {
           stopPolling();
           setDone(true);
+          onScanComplete?.();
           showSnackbar({
             message: `Scan terminé — ${updated.nb_ajoutes} prospect(s) ajouté(s) au pipeline.`,
             severity: "success",

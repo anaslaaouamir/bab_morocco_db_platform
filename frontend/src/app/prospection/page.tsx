@@ -51,30 +51,38 @@ export default function ProspectionPage() {
   const [loading, setLoading]           = useState(true);
   const [fetchError, setFetchError]     = useState<string | null>(null);
 
+  const fetchProspects = useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const result = await prospectsApi.list({ pageSize: 100 });
+      setAllProspects(result.items);
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.detail
+          : "Impossible de charger les prospects. Vérifiez que le backend est démarré.";
+      setFetchError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setFetchError(null);
-      try {
-        // Fetch up to 100 prospects; enough for Phase 1 pipeline
-        const result = await prospectsApi.list({ pageSize: 100 });
-        if (!cancelled) setAllProspects(result.items);
-      } catch (err) {
-        if (!cancelled) {
-          const msg =
-            err instanceof ApiError
-              ? err.detail
-              : "Impossible de charger les prospects. Vérifiez que le backend est démarré.";
-          setFetchError(msg);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+    prospectsApi.list({ pageSize: 100 }).then((result) => {
+      if (!cancelled) setAllProspects(result.items);
+    }).catch((err) => {
+      if (!cancelled) {
+        setFetchError(
+          err instanceof ApiError
+            ? err.detail
+            : "Impossible de charger les prospects. Vérifiez que le backend est démarré.",
+        );
       }
-    }
-
-    load();
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -305,23 +313,7 @@ export default function ProspectionPage() {
           <Alert
             severity="error"
             action={
-              <Button
-                color="inherit"
-                size="small"
-                onClick={() => {
-                  setLoading(true);
-                  setFetchError(null);
-                  prospectsApi
-                    .list({ pageSize: 100 })
-                    .then((r) => setAllProspects(r.items))
-                    .catch((e) =>
-                      setFetchError(
-                        e instanceof ApiError ? e.detail : "Erreur réseau.",
-                      ),
-                    )
-                    .finally(() => setLoading(false));
-                }}
-              >
+              <Button color="inherit" size="small" onClick={fetchProspects}>
                 Réessayer
               </Button>
             }
@@ -419,6 +411,7 @@ export default function ProspectionPage() {
         open={scanDialogOpen}
         onClose={() => setScanDialogOpen(false)}
         onBack={() => { setScanDialogOpen(false); setModeDialogOpen(true); }}
+        onScanComplete={fetchProspects}
       />
 
       {/* Fiche Partenaire drawer */}
