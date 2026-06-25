@@ -436,19 +436,17 @@ function WaitingForReplyPanel({
           ))}
         </Box>
 
-        {!isEscalation && (
-          <Button
-            variant="outlined"
-            color="secondary"
-            startIcon={<ReplyRoundedIcon />}
-            onClick={onPartnerReplied}
-            sx={{ fontWeight: 700, textTransform: "none" }}
-          >
-            Le partenaire a répondu → Soumettre son message
-          </Button>
-        )}
+        <Button
+          variant="outlined"
+          color="secondary"
+          startIcon={<ReplyRoundedIcon />}
+          onClick={onPartnerReplied}
+          sx={{ fontWeight: 700, textTransform: "none" }}
+        >
+          Le partenaire a répondu → Soumettre son message
+        </Button>
 
-        {IS_DEV && !isEscalation && (
+        {IS_DEV && (
           <Box sx={{ mt: 1 }}>
             <Chip
               label={simulating ? "Simulation…" : "[DEV] Simuler réponse suivante du partenaire →"}
