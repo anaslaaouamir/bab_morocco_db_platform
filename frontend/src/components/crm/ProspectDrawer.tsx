@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
 import SwipeableDrawer from "@mui/material/SwipeableDrawer";
@@ -18,6 +18,11 @@ import Avatar from "@mui/material/Avatar";
 import Link from "@mui/material/Link";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
+import Button from "@mui/material/Button";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
+import Skeleton from "@mui/material/Skeleton";
+import CircularProgress from "@mui/material/CircularProgress";
 import { alpha, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
@@ -27,11 +32,15 @@ import LinkedInIcon from "@mui/icons-material/LinkedIn";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import BedOutlinedIcon from "@mui/icons-material/BedOutlined";
 import CalendarTodayOutlinedIcon from "@mui/icons-material/CalendarTodayOutlined";
-import HotelOutlinedIcon from "@mui/icons-material/HotelOutlined";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import StarRateRoundedIcon from "@mui/icons-material/StarRateRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import VerifiedRoundedIcon from "@mui/icons-material/VerifiedRounded";
+import SendRoundedIcon from "@mui/icons-material/SendRounded";
+import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 import type { Prospect, PipelineStage } from "@/types/prospect";
 import {
@@ -41,6 +50,9 @@ import {
   STAGE_LABELS,
   LANGUAGE_FLAGS,
 } from "@/types/prospect";
+import { outreachApi, ApiError } from "@/lib/api";
+import type { RawOutreachEmail } from "@/lib/api";
+import { useSnackbar } from "@/contexts/SnackbarContext";
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -258,6 +270,401 @@ function ScoreBreakdownSection({ prospect }: { prospect: Prospect }) {
           );
         })}
       </Box>
+    </Box>
+  );
+}
+
+// ─── Outreach helpers ─────────────────────────────────────────────────────
+
+const STEP_LABELS: Record<string, string> = {
+  j0:  "Email initial (J0)",
+  j3:  "Relance J+3",
+  j7:  "Relance J+7",
+  j30: "Réactivation J+30",
+};
+
+const STEP_ORDER = ["j0", "j3", "j7", "j30"];
+
+const EMAIL_STATUT_CHIP: Record<
+  string,
+  { label: string; color: "default" | "warning" | "info" | "success" | "primary" | "error" }
+> = {
+  draft:     { label: "Brouillon",  color: "warning" },
+  validated: { label: "Validé",     color: "info" },
+  sent:      { label: "Envoyé",     color: "success" },
+  opened:    { label: "Ouvert",     color: "success" },
+  clicked:   { label: "Cliqué",     color: "primary" },
+};
+
+// ─── OutreachSection ──────────────────────────────────────────────────────
+
+interface OutreachSectionProps {
+  prospectId: string;
+  prospectScore: number;
+}
+
+function OutreachSection({ prospectId, prospectScore }: OutreachSectionProps) {
+  const { showSnackbar } = useSnackbar();
+
+  const [emails, setEmails]             = useState<RawOutreachEmail[]>([]);
+  const [recommendation, setRec]        = useState<{ next_step: string | null; reason: string } | null>(null);
+  const [loadingEmails, setLoadingEmails] = useState(true);
+  const [emailError, setEmailError]     = useState<string | null>(null);
+  const [generating, setGenerating]     = useState(false);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+  // per-step selected variant tab; keyed by step ("j0" → "A")
+  const [variantTab, setVariantTab]     = useState<Record<string, string>>({});
+
+  const fetchEmails = useCallback(async () => {
+    setLoadingEmails(true);
+    setEmailError(null);
+    try {
+      const result = await outreachApi.nextStep(prospectId);
+      setEmails(result.emails);
+      setRec({ next_step: result.next_step, reason: result.reason });
+    } catch (err) {
+      setEmailError(
+        err instanceof ApiError ? err.detail : "Impossible de charger les emails.",
+      );
+    } finally {
+      setLoadingEmails(false);
+    }
+  }, [prospectId]);
+
+  useEffect(() => {
+    fetchEmails();
+  }, [fetchEmails]);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      const newEmails = await outreachApi.generate(prospectId);
+      setEmails(newEmails);
+      setRec({ next_step: null, reason: "Emails générés — validation humaine requise avant envoi." });
+      showSnackbar({ message: "3 variantes J0 générées avec succès.", severity: "success" });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de la génération.",
+        severity: "error",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleValidate(emailId: string) {
+    setActionLoading((prev) => ({ ...prev, [emailId]: true }));
+    try {
+      const updated = await outreachApi.validate(emailId);
+      setEmails((prev) => prev.map((e) => (e.id === emailId ? updated : e)));
+      showSnackbar({ message: "Email validé — prêt à envoyer.", severity: "success" });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de la validation.",
+        severity: "error",
+      });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [emailId]: false }));
+    }
+  }
+
+  async function handleSend(emailId: string) {
+    setActionLoading((prev) => ({ ...prev, [emailId]: true }));
+    try {
+      const updated = await outreachApi.send(emailId);
+      setEmails((prev) => prev.map((e) => (e.id === emailId ? updated : e)));
+      showSnackbar({ message: "Email envoyé avec succès.", severity: "success" });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de l'envoi.",
+        severity: "error",
+      });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [emailId]: false }));
+    }
+  }
+
+  // Group emails by sequence step, ordered j0 → j30
+  const emailsByStep = useMemo(() => {
+    const map: Record<string, RawOutreachEmail[]> = {};
+    for (const e of emails) {
+      (map[e.sequence_step] ??= []).push(e);
+    }
+    return map;
+  }, [emails]);
+
+  const steps = STEP_ORDER.filter((s) => s in emailsByStep);
+
+  // ── Loading skeleton ───────────────────────────────────────────
+  if (loadingEmails) {
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+        <Skeleton variant="rounded" height={40} sx={{ borderRadius: 2 }} />
+        <Skeleton variant="rounded" height={140} sx={{ borderRadius: 2 }} />
+      </Box>
+    );
+  }
+
+  // ── Error ──────────────────────────────────────────────────────
+  if (emailError) {
+    return (
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" onClick={fetchEmails}>
+            Réessayer
+          </Button>
+        }
+        sx={{ borderRadius: 2 }}
+      >
+        {emailError}
+      </Alert>
+    );
+  }
+
+  // ── Empty state: no emails generated yet ───────────────────────
+  if (emails.length === 0) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 1.5,
+          py: 2,
+          px: 1,
+          borderRadius: 2,
+          border: 1,
+          borderStyle: "dashed",
+          borderColor: "divider",
+          textAlign: "center",
+        }}
+      >
+        <EmailOutlinedIcon sx={{ fontSize: 32, color: "text.disabled" }} />
+        <Box>
+          <Typography variant="bodySmall" sx={{ fontWeight: 600, display: "block" }}>
+            Aucun email généré
+          </Typography>
+          <Typography variant="bodySmall" color="text.secondary">
+            {prospectScore >= 75
+              ? "Ce prospect est qualifié. Générez les 3 variantes J0 pour démarrer la séquence."
+              : "Score insuffisant (<75). La génération reste possible mais l'envoi n'est pas recommandé."}
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          size="small"
+          startIcon={generating ? <CircularProgress size={14} color="inherit" /> : <AutoAwesomeRoundedIcon />}
+          onClick={handleGenerate}
+          disabled={generating}
+        >
+          {generating ? "Génération en cours…" : "Générer les variantes J0"}
+        </Button>
+      </Box>
+    );
+  }
+
+  // ── Emails exist: show recommendation + steps ──────────────────
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {/* Recommendation banner */}
+      {recommendation && (
+        <Alert
+          severity={recommendation.next_step ? "info" : "success"}
+          icon={recommendation.next_step ? <InfoOutlinedIcon fontSize="small" /> : <MarkEmailReadRoundedIcon fontSize="small" />}
+          sx={{ borderRadius: 2, fontSize: "0.8125rem", py: 0.75 }}
+        >
+          {recommendation.reason}
+          {recommendation.next_step && (
+            <Typography variant="labelSmall" sx={{ display: "block", mt: 0.25, fontWeight: 700 }}>
+              Prochaine étape recommandée : {STEP_LABELS[recommendation.next_step] ?? recommendation.next_step}
+            </Typography>
+          )}
+        </Alert>
+      )}
+
+      {/* Email steps */}
+      {steps.map((step) => {
+        const variants = emailsByStep[step];
+        const selectedVariant = variantTab[step] ?? variants[0].variant;
+        const selectedEmail   = variants.find((e) => e.variant === selectedVariant) ?? variants[0];
+        const isLoading       = actionLoading[selectedEmail.id] ?? false;
+        const statut          = EMAIL_STATUT_CHIP[selectedEmail.statut] ?? { label: selectedEmail.statut, color: "default" as const };
+        const isSentOrBeyond  = ["sent", "opened", "clicked"].includes(selectedEmail.statut);
+
+        return (
+          <Box
+            key={step}
+            sx={{
+              border: 1,
+              borderColor: "divider",
+              borderRadius: 2,
+              overflow: "hidden",
+            }}
+          >
+            {/* Step header */}
+            <Box
+              sx={{
+                px: 2,
+                py: 1,
+                bgcolor: "action.hover",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                borderBottom: 1,
+                borderColor: "divider",
+              }}
+            >
+              <Typography variant="labelSmall" sx={{ fontWeight: 700 }}>
+                {STEP_LABELS[step] ?? step.toUpperCase()}
+              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                {selectedEmail.date_envoi_prevu && (
+                  <Typography variant="labelSmall" color="text.secondary">
+                    {new Date(selectedEmail.date_envoi_prevu).toLocaleDateString("fr-FR", {
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </Typography>
+                )}
+                <Chip
+                  label={statut.label}
+                  color={statut.color}
+                  size="small"
+                  sx={{ height: 18, fontSize: "0.5625rem", fontWeight: 700, "& .MuiChip-label": { px: 0.75 } }}
+                />
+              </Box>
+            </Box>
+
+            {/* Variant tabs — only when multiple variants exist */}
+            {variants.length > 1 && (
+              <Tabs
+                value={selectedVariant}
+                onChange={(_, v: string) => setVariantTab((prev) => ({ ...prev, [step]: v }))}
+                variant="fullWidth"
+                sx={{
+                  minHeight: 32,
+                  borderBottom: 1,
+                  borderColor: "divider",
+                  "& .MuiTab-root": { minHeight: 32, fontSize: "0.6875rem", fontWeight: 700, py: 0.5 },
+                  "& .MuiTabs-indicator": { height: 2 },
+                }}
+              >
+                {variants.map((v) => (
+                  <Tab
+                    key={v.variant}
+                    label={`Variante ${v.variant}`}
+                    value={v.variant}
+                    icon={
+                      ["sent", "opened", "clicked"].includes(v.statut) ? (
+                        <MarkEmailReadRoundedIcon sx={{ fontSize: 12 }} />
+                      ) : v.statut === "validated" ? (
+                        <VerifiedRoundedIcon sx={{ fontSize: 12 }} />
+                      ) : undefined
+                    }
+                    iconPosition="end"
+                  />
+                ))}
+              </Tabs>
+            )}
+
+            {/* Email content */}
+            <Box sx={{ px: 2, py: 1.5, display: "flex", flexDirection: "column", gap: 1.25 }}>
+              {/* Subject */}
+              <Box>
+                <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
+                  Objet
+                </Typography>
+                <Typography variant="bodySmall" sx={{ fontWeight: 600 }}>
+                  {selectedEmail.sujet}
+                </Typography>
+              </Box>
+
+              {/* Body */}
+              <Box>
+                <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                  Corps de l&apos;email
+                </Typography>
+                <Box
+                  sx={{
+                    maxHeight: 200,
+                    overflowY: "auto",
+                    bgcolor: "action.hover",
+                    borderRadius: 1.5,
+                    px: 1.5,
+                    py: 1.25,
+                    fontSize: "0.75rem",
+                    lineHeight: 1.6,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontFamily: "inherit",
+                    color: "text.primary",
+                    "&::-webkit-scrollbar": { width: 3 },
+                    "&::-webkit-scrollbar-thumb": { bgcolor: "divider", borderRadius: 2 },
+                  }}
+                >
+                  {selectedEmail.corps}
+                </Box>
+              </Box>
+
+              {/* Actions */}
+              {!isSentOrBeyond && (
+                <Box sx={{ display: "flex", gap: 1, pt: 0.5 }}>
+                  {selectedEmail.statut === "draft" && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={
+                        isLoading ? (
+                          <CircularProgress size={14} color="inherit" />
+                        ) : (
+                          <VerifiedRoundedIcon />
+                        )
+                      }
+                      onClick={() => handleValidate(selectedEmail.id)}
+                      disabled={isLoading}
+                      sx={{ flex: 1, borderRadius: 2 }}
+                    >
+                      {isLoading ? "Validation…" : "Valider"}
+                    </Button>
+                  )}
+                  {selectedEmail.statut === "validated" && (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      color="success"
+                      startIcon={
+                        isLoading ? (
+                          <CircularProgress size={14} color="inherit" />
+                        ) : (
+                          <SendRoundedIcon />
+                        )
+                      }
+                      onClick={() => handleSend(selectedEmail.id)}
+                      disabled={isLoading}
+                      sx={{ flex: 1, borderRadius: 2 }}
+                    >
+                      {isLoading ? "Envoi…" : "Envoyer"}
+                    </Button>
+                  )}
+                </Box>
+              )}
+
+              {/* Sent confirmation */}
+              {isSentOrBeyond && selectedEmail.date_envoi_reel && (
+                <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block" }}>
+                  Envoyé le{" "}
+                  {new Date(selectedEmail.date_envoi_reel).toLocaleDateString("fr-FR", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        );
+      })}
     </Box>
   );
 }
@@ -636,6 +1043,17 @@ export default function ProspectDrawer({
               validation humaine avant envoi.
             </Alert>
           )}
+        </Box>
+
+        <Divider />
+
+        {/* ── Outreach ─────────────────────────────────────────────── */}
+        <Box>
+          <SectionTitle>Séquence outreach</SectionTitle>
+          <OutreachSection
+            prospectId={prospect.id}
+            prospectScore={scoreTotal(prospect.score)}
+          />
         </Box>
 
         <Divider />
