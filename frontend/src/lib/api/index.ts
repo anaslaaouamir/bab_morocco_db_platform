@@ -220,4 +220,9 @@ export const negotiationApi = {
       method: "POST",
       body: JSON.stringify({ scenario }),
     }),
+
+  simulateReply: (prospectId: string): Promise<RawMessageAnalysis> =>
+    apiFetch<RawMessageAnalysis>(`/negotiation/${prospectId}/simulate-reply`, {
+      method: "POST",
+    }),
 };

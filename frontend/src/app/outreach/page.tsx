@@ -32,7 +32,7 @@ import type { Prospect, PipelineStage } from "@/types/prospect";
 import { scoreTotal, scoreColor, PARTNER_TYPE_LABELS, STAGE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 import ConfirmationDialog from "@/components/shared/ConfirmationDialog";
-import { prospectsApi, outreachApi, ApiError } from "@/lib/api";
+import { prospectsApi, outreachApi, negotiationApi, ApiError } from "@/lib/api";
 import type { RawOutreachEmail } from "@/lib/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -188,22 +188,27 @@ function SequenceTimeline({ steps }: { steps: SequenceStep[] }) {
 
 // ─── OutreachProspectCard ─────────────────────────────────────────────────────
 
+const IS_DEV = process.env.NEXT_PUBLIC_ENV !== "production";
+
 function OutreachProspectCard({
   prospect,
   emails,
   selected,
   onSelect,
+  onSimulateReply,
 }: {
   prospect: Prospect;
   emails: RawOutreachEmail[];
   selected: boolean;
   onSelect: () => void;
+  onSimulateReply?: (id: string) => void;
 }) {
   const theme = useTheme();
   const steps = computeSequenceFromEmails(emails, prospect.dateAjout);
   const currentStep = steps.find((s) => s.status === "current");
   const total = scoreTotal(prospect.score);
   const color = scoreColor(total);
+  const hasSentEmail = emails.some((e) => ["sent", "opened", "clicked"].includes(e.statut));
 
   return (
     <Card
@@ -270,6 +275,28 @@ function OutreachProspectCard({
           <Typography variant="labelSmall" sx={{ mt: 0.875, display: "block", color: "warning.main", fontWeight: 600 }}>
             Prochaine action : {currentStep.label} — {currentStep.date}
           </Typography>
+        )}
+
+        {/* DEV ONLY — simulate partner reply */}
+        {IS_DEV && hasSentEmail && onSimulateReply && (
+          <Box sx={{ mt: 1 }} onClick={(e) => e.stopPropagation()}>
+            <Chip
+              label="[DEV] Simuler réponse partenaire →"
+              size="small"
+              color="warning"
+              variant="outlined"
+              onClick={() => onSimulateReply(prospect.id)}
+              sx={{
+                width: "100%",
+                height: 22,
+                fontSize: "0.5625rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                borderStyle: "dashed",
+                "& .MuiChip-label": { px: 1 },
+              }}
+            />
+          </Box>
         )}
       </CardContent>
     </Card>
@@ -1012,6 +1039,29 @@ export default function OutreachPage() {
     setEmailsCache((prev) => ({ ...prev, [prospectId]: emails }));
   }, []);
 
+  const handleSimulateReply = useCallback(
+    async (id: string) => {
+      const prospect = prospects.find((p) => p.id === id);
+      if (!prospect) return;
+      try {
+        await negotiationApi.simulateReply(id);
+        setProspects((prev) => prev.filter((p) => p.id !== id));
+        setSelectedId(null);
+        showSnackbar({
+          message: `${prospect.nom} a répondu — prospect déplacé en Négociation.`,
+          severity: "success",
+          duration: 6000,
+        });
+      } catch (err) {
+        showSnackbar({
+          message: err instanceof ApiError ? err.detail : "Erreur lors de la simulation.",
+          severity: "error",
+        });
+      }
+    },
+    [prospects, showSnackbar],
+  );
+
   const handleStageChange = useCallback(
     async (id: string, newStage: PipelineStage) => {
       const previous = prospects.find((p) => p.id === id);
@@ -1165,6 +1215,7 @@ export default function OutreachPage() {
                 emails={emailsCache[p.id] ?? []}
                 selected={selectedId === p.id}
                 onSelect={() => setSelectedId(p.id)}
+                onSimulateReply={handleSimulateReply}
               />
             ))
           )}
