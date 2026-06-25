@@ -126,7 +126,7 @@ class NegotiationService:
             "objection_detail": None,
             "taux_demande": msg.taux_demande,
             "requires_human": msg.requires_human,
-            "scenarios": json.loads(msg.scenarios_json),
+            "scenarios": json.loads(msg.scenarios_json or "[]"),
         }
 
     async def get_history(

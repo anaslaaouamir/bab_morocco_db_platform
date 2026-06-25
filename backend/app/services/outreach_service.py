@@ -201,6 +201,8 @@ class OutreachService:
         if email.statut != "validated":
             raise PermissionError("Email must be validated before sending")
         prospect = await db.get(Prospect, email.prospect_id)
+        if not prospect:
+            raise ValueError("Prospect not found for email")
         email.prospect = prospect  # type: ignore[assignment]
         await self._sender.send(email)
         email.statut = "sent"
@@ -284,26 +286,26 @@ class OutreachService:
                 continue
             sent_dt = j3.date_envoi_reel if isinstance(j3.date_envoi_reel, datetime) else datetime.fromisoformat(str(j3.date_envoi_reel))
             if j3.date_envoi_reel and (datetime.utcnow() - sent_dt).days >= 4:
-                prospect = await db.get(Prospect, j3.prospect_id)
-                if prospect:
+                j3_prospect = await db.get(Prospect, j3.prospect_id)
+                if j3_prospect:
                     for variant in ("A", "B", "C"):
-                        await self._create_followup(db, prospect, "j7", variant, j3.date_envoi_prevu)
+                        await self._create_followup(db, j3_prospect, "j7", variant, j3.date_envoi_prevu)
                     created.append({"prospect_id": str(j3.prospect_id), "step": "j7"})
 
         # ── Veille prospects → generate j30 reactivation (A/B/C) ─────────────
-        result = await db.execute(select(Prospect).where(Prospect.stage == "veille"))
-        for prospect in result.scalars().all():
+        veille_result = await db.execute(select(Prospect).where(Prospect.stage == "veille"))
+        for veille_prospect in veille_result.scalars().all():
             existing = (await db.execute(
                 select(OutreachEmail).where(
-                    OutreachEmail.prospect_id == prospect.id,
+                    OutreachEmail.prospect_id == veille_prospect.id,
                     OutreachEmail.sequence_step == "j30",
                 )
             )).scalars().first()
             if existing:
                 continue
             for variant in ("A", "B", "C"):
-                await self._create_followup(db, prospect, "j30", variant, today)
-            created.append({"prospect_id": str(prospect.id), "step": "j30"})
+                await self._create_followup(db, veille_prospect, "j30", variant, today)
+            created.append({"prospect_id": str(veille_prospect.id), "step": "j30"})
 
         await db.commit()
         return {"created": len(created), "details": created}

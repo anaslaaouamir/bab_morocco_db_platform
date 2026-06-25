@@ -180,13 +180,13 @@ async def update_prospect(
     }
     _apply_scoring(current)
 
-    prospect.score_activite_digitale = current["score_activite_digitale"]
-    prospect.score_coherence_marche = current["score_coherence_marche"]
-    prospect.score_taille_capacite = current["score_taille_capacite"]
-    prospect.score_contact_decideur = current["score_contact_decideur"]
-    prospect.score_liberte_ota = current["score_liberte_ota"]
-    prospect.score_total = current["score_total"]
-    prospect.stage = current["stage"]
+    prospect.score_activite_digitale = int(current["score_activite_digitale"])  # type: ignore[arg-type]
+    prospect.score_coherence_marche = int(current["score_coherence_marche"])  # type: ignore[arg-type]
+    prospect.score_taille_capacite = int(current["score_taille_capacite"])  # type: ignore[arg-type]
+    prospect.score_contact_decideur = int(current["score_contact_decideur"])  # type: ignore[arg-type]
+    prospect.score_liberte_ota = int(current["score_liberte_ota"])  # type: ignore[arg-type]
+    prospect.score_total = int(current["score_total"])  # type: ignore[arg-type]
+    prospect.stage = str(current["stage"])  # type: ignore[assignment]
 
     if "pays" in payload and "langue" not in payload:
         prospect.langue = detect_langue(payload["pays"]).value
