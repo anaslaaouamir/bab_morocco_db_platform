@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Autocomplete from "@mui/material/Autocomplete";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -32,49 +33,10 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import type { PartnerType } from "@/types/prospect";
 import { PARTNER_TYPE_LABELS } from "@/types/prospect";
 import { scanApi, ApiError, type RawScanJob } from "@/lib/api";
+import { COUNTRIES_BY_MARKET, CITIES_BY_COUNTRY } from "@/lib/constants/geography";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 
 // ─── Config maps ──────────────────────────────────────────────────────────────
-
-const COUNTRIES_BY_MARKET = [
-  { group: "Maroc", countries: ["Maroc"] },
-  { group: "Europe francophone", countries: ["France", "Belgique", "Suisse", "Luxembourg"] },
-  { group: "Europe anglophone", countries: ["Royaume-Uni", "Irlande"] },
-  { group: "Europe DACH", countries: ["Allemagne", "Autriche"] },
-  { group: "Europe Sud", countries: ["Espagne", "Italie", "Portugal"] },
-  { group: "Golfe", countries: ["Émirats Arabes Unis", "Arabie Saoudite", "Qatar", "Koweït", "Bahreïn"] },
-];
-
-const CITIES_BY_COUNTRY: Record<string, string[]> = {
-  "Maroc": ["Marrakech", "Casablanca", "Fès", "Agadir", "Tanger", "Essaouira", "Chefchaouen", "Ouarzazate", "Merzouga", "Rabat", "Meknès", "Dakhla", "Taroudant", "El Jadida", "Tétouan"],
-  "France": ["Paris", "Lyon", "Marseille", "Bordeaux", "Nice", "Toulouse", "Nantes", "Strasbourg", "Lille", "Montpellier"],
-  "Belgique": ["Bruxelles", "Anvers", "Gand", "Liège", "Bruges"],
-  "Suisse": ["Genève", "Zürich", "Lausanne", "Berne", "Bâle"],
-  "Luxembourg": ["Luxembourg"],
-  "Royaume-Uni": ["Londres", "Manchester", "Édimbourg", "Birmingham", "Bristol", "Glasgow", "Liverpool"],
-  "Irlande": ["Dublin", "Cork", "Galway"],
-  "Allemagne": ["Berlin", "Munich", "Hambourg", "Francfort", "Cologne", "Stuttgart", "Düsseldorf"],
-  "Autriche": ["Vienne", "Salzbourg", "Innsbruck", "Graz"],
-  "Espagne": ["Madrid", "Barcelone", "Séville", "Valence", "Malaga", "Bilbao", "Palma de Majorque"],
-  "Italie": ["Rome", "Milan", "Florence", "Venise", "Naples", "Turin", "Bologne"],
-  "Portugal": ["Lisbonne", "Porto", "Faro", "Braga"],
-  "Pays-Bas": ["Amsterdam", "Rotterdam", "La Haye", "Utrecht"],
-  "Danemark": ["Copenhague", "Aarhus", "Odense"],
-  "Suède": ["Stockholm", "Göteborg", "Malmö"],
-  "Norvège": ["Oslo", "Bergen", "Stavanger"],
-  "Émirats Arabes Unis": ["Dubaï", "Abu Dhabi", "Sharjah", "Ras Al Khaïmah"],
-  "Arabie Saoudite": ["Riyad", "Djeddah", "La Mecque", "Médine", "Dammam"],
-  "Qatar": ["Doha", "Al Wakrah", "Al Khor"],
-  "Koweït": ["Koweït City", "Hawalli", "Salmiya"],
-  "Bahreïn": ["Manama", "Riffa", "Muharraq"],
-  "Jordanie": ["Amman", "Aqaba", "Pétra", "Jerash"],
-  "États-Unis": ["New York", "Los Angeles", "Miami", "Chicago", "San Francisco", "Houston", "Boston"],
-  "Canada": ["Toronto", "Montréal", "Vancouver", "Calgary", "Ottawa"],
-  "Australie": ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"],
-  "Mexique": ["Mexico", "Cancún", "Guadalajara", "Monterrey"],
-  "Argentine": ["Buenos Aires", "Mendoza", "Córdoba", "Rosario"],
-  "Colombie": ["Bogotá", "Medellín", "Cartagena", "Cali"],
-};
 
 const TYPE_QUERY: Record<PartnerType, string> = {
   hotel_riad:             "hôtels riads",
@@ -253,7 +215,6 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
     }
   }
 
-  const suggestedCities = CITIES_BY_COUNTRY[form.pays] ?? [];
   const progress = job ? job.progression : 0;
   const isRunning = scanning && !done;
 
@@ -327,32 +288,23 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
                   {errors.pays && <FormHelperText>{errors.pays}</FormHelperText>}
                 </FormControl>
 
-                {suggestedCities.length > 0 ? (
-                  <FormControl size="small" error={!!errors.ville} fullWidth>
-                    <InputLabel>Ville *</InputLabel>
-                    <Select
-                      value={form.ville}
+                <Autocomplete
+                  freeSolo
+                  options={CITIES_BY_COUNTRY[form.pays] ?? []}
+                  value={form.ville}
+                  onInputChange={(_, newValue) => set("ville", newValue)}
+                  disabled={!form.pays}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
                       label="Ville *"
-                      onChange={(e) => set("ville", e.target.value)}
-                      disabled={!form.pays}
-                    >
-                      {suggestedCities.map((c) => (
-                        <MenuItem key={c} value={c}>{c}</MenuItem>
-                      ))}
-                    </Select>
-                    {errors.ville && <FormHelperText>{errors.ville}</FormHelperText>}
-                  </FormControl>
-                ) : (
-                  <TextField
-                    label="Ville *"
-                    value={form.ville}
-                    onChange={(e) => set("ville", e.target.value)}
-                    error={!!errors.ville}
-                    helperText={errors.ville ?? (form.pays ? undefined : "Sélectionnez un pays d'abord.")}
-                    size="small" fullWidth disabled={!form.pays}
-                    placeholder="Ex : Marrakech"
-                  />
-                )}
+                      size="small"
+                      error={!!errors.ville}
+                      helperText={errors.ville ?? (!form.pays ? "Sélectionnez un pays d'abord." : undefined)}
+                      placeholder="Ex : Marrakech"
+                    />
+                  )}
+                />
               </Box>
             </Box>
 

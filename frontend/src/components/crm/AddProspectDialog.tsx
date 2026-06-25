@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Autocomplete from "@mui/material/Autocomplete";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -40,6 +41,7 @@ import {
   scoreColor,
 } from "@/types/prospect";
 import { prospectsApi, ApiError } from "@/lib/api";
+import { COUNTRIES, CITIES_BY_COUNTRY } from "@/lib/constants/geography";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 
 // ─── Auto-fill maps ───────────────────────────────────────────────────────
@@ -80,16 +82,6 @@ const PAYS_LANGUE: Record<string, OutreachLanguage> = {
   "Jordanie":               "ar",
 };
 
-const COUNTRIES = [
-  "Maroc", "France", "Belgique", "Suisse", "Luxembourg",
-  "Royaume-Uni", "Irlande", "États-Unis", "Canada", "Australie",
-  "Espagne", "Italie", "Portugal",
-  "Allemagne", "Autriche",
-  "Émirats Arabes Unis", "Arabie Saoudite", "Qatar", "Koweït", "Bahreïn", "Jordanie",
-  "Pays-Bas", "Danemark", "Suède", "Norvège",
-  "Mexique", "Argentine", "Colombie",
-  "Autre",
-];
 
 const PIPELINE_STAGES: PipelineStage[] = [
   "prospection", "qualification", "outreach",
@@ -500,13 +492,22 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
             </Field2Col>
 
             <Field2Col>
-              <TextField
-                label="Ville *"
+              <Autocomplete
+                freeSolo
+                options={CITIES_BY_COUNTRY[values.pays] ?? []}
                 value={values.ville}
-                onChange={(e) => set("ville", e.target.value)}
-                error={!!errors.ville}
-                helperText={errors.ville}
-                size="small" disabled={submitting}
+                onInputChange={(_, newValue) => set("ville", newValue)}
+                disabled={submitting}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Ville *"
+                    size="small"
+                    error={!!errors.ville}
+                    helperText={errors.ville ?? (!values.pays ? "Sélectionnez un pays pour voir les suggestions." : undefined)}
+                    placeholder="Ex : Marrakech"
+                  />
+                )}
               />
               <TextField
                 label="Région"
