@@ -49,6 +49,18 @@ import ConfirmationDialog from "@/components/shared/ConfirmationDialog";
 import { prospectsApi, negotiationApi, ApiError } from "@/lib/api";
 import type { RawMessageAnalysis, RawNegotiationMessage, RawScenario } from "@/lib/api";
 
+// ─── Dev helpers ─────────────────────────────────────────────────────────────
+
+const IS_DEV = process.env.NEXT_PUBLIC_ENV !== "production";
+
+// Rotate through 3 realistic follow-up messages so each click feels different
+const MOCK_FOLLOWUP_MESSAGES = [
+  "Bonjour, merci pour votre proposition. Nous sommes prêts à avancer mais souhaiterions confirmer le taux à 12% avec la commission verrouillée 12 mois. Pouvez-vous nous envoyer un projet de contrat cette semaine ?",
+  "Merci pour votre retour. L'offre est intéressante mais notre direction demande une garantie sur le volume minimum de réservations avant engagement. Que proposez-vous comme solution ?",
+  "Bonjour, nous acceptons le principe mais souhaitons négocier le délai de paiement des commissions à 30 jours au lieu de 45. C'est une condition non-négociable de notre côté.",
+];
+let mockFollowupIndex = 0;
+
 // ─── Non-financial perks ──────────────────────────────────────────────────────
 
 const NON_FINANCIAL_PERKS = [
@@ -351,14 +363,36 @@ function WaitingForReplyPanel({
   sentMessage,
   isEscalation,
   onPartnerReplied,
+  onAnalysisReady,
 }: {
   prospect: Prospect;
   scenarioChosen: string;
   sentMessage: string;
   isEscalation: boolean;
   onPartnerReplied: () => void;
+  onAnalysisReady: (analysis: RawMessageAnalysis) => void;
 }) {
   const theme = useTheme();
+  const { showSnackbar } = useSnackbar();
+  const [simulating, setSimulating] = useState(false);
+
+  async function handleSimulateFollowup() {
+    setSimulating(true);
+    try {
+      const mockText = MOCK_FOLLOWUP_MESSAGES[mockFollowupIndex % MOCK_FOLLOWUP_MESSAGES.length];
+      mockFollowupIndex++;
+      const analysis = await negotiationApi.submitMessage(prospect.id, mockText);
+      onAnalysisReady(analysis);
+      showSnackbar({ message: "Réponse simulée — nouvelle analyse disponible.", severity: "info", duration: 4000 });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de la simulation.",
+        severity: "error",
+      });
+    } finally {
+      setSimulating(false);
+    }
+  }
 
   return (
     <Card elevation={0} variant="outlined" sx={{
@@ -412,6 +446,25 @@ function WaitingForReplyPanel({
           >
             Le partenaire a répondu → Soumettre son message
           </Button>
+        )}
+
+        {IS_DEV && !isEscalation && (
+          <Box sx={{ mt: 1 }}>
+            <Chip
+              label={simulating ? "Simulation…" : "[DEV] Simuler réponse suivante du partenaire →"}
+              size="small"
+              color="warning"
+              variant="outlined"
+              onClick={simulating ? undefined : handleSimulateFollowup}
+              icon={simulating ? <CircularProgress size={10} color="inherit" /> : undefined}
+              sx={{
+                height: 22, fontSize: "0.5625rem", fontWeight: 700,
+                cursor: simulating ? "default" : "pointer",
+                borderStyle: "dashed",
+                "& .MuiChip-label": { px: 1 },
+              }}
+            />
+          </Box>
         )}
       </CardContent>
     </Card>
@@ -895,6 +948,7 @@ export default function NegociationPage() {
               sentMessage={responded.sentMessage}
               isEscalation={responded.isEscalation}
               onPartnerReplied={handlePartnerReplied}
+              onAnalysisReady={handleAnalysisReady}
             />
           ) : !analysis ? (
             // ── No analysis yet ──────────────────────────────────────
