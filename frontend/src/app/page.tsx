@@ -290,6 +290,20 @@ export default function DashboardPage() {
     [prospects],
   );
 
+  // P5-01 — Perdu conversion rate (pool = all prospects that reached négociation or beyond)
+  const perduCount = stageCounts["perdu"] ?? 0;
+  const perduPool  = useMemo(
+    () => (stageCounts["negociation"] ?? 0) + (stageCounts["closing"] ?? 0) + kpiSigned + perduCount,
+    [stageCounts, kpiSigned, perduCount],
+  );
+  const perduPct = perduPool > 0 ? Math.round((perduCount / perduPool) * 100) : 0;
+
+  // P5-02 — Actions en attente (derivable from allProspects)
+  const pendingOutreach    = outreachProspects.length;                     // needs email work
+  const pendingNegociation = stageCounts["negociation"] ?? 0;              // awaiting reply / analysis
+  const pendingContracts   = stageCounts["closing"] ?? 0;                  // contract to generate / send
+  const pendingActionsTotal = pendingOutreach + pendingNegociation + pendingContracts;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -483,6 +497,104 @@ export default function DashboardPage() {
         )}
       </Box>
 
+      {/* ── P5-02 — Actions en attente ───────────────────────────── */}
+      {!loading && pendingActionsTotal > 0 && (
+        <Card elevation={0} variant="outlined" sx={{ borderRadius: 3 }}>
+          <CardContent sx={{ p: 2.5 }}>
+            <SectionTitle>
+              <FlagRoundedIcon sx={{ color: "warning.main", fontSize: 20 }} />
+              Actions en attente
+              <Chip
+                label={pendingActionsTotal}
+                color="warning"
+                size="small"
+                sx={{ fontWeight: 800, ml: 0.5, height: 20, fontSize: "0.6875rem", "& .MuiChip-label": { px: 0.75 } }}
+              />
+            </SectionTitle>
+
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {pendingOutreach > 0 && (
+                <Box
+                  component={Link}
+                  href="/outreach"
+                  sx={{
+                    display: "flex", alignItems: "center", gap: 1.5,
+                    p: 1.25, borderRadius: 2, textDecoration: "none",
+                    border: `1px solid ${alpha("#FFA726", 0.3)}`,
+                    bgcolor: alpha("#FFA726", 0.05),
+                    "&:hover": { bgcolor: alpha("#FFA726", 0.1) },
+                    transition: "background-color 150ms ease",
+                  }}
+                >
+                  <MarkEmailReadOutlinedIcon sx={{ color: "warning.main", fontSize: 20, flexShrink: 0 }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="bodySmall" sx={{ fontWeight: 700, color: "text.primary" }}>
+                      {pendingOutreach} séquence{pendingOutreach > 1 ? "s" : ""} outreach active{pendingOutreach > 1 ? "s" : ""}
+                    </Typography>
+                    <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+                      Emails à valider et à envoyer
+                    </Typography>
+                  </Box>
+                  <ArrowForwardRoundedIcon sx={{ fontSize: 16, color: "text.disabled" }} />
+                </Box>
+              )}
+
+              {pendingNegociation > 0 && (
+                <Box
+                  component={Link}
+                  href="/negociation"
+                  sx={{
+                    display: "flex", alignItems: "center", gap: 1.5,
+                    p: 1.25, borderRadius: 2, textDecoration: "none",
+                    border: `1px solid ${alpha("#AB47BC", 0.3)}`,
+                    bgcolor: alpha("#AB47BC", 0.05),
+                    "&:hover": { bgcolor: alpha("#AB47BC", 0.1) },
+                    transition: "background-color 150ms ease",
+                  }}
+                >
+                  <ForumRoundedIcon sx={{ color: "secondary.main", fontSize: 20, flexShrink: 0 }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="bodySmall" sx={{ fontWeight: 700, color: "text.primary" }}>
+                      {pendingNegociation} négociation{pendingNegociation > 1 ? "s" : ""} en cours
+                    </Typography>
+                    <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+                      Messages à analyser ou réponses à envoyer
+                    </Typography>
+                  </Box>
+                  <ArrowForwardRoundedIcon sx={{ fontSize: 16, color: "text.disabled" }} />
+                </Box>
+              )}
+
+              {pendingContracts > 0 && (
+                <Box
+                  component={Link}
+                  href="/contrats"
+                  sx={{
+                    display: "flex", alignItems: "center", gap: 1.5,
+                    p: 1.25, borderRadius: 2, textDecoration: "none",
+                    border: `1px solid ${alpha("#66BB6A", 0.3)}`,
+                    bgcolor: alpha("#66BB6A", 0.05),
+                    "&:hover": { bgcolor: alpha("#66BB6A", 0.1) },
+                    transition: "background-color 150ms ease",
+                  }}
+                >
+                  <NorthEastRoundedIcon sx={{ color: "success.main", fontSize: 20, flexShrink: 0 }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="bodySmall" sx={{ fontWeight: 700, color: "text.primary" }}>
+                      {pendingContracts} contrat{pendingContracts > 1 ? "s" : ""} à traiter
+                    </Typography>
+                    <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+                      Générer le PDF et envoyer au partenaire
+                    </Typography>
+                  </Box>
+                  <ArrowForwardRoundedIcon sx={{ fontSize: 16, color: "text.disabled" }} />
+                </Box>
+              )}
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── 2.2 — Pipeline Funnel ─────────────────────────────────── */}
       {loading ? <CardSkeleton height={140} /> : (
         <Card elevation={0} variant="outlined" sx={{ borderRadius: 3 }}>
@@ -569,6 +681,21 @@ export default function DashboardPage() {
                 </Box>
               ))}
             </Box>
+
+            {/* P5-01 — Perdu counter + conversion rate */}
+            {perduCount > 0 && (
+              <Box sx={{ mt: 1.5, display: "flex", alignItems: "center", gap: 1.25, flexWrap: "wrap" }}>
+                <Chip
+                  label={`${perduCount} perdu${perduCount > 1 ? "s" : ""}`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontWeight: 700, fontSize: "0.6875rem", borderStyle: "dashed" }}
+                />
+                <Typography variant="labelSmall" color="text.disabled" sx={{ fontSize: "0.6875rem" }}>
+                  {perduPct}% des prospects ayant atteint la négociation ont été perdus
+                </Typography>
+              </Box>
+            )}
           </CardContent>
         </Card>
       )}

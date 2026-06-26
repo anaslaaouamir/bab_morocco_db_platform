@@ -139,13 +139,13 @@
 
 ## AREA 5 â€” Dashboard
 
-- [ ] **P5-01 â€” `perdu` stage not counted; no conversion rate**
+- [x] **P5-01 â€” `perdu` stage not counted; no conversion rate**
   - **Layer:** Missing Frontend Only
   - **Backend:** All data present in `allProspects`.
   - **Frontend gap:** Dashboard funnel only includes `prospection â†’ activation_ota`. Prospects in `perdu` are silently excluded. No stat shows negotiation â†’ conversion vs abandonment rate.
   - **Fix:** Add a "Perdus" counter chip below the funnel showing count + "X% des nÃ©gociations perdues". Derivable from `allProspects` already loaded.
 
-- [ ] **P5-02 â€” No "Actions en attente" section**
+- [x] **P5-02 â€” No “Actions en attente” section**
   - **Layer:** Missing Frontend Only
   - **Backend:** All necessary data already returned by existing endpoints.
   - **Frontend gap:** Dashboard has no action queue. Users must navigate to each page to find what needs attention â€” pending email validations, negotiations awaiting reply, contracts with human review flags.
