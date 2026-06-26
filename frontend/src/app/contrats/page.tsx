@@ -114,13 +114,20 @@ function ContractCard({
     ? new Date(contract.signed_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })
     : null;
 
-  // Label for the primary action button
+  // Label for the primary action button (null = no button, just open dialog on status chip click)
   const actionLabel = (() => {
     if (contract.status === "signed" || contract.status === "declined") return null;
-    if (contract.status === "sent_to_partner") return "Réponse reçue ?";
+    if (contract.status === "sent_to_partner") return null; // replaced by status chip below
     if (contract.status === "generated") return "Envoyer au partenaire";
     return "Générer le contrat";
   })();
+
+  // For sent_to_partner: show a clickable status chip instead of a button
+  const sentStatusChip = contract.status === "sent_to_partner" ? (
+    contract.partner_reply
+      ? { label: "Réponse reçue", color: "success" as const }
+      : { label: "En attente de réponse", color: "warning" as const }
+  ) : null;
 
   return (
     <Card
@@ -272,12 +279,25 @@ function ContractCard({
               size="small"
               variant="contained"
               disableElevation
-              startIcon={contract.status === "sent_to_partner" ? <HourglassTopRoundedIcon /> : <PictureAsPdfRoundedIcon />}
+              startIcon={<PictureAsPdfRoundedIcon />}
               onClick={() => onOpenDialog(contract, prospect)}
               sx={{ fontWeight: 600, textTransform: "none", borderRadius: 2 }}
             >
               {actionLabel}
             </Button>
+          )}
+
+          {sentStatusChip && (
+            <Chip
+              label={sentStatusChip.label}
+              color={sentStatusChip.color}
+              size="small"
+              icon={sentStatusChip.color === "success"
+                ? <CheckCircleRoundedIcon sx={{ fontSize: "14px !important" }} />
+                : <HourglassTopRoundedIcon sx={{ fontSize: "14px !important" }} />}
+              onClick={() => onOpenDialog(contract, prospect)}
+              sx={{ fontWeight: 700, fontSize: "0.6875rem", cursor: "pointer" }}
+            />
           )}
 
           {contract.has_pdf && (

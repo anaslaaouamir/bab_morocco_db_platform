@@ -423,35 +423,19 @@ function SentPanel({
         </Box>
       )}
 
-      {/* DEV chips */}
-      {IS_DEV && (
-        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", pt: 0.5 }}>
-          {!hasReply && (
-            <Chip
-              label={simulatingReply ? "Simulation réponse…" : "[DEV] Simuler réponse du partenaire →"}
-              size="small"
-              color="info"
-              variant="outlined"
-              onClick={simulatingReply ? undefined : onSimulateReply}
-              icon={simulatingReply ? <CircularProgress size={10} color="inherit" /> : undefined}
-              sx={{
-                height: 22, fontSize: "0.5625rem", fontWeight: 700,
-                cursor: simulatingReply ? "default" : "pointer",
-                borderStyle: "dashed",
-                "& .MuiChip-label": { px: 1 },
-              }}
-            />
-          )}
+      {/* DEV chip — simulate reply only, shown while waiting */}
+      {IS_DEV && !hasReply && (
+        <Box sx={{ pt: 0.5 }}>
           <Chip
-            label={actioning ? "Simulation…" : "[DEV] Simuler signature complète →"}
+            label={simulatingReply ? "Simulation réponse…" : "[DEV] Simuler réponse du partenaire →"}
             size="small"
-            color="warning"
+            color="info"
             variant="outlined"
-            onClick={actioning ? undefined : onSimulateSigned}
-            icon={actioning ? <CircularProgress size={10} color="inherit" /> : undefined}
+            onClick={simulatingReply ? undefined : onSimulateReply}
+            icon={simulatingReply ? <CircularProgress size={10} color="inherit" /> : undefined}
             sx={{
               height: 22, fontSize: "0.5625rem", fontWeight: 700,
-              cursor: actioning ? "default" : "pointer",
+              cursor: simulatingReply ? "default" : "pointer",
               borderStyle: "dashed",
               "& .MuiChip-label": { px: 1 },
             }}
