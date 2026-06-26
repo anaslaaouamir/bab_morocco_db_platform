@@ -35,6 +35,7 @@ import EscalatorRoundedIcon from "@mui/icons-material/EscalatorRounded";
 import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
 import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import BlockRoundedIcon from "@mui/icons-material/BlockRounded";
 import ForumRoundedIcon from "@mui/icons-material/ForumRounded";
 import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
@@ -682,6 +683,10 @@ export default function NegociationPage() {
   const [confirmConclude, setConfirmConclude] = useState(false);
   const [concluding, setConcluding] = useState(false);
 
+  // abandon / perdu
+  const [confirmAbandon, setConfirmAbandon] = useState(false);
+  const [abandoning, setAbandoning] = useState(false);
+
   // ── Data fetching ─────────────────────────────────────────────────
 
   async function fetchProspects() {
@@ -828,6 +833,32 @@ export default function NegociationPage() {
       });
     } finally {
       setConcluding(false);
+    }
+  }
+
+  // ── Abandon → perdu ──────────────────────────────────────────────
+
+  async function handleAbandon() {
+    if (!selectedId || !selectedProspect) return;
+    setAbandoning(true);
+    try {
+      await prospectsApi.patchStage(selectedId, "perdu");
+      setProspects((prev) => prev.filter((p) => p.id !== selectedId));
+      setSelectedId(null);
+      setConfirmAbandon(false);
+      showSnackbar({
+        message: `${selectedProspect.nom} marqué comme perdu.`,
+        severity: "warning",
+        duration: 4000,
+      });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de l'abandon.",
+        severity: "error",
+        duration: 5000,
+      });
+    } finally {
+      setAbandoning(false);
     }
   }
 
@@ -1020,6 +1051,18 @@ export default function NegociationPage() {
                           sx={{ fontWeight: 700, textTransform: "none", borderRadius: 2, fontSize: "0.75rem" }}
                         >
                           Conclure
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Abandonner la négociation — marquer comme Perdu" placement="top">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          startIcon={<BlockRoundedIcon />}
+                          onClick={() => setConfirmAbandon(true)}
+                          sx={{ fontWeight: 700, textTransform: "none", borderRadius: 2, fontSize: "0.75rem" }}
+                        >
+                          Abandonner
                         </Button>
                       </Tooltip>
                       <Tooltip title="Soumettre un nouveau message" placement="top">
@@ -1260,6 +1303,28 @@ export default function NegociationPage() {
         }
         confirmLabel={concluding ? "En cours…" : "Conclure & aller aux Contrats"}
         confirmColor="success"
+      />
+
+      {/* Abandon → Perdu confirmation */}
+      <ConfirmationDialog
+        open={confirmAbandon}
+        onClose={() => { if (!abandoning) setConfirmAbandon(false); }}
+        onConfirm={handleAbandon}
+        title="Abandonner la négociation ?"
+        description={
+          <Box>
+            <Typography variant="bodyMedium" sx={{ mb: 1 }}>
+              Cette action marque définitivement{" "}
+              <strong>{selectedProspect?.nom}</strong> comme <strong>Perdu</strong>.
+            </Typography>
+            <Typography variant="bodySmall" color="text.secondary">
+              Conformément à la politique Bab Morocco (§9), cette décision est irréversible
+              et nécessite une confirmation humaine. Le prospect sera retiré du pipeline.
+            </Typography>
+          </Box>
+        }
+        confirmLabel={abandoning ? "En cours…" : "Confirmer l'abandon"}
+        confirmColor="error"
       />
     </Box>
   );

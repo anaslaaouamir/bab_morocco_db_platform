@@ -132,6 +132,28 @@ async def test_patch_stage(client):
 
 
 @pytest.mark.anyio
+async def test_abandon_negociation_marks_perdu(client):
+    """
+    Abandoning a negotiation moves prospect to 'perdu' (CLAUDE.md §9 — human decision required).
+    Verifies the stage transition works and is permanent.
+    """
+    create_resp = await client.post(BASE, json=MINIMAL_PROSPECT)
+    prospect_id = create_resp.json()["id"]
+
+    # Move through pipeline to negociation
+    await client.patch(f"{BASE}/{prospect_id}/stage", json={"stage": "negociation"})
+
+    # Human decides to abandon
+    resp = await client.patch(f"{BASE}/{prospect_id}/stage", json={"stage": "perdu"})
+    assert resp.status_code == 200
+    assert resp.json()["stage"] == "perdu"
+
+    # Verify persisted
+    get_resp = await client.get(f"{BASE}/{prospect_id}")
+    assert get_resp.json()["stage"] == "perdu"
+
+
+@pytest.mark.anyio
 async def test_delete_prospect(client):
     create_resp = await client.post(BASE, json=MINIMAL_PROSPECT)
     prospect_id = create_resp.json()["id"]
