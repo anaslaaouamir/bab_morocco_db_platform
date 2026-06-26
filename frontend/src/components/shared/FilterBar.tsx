@@ -6,6 +6,8 @@ import Chip from "@mui/material/Chip";
 import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Tooltip from "@mui/material/Tooltip";
 import Badge from "@mui/material/Badge";
@@ -14,6 +16,7 @@ import FilterListRoundedIcon from "@mui/icons-material/FilterListRounded";
 import KeyboardArrowUpRoundedIcon from "@mui/icons-material/KeyboardArrowUpRounded";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 
 import type { PartnerType, PipelineStage } from "@/types/prospect";
 import {
@@ -202,6 +205,42 @@ export default function FilterBar({
           minHeight: 36,
         }}
       >
+        {/* Search field */}
+        <TextField
+          size="small"
+          placeholder="Rechercher un prospect…"
+          value={value.search}
+          onChange={(e) => onChange({ ...value, search: e.target.value })}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchRoundedIcon sx={{ fontSize: 16, color: "text.disabled" }} />
+                </InputAdornment>
+              ),
+              endAdornment: value.search ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => onChange({ ...value, search: "" })}
+                    aria-label="Effacer la recherche"
+                    edge="end"
+                    sx={{ p: 0.25 }}
+                  >
+                    <CloseRoundedIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            },
+          }}
+          sx={{
+            minWidth: 200,
+            maxWidth: 300,
+            "& .MuiInputBase-root": { height: 32, fontSize: "0.8125rem", borderRadius: 2 },
+            "& .MuiInputBase-input": { py: 0, px: 1 },
+          }}
+        />
+
         {/* Toggle button */}
         <Tooltip title={expanded ? "Masquer les filtres" : "Afficher les filtres"}>
           <Badge

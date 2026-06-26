@@ -155,13 +155,13 @@
 
 ## AREA 6 â€” General UI / Global Polish
 
-- [ ] **P6-01 â€” No global prospect name search**
+- [x] **P6-01 â€” No global prospect name search**
   - **Layer:** Missing Frontend Only
   - **Backend:** `GET /prospects` supports filtering by `stage`, `type`, `pays`, `langue`, `score_min` but not by text search on `nom`.
   - **Frontend gap:** `FilterBar` has filter chips (stage, type, country) but no text input. With 200+ prospects, finding one by name requires scrolling.
   - **Fix (client-side only):** Add a search `TextField` in `FilterBar` that filters `allProspects` client-side by `nom.toLowerCase().includes(query)`. No backend change needed since all prospects are already loaded.
 
-- [ ] **P6-02 â€” No backend health indicator in the UI**
+- [x] **P6-02 â€” No backend health indicator in the UI**
   - **Layer:** Missing Frontend Only
   - **Backend:** `GET /health` exists in `routers/health.py` and returns `{ status, version, db }`.
   - **Frontend gap:** If the backend is unreachable, individual pages show their own error alerts. The Dashboard shows a loading skeleton forever. No global banner warns the user the API is down.

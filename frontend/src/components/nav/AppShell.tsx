@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import ButtonBase from "@mui/material/ButtonBase";
@@ -12,6 +13,7 @@ import BottomNavigation from "@mui/material/BottomNavigation";
 import BottomNavigationAction from "@mui/material/BottomNavigationAction";
 import { alpha } from "@mui/material/styles";
 import navItems, { isActive } from "./navItems";
+import { healthApi } from "@/lib/api";
 
 // MD3 Navigation Rail dimensions
 const RAIL_WIDTH = 80;
@@ -229,6 +231,11 @@ export default function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [backendDown, setBackendDown] = useState(false);
+
+  useEffect(() => {
+    healthApi.check().catch(() => setBackendDown(true));
+  }, []);
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -238,12 +245,20 @@ export default function AppShell({
         component="main"
         sx={{
           flex: 1,
-          minWidth: 0, // prevent flex child from overflowing
-          // Reserve space for the fixed bottom bar on mobile
+          minWidth: 0,
           pb: { xs: `${NAV_BAR_HEIGHT}px`, md: 0 },
           bgcolor: "background.default",
         }}
       >
+        {backendDown && (
+          <Alert
+            severity="error"
+            variant="filled"
+            sx={{ borderRadius: 0, fontSize: "0.8125rem" }}
+          >
+            Backend inaccessible — vérifiez que le serveur est démarré.
+          </Alert>
+        )}
         {children}
       </Box>
 

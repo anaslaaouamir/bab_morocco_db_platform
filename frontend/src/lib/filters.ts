@@ -8,6 +8,7 @@ export interface FilterState {
   stages: PipelineStage[];    // empty = all stages shown
   scoreMin: 75 | 85 | null;  // null = no minimum
   marches: string[];          // 'Maroc' | 'France' | 'EAU' | 'Golfe' — empty = all
+  search: string;             // free-text filter on prospect name
 }
 
 export const EMPTY_FILTERS: FilterState = {
@@ -15,6 +16,7 @@ export const EMPTY_FILTERS: FilterState = {
   stages: [],
   scoreMin: null,
   marches: [],
+  search: "",
 };
 
 export function hasActiveFilters(f: FilterState): boolean {
@@ -22,7 +24,8 @@ export function hasActiveFilters(f: FilterState): boolean {
     f.types.length > 0 ||
     f.stages.length > 0 ||
     f.scoreMin !== null ||
-    f.marches.length > 0
+    f.marches.length > 0 ||
+    f.search.trim() !== ""
   );
 }
 
@@ -31,7 +34,8 @@ export function countActiveFilters(f: FilterState): number {
     f.types.length +
     f.stages.length +
     (f.scoreMin !== null ? 1 : 0) +
-    f.marches.length
+    f.marches.length +
+    (f.search.trim() !== "" ? 1 : 0)
   );
 }
 
@@ -60,7 +64,9 @@ export function applyFilters(
   prospects: Prospect[],
   filters: FilterState
 ): Prospect[] {
+  const q = filters.search.trim().toLowerCase();
   return prospects.filter((p) => {
+    if (q && !p.nom.toLowerCase().includes(q)) return false;
     if (filters.types.length > 0 && !filters.types.includes(p.type)) return false;
     if (filters.stages.length > 0 && !filters.stages.includes(p.stage)) return false;
     if (filters.scoreMin !== null && scoreTotal(p.score) < filters.scoreMin) return false;
