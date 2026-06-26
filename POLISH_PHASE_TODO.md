@@ -67,19 +67,19 @@
 
 ## AREA 2 â€” Outreach
 
-- [ ] **P2-01 â€” No empty state on main Outreach panel**
+- [x] **P2-01 â€” No empty state on main Outreach panel**
   - **Layer:** Missing Frontend Only
   - **Backend:** No gap.
   - **Frontend gap:** When a prospect is in `outreach` stage but has no generated emails (manually moved to outreach), the main Outreach page right panel shows nothing useful. The "GÃ©nÃ©rer les variantes J0" empty state exists in `ProspectDrawer`'s `OutreachSection` but not on the main outreach page.
   - **Fix:** Mirror the empty state from `ProspectDrawer` into the right panel of `outreach/page.tsx` when the selected prospect has zero emails.
 
-- [ ] **P2-02 â€” No inline email body editing before send**
+- [x] **P2-02 â€” No inline email body editing before send**
   - **Layer:** Missing Both
   - **Backend:** No `PATCH /outreach/{id}/body` endpoint exists. Email body is set at generation time and immutable.
   - **Frontend gap:** The email body card is read-only; only variant A/B/C selection is possible.
   - **Fix (minimal, frontend-only):** Add an "Ã‰diter" toggle (pencil icon) that switches the body `<Box>` to a `<TextField multiline>`. The locally-edited text is passed to the send action as a modified payload. The `POST /outreach/{email_id}/send` call can carry an optional `body_override` if we add a backend field, or the edit can be purely cosmetic for the mock phase.
 
-- [ ] **P2-03 â€” No outreach stats on Dashboard**
+- [x] **P2-03 â€” No outreach stats on Dashboard**
   - **Layer:** Missing Frontend Only
   - **Backend:** All email status data is in `outreach_emails` table. The `/prospects/stats` endpoint returns `nb_par_stage` which includes `outreach` count.
   - **Frontend gap:** Dashboard has no outreach funnel metric (emails sent, follow-up steps completed). All data is derivable from `allProspects` already loaded.

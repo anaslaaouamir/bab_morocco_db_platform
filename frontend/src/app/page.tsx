@@ -803,6 +803,42 @@ export default function DashboardPage() {
                 Séquences outreach actives
               </SectionTitle>
 
+              {/* P2-03 — Outreach KPI chips */}
+              <Box sx={{ display: "flex", gap: 0.75, mb: 1.5, flexWrap: "wrap" }}>
+                <Chip
+                  label={
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                      <Typography component="span" sx={{ fontWeight: 800, fontSize: "0.8125rem", lineHeight: 1 }}>
+                        {outreachProspects.length}
+                      </Typography>
+                      <Typography component="span" sx={{ fontSize: "0.6875rem", opacity: 0.85 }}>
+                        en outreach
+                      </Typography>
+                    </Box>
+                  }
+                  color="warning"
+                  variant="outlined"
+                  size="small"
+                  sx={{ height: 26, "& .MuiChip-label": { px: 1 } }}
+                />
+                <Chip
+                  label={
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                      <Typography component="span" sx={{ fontWeight: 800, fontSize: "0.8125rem", lineHeight: 1 }}>
+                        {outreachProspects.filter((p) => !!p.dateProchainContact).length}
+                      </Typography>
+                      <Typography component="span" sx={{ fontSize: "0.6875rem", opacity: 0.85 }}>
+                        email envoyé
+                      </Typography>
+                    </Box>
+                  }
+                  color="success"
+                  variant="outlined"
+                  size="small"
+                  sx={{ height: 26, "& .MuiChip-label": { px: 1 } }}
+                />
+              </Box>
+
               {outreachProspects.length === 0 ? (
                 <Typography variant="bodySmall" color="text.secondary">
                   Aucune séquence active.
