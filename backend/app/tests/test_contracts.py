@@ -362,6 +362,40 @@ async def test_simulate_signed_requires_generated_status(client: AsyncClient):
 
 # ── 9. Submit partner reply ──────────────────────────────────────────────────
 
+async def test_declined_contract_resets_to_draft_on_reclosing(client: AsyncClient):
+    """
+    Full re-engagement flow: close → generate → send → decline → back to negociation
+    → re-close → contract must reset to draft (Option A).
+    """
+    p = await _create_prospect(client, adresse_web=f"https://riad-retry-{uuid.uuid4().hex[:4]}.ma")
+    await _move_to_closing(client, p["id"])
+
+    r_list = await client.get("/contracts")
+    contract = next(c for c in r_list.json()["items"] if c["prospect_id"] == p["id"])
+    contract_id = contract["id"]
+
+    # Full flow up to declined
+    await client.post(f"/contracts/{contract_id}/generate")
+    await client.post(f"/contracts/{contract_id}/send")
+    await client.post(f"/contracts/{contract_id}/mark-declined")
+
+    r = await client.get(f"/contracts/{contract_id}")
+    assert r.json()["status"] == "declined"
+
+    # Prospect is now in negociation — re-close
+    await client.patch(f"/prospects/{p['id']}/stage", json={"stage": "closing"})
+
+    # Same contract id must now be draft again
+    r = await client.get(f"/contracts/{contract_id}")
+    data = r.json()
+    assert data["status"] == "draft"
+    assert data["has_pdf"] is False
+    assert data["clauses"] is None
+    assert data["partner_reply"] is None
+    assert data["declined_at"] is None
+    assert data["sent_at"] is None
+
+
 async def test_simulate_partner_reply(client: AsyncClient):
     """POST /simulate-reply → injects mock reply text with PDF mention."""
     p = await _create_prospect(client)

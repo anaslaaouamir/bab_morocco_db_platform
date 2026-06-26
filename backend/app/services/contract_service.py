@@ -107,6 +107,25 @@ class ContractService:
         """
         existing = await self._get_by_prospect(db, prospect.id)
         if existing:
+            if existing.status != "declined":
+                return existing
+            # Prospect renegotiated and closed again — reset declined contract to fresh draft
+            existing.status = "draft"
+            existing.clauses_json = None
+            existing.pdf_bytes = None
+            existing.partner_reply = None
+            existing.partner_replied_at = None
+            existing.sent_at = None
+            existing.signed_at = None
+            existing.declined_at = None
+            requires_human, reason = _check_human_review(prospect, estimated_annual_value)
+            existing.human_review_required = requires_human
+            existing.human_review_reason = reason
+            existing.commission = prospect.commission_standard
+            existing.updated_at = datetime.utcnow()
+            await db.commit()
+            await db.refresh(existing)
+            logger.info("[CONTRACT] Declined contract reset to draft — prospect=%s", prospect.id)
             return existing
 
         requires_human, reason = _check_human_review(prospect, estimated_annual_value)
