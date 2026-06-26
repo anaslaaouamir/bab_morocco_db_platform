@@ -41,6 +41,10 @@ class Contract(Base):
     human_review_required: Mapped[bool] = mapped_column(Boolean, default=False)
     human_review_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    # Partner reply — submitted by the user after reading the partner's email response
+    partner_reply: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    partner_replied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Timestamps
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

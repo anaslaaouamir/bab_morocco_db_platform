@@ -243,6 +243,12 @@ export const contractsApi = {
 
   simulateSigned: (contractId: string): Promise<RawContract> =>
     apiFetch<RawContract>(`/contracts/${contractId}/simulate-signed`, { method: "POST" }),
+
+  submitReply: (contractId: string, replyText: string): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}/submit-reply`, {
+      method: "POST",
+      body: JSON.stringify({ reply_text: replyText }),
+    }),
 };
 
 // ─── Negotiation ──────────────────────────────────────────────────────────────

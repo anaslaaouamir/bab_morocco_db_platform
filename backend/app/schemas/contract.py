@@ -10,6 +10,10 @@ class ContractCreate(BaseModel):
     estimated_annual_value: Optional[float] = None
 
 
+class PartnerReplySubmit(BaseModel):
+    reply_text: str
+
+
 class ContractClauses(BaseModel):
     parties: str
     objet: str
@@ -38,6 +42,8 @@ class ContractResponse(BaseModel):
     has_pdf: bool
     human_review_required: bool
     human_review_reason: Optional[str]
+    partner_reply: Optional[str]
+    partner_replied_at: Optional[datetime]
     sent_at: Optional[datetime]
     signed_at: Optional[datetime]
     declined_at: Optional[datetime]

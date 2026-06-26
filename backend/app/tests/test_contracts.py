@@ -360,7 +360,59 @@ async def test_simulate_signed_requires_generated_status(client: AsyncClient):
     assert r.status_code == 400
 
 
-# ── 9. Full end-to-end lifecycle ─────────────────────────────────────────────
+# ── 9. Submit partner reply ──────────────────────────────────────────────────
+
+async def test_submit_reply_stores_text(client: AsyncClient):
+    """POST /submit-reply → partner_reply stored, partner_replied_at set."""
+    p = await _create_prospect(client)
+    await _move_to_closing(client, p["id"])
+    r_create = await client.post("/contracts", json={"prospect_id": p["id"]})
+    contract_id = r_create.json()["id"]
+    await client.post(f"/contracts/{contract_id}/generate")
+    await client.post(f"/contracts/{contract_id}/send")
+
+    reply_text = "Bonjour, nous acceptons les conditions. Veuillez trouver le contrat signé ci-joint."
+    r = await client.post(f"/contracts/{contract_id}/submit-reply", json={"reply_text": reply_text})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["partner_reply"] == reply_text
+    assert data["partner_replied_at"] is not None
+    assert data["status"] == "sent_to_partner"  # status unchanged — user still decides
+
+
+async def test_submit_reply_wrong_status_returns_400(client: AsyncClient):
+    """Cannot submit reply if contract is not in sent_to_partner status."""
+    p = await _create_prospect(client)
+    await _move_to_closing(client, p["id"])
+    r_create = await client.post("/contracts", json={"prospect_id": p["id"]})
+    contract_id = r_create.json()["id"]
+    await client.post(f"/contracts/{contract_id}/generate")
+    # Not sent yet — still at generated status
+
+    r = await client.post(f"/contracts/{contract_id}/submit-reply", json={"reply_text": "Bonjour"})
+    assert r.status_code == 400
+
+
+async def test_submit_reply_then_mark_signed(client: AsyncClient):
+    """Full flow: send → submit reply → mark signed."""
+    p = await _create_prospect(client)
+    await _move_to_closing(client, p["id"])
+    r_create = await client.post("/contracts", json={"prospect_id": p["id"]})
+    contract_id = r_create.json()["id"]
+    await client.post(f"/contracts/{contract_id}/generate")
+    await client.post(f"/contracts/{contract_id}/send")
+    await client.post(f"/contracts/{contract_id}/submit-reply",
+                      json={"reply_text": "Nous acceptons et signons le contrat."})
+
+    r = await client.post(f"/contracts/{contract_id}/mark-signed")
+    assert r.status_code == 200
+    assert r.json()["status"] == "signed"
+
+    r_prospect = await client.get(f"/prospects/{p['id']}")
+    assert r_prospect.json()["stage"] == "activation_ota"
+
+
+# ── 10. Full end-to-end lifecycle ───────────────────────────────────────────
 
 async def test_full_contract_lifecycle(client: AsyncClient):
     """

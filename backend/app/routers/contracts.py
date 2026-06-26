@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
 from app.models.prospect import Prospect
-from app.schemas.contract import ContractCreate, ContractListResponse, ContractResponse
+from app.schemas.contract import ContractCreate, ContractListResponse, ContractResponse, PartnerReplySubmit
 from app.services.contract_generator import ContractGeneratorProtocol, get_contract_generator
 from app.services.contract_service import ContractService
 
@@ -120,6 +120,26 @@ async def send_to_partner(
     contract = await _get_contract_or_404(contract_id, svc, db)
     try:
         contract = await svc.send_to_partner(db, contract)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return await svc.get_response(contract)
+
+
+@router.post("/{contract_id}/submit-reply", response_model=ContractResponse)
+async def submit_partner_reply(
+    contract_id: uuid.UUID,
+    body: PartnerReplySubmit,
+    db: AsyncSession = Depends(get_session),
+    svc: ContractService = Depends(get_contract_service),
+):
+    """
+    Submit the partner's email reply into the platform.
+    The user pastes the reply text after reading their inbox.
+    Status stays sent_to_partner — user still decides signed/declined.
+    """
+    contract = await _get_contract_or_404(contract_id, svc, db)
+    try:
+        contract = await svc.submit_reply(db, contract, body.reply_text)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return await svc.get_response(contract)

@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.contract import Contract
 from app.models.prospect import Prospect
-from app.schemas.contract import ContractClauses, ContractResponse
+from app.schemas.contract import ContractClauses, ContractResponse, PartnerReplySubmit
 from app.services.contract_generator import (
     COMMISSION_FLOORS,
     ContractGeneratorProtocol,
@@ -77,6 +77,8 @@ def _contract_to_response(contract: Contract) -> ContractResponse:
         has_pdf=contract.pdf_bytes is not None,
         human_review_required=contract.human_review_required,
         human_review_reason=contract.human_review_reason,
+        partner_reply=contract.partner_reply,
+        partner_replied_at=contract.partner_replied_at,
         sent_at=contract.sent_at,
         signed_at=contract.signed_at,
         declined_at=contract.declined_at,
@@ -254,6 +256,25 @@ class ContractService:
         await db.refresh(contract)
 
         logger.info("[CONTRACT] Declined — prospect=%s returned to negociation", prospect.id)
+        return contract
+
+    async def submit_reply(self, db: AsyncSession, contract: Contract, reply_text: str) -> Contract:
+        """
+        Record the partner's email reply in the platform.
+        Must be in sent_to_partner status. Does not change status — user still
+        decides whether to mark signed or declined after reading the reply.
+        """
+        if contract.status != "sent_to_partner":
+            raise ValueError(f"Cannot submit reply for contract in status '{contract.status}'")
+
+        contract.partner_reply = reply_text.strip()
+        contract.partner_replied_at = datetime.utcnow()
+        contract.updated_at = datetime.utcnow()
+
+        await db.commit()
+        await db.refresh(contract)
+
+        logger.info("[CONTRACT] Partner reply recorded — contract=%s", contract.id)
         return contract
 
     # ── Queries ───────────────────────────────────────────────────────────────

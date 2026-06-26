@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 
 import Alert from "@mui/material/Alert";
+import TextField from "@mui/material/TextField";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -31,6 +32,8 @@ import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
 import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
+import EditNoteRoundedIcon from "@mui/icons-material/EditNoteRounded";
+import ForwardToInboxRoundedIcon from "@mui/icons-material/ForwardToInboxRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import ThumbDownRoundedIcon from "@mui/icons-material/ThumbDownRounded";
@@ -279,26 +282,34 @@ function GeneratedPanel({
 }
 
 function SentPanel({
-  contract, prospect, onMarkSigned, onMarkDeclined, onSimulateSigned, actioning,
+  contract, prospect, onMarkSigned, onMarkDeclined, onSimulateSigned, onSubmitReply, actioning, submittingReply,
 }: {
   contract: RawContract;
   prospect: Prospect;
   onMarkSigned: () => void;
   onMarkDeclined: () => void;
   onSimulateSigned: () => void;
+  onSubmitReply: (text: string) => void;
   actioning: boolean;
+  submittingReply: boolean;
 }) {
   const theme = useTheme();
+  const [replyText, setReplyText] = useState("");
+  const hasReply = !!contract.partner_reply;
+
   const sentDate = contract.sent_at
     ? new Date(contract.sent_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
     : "—";
+  const repliedDate = contract.partner_replied_at
+    ? new Date(contract.partner_replied_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+    : null;
   const daysSince = contract.sent_at
     ? Math.floor((Date.now() - new Date(contract.sent_at).getTime()) / (1000 * 60 * 60 * 24))
     : 0;
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {/* Status */}
+      {/* Sent status banner */}
       <Box sx={{
         display: "flex", alignItems: "center", gap: 1.5, p: 1.5, borderRadius: 2,
         bgcolor: alpha(theme.palette.warning.main, 0.08),
@@ -328,43 +339,111 @@ function SentPanel({
         </Button>
       </Box>
 
-      {/* Inbox monitoring reminder */}
-      <Alert severity="info" icon={<MarkEmailReadRoundedIcon />} sx={{ borderRadius: 2 }}>
-        <Typography variant="bodySmall">
-          Surveillez votre boîte email pour la réponse de <strong>{prospect.nom}</strong>.
-          Dès qu&apos;il répond (signé ou refusé), marquez le résultat ci-dessous.
-        </Typography>
-      </Alert>
-
       <Divider />
 
-      {/* Action buttons */}
-      <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
-        Le partenaire a répondu ?
-      </Typography>
-      <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-        <Button
-          variant="contained"
-          disableElevation
-          color="success"
-          startIcon={actioning ? <CircularProgress size={16} color="inherit" /> : <ThumbUpRoundedIcon />}
-          onClick={onMarkSigned}
-          disabled={actioning}
-          sx={{ fontWeight: 700, textTransform: "none" }}
-        >
-          Marquer comme signé
-        </Button>
-        <Button
-          variant="outlined"
-          color="error"
-          startIcon={actioning ? <CircularProgress size={16} color="inherit" /> : <ThumbDownRoundedIcon />}
-          onClick={onMarkDeclined}
-          disabled={actioning}
-          sx={{ fontWeight: 700, textTransform: "none" }}
-        >
-          Marquer comme refusé
-        </Button>
-      </Box>
+      {/* Partner reply section */}
+      {hasReply ? (
+        /* ── Reply already submitted — show it as a message bubble ── */
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <MarkEmailReadRoundedIcon sx={{ color: "info.main", fontSize: 18 }} />
+            <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
+              Réponse du partenaire
+            </Typography>
+            {repliedDate && (
+              <Typography variant="labelSmall" color="text.secondary" sx={{ ml: "auto" }}>
+                reçue le {repliedDate}
+              </Typography>
+            )}
+          </Box>
+          <Box sx={{
+            p: 2, borderRadius: 2,
+            bgcolor: alpha(theme.palette.info.main, 0.06),
+            border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
+            whiteSpace: "pre-wrap",
+          }}>
+            {contract.partner_reply!.split("\n").map((line, i) => (
+              <Typography key={i} variant="bodySmall" sx={{ display: "block", lineHeight: 1.7 }}>
+                {line || <br />}
+              </Typography>
+            ))}
+          </Box>
+          <Alert severity="info" sx={{ borderRadius: 2, py: 0.5 }}>
+            <Typography variant="bodySmall">
+              Lisez la réponse ci-dessus et décidez du résultat. Si le partenaire a joint un PDF signé,
+              consultez-le dans votre boîte mail puis cliquez <strong>Signé</strong>.
+            </Typography>
+          </Alert>
+        </Box>
+      ) : (
+        /* ── No reply yet — inbox paste area ── */
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <ForwardToInboxRoundedIcon sx={{ color: "primary.main", fontSize: 18 }} />
+            <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
+              Réponse reçue du partenaire ?
+            </Typography>
+          </Box>
+          <Typography variant="bodySmall" color="text.secondary">
+            Quand le partenaire répond à votre email, collez son message ici. Il sera enregistré
+            dans la plateforme et vous pourrez décider du résultat.
+          </Typography>
+          <TextField
+            multiline
+            minRows={4}
+            maxRows={10}
+            placeholder={`Coller ici la réponse email de ${prospect.nom}…`}
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            disabled={submittingReply}
+            size="small"
+            sx={{ "& .MuiInputBase-root": { borderRadius: 2, fontSize: "0.8125rem" } }}
+          />
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={submittingReply ? <CircularProgress size={16} color="inherit" /> : <EditNoteRoundedIcon />}
+            onClick={() => onSubmitReply(replyText)}
+            disabled={submittingReply || replyText.trim().length < 10}
+            sx={{ fontWeight: 700, textTransform: "none", alignSelf: "flex-start" }}
+          >
+            {submittingReply ? "Enregistrement…" : "Enregistrer la réponse"}
+          </Button>
+        </Box>
+      )}
+
+      {/* Decision buttons — shown only once reply is submitted */}
+      {hasReply && (
+        <>
+          <Divider />
+          <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
+            Votre décision
+          </Typography>
+          <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+            <Button
+              variant="contained"
+              disableElevation
+              color="success"
+              startIcon={actioning ? <CircularProgress size={16} color="inherit" /> : <ThumbUpRoundedIcon />}
+              onClick={onMarkSigned}
+              disabled={actioning}
+              sx={{ fontWeight: 700, textTransform: "none" }}
+            >
+              Marquer comme signé
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={actioning ? <CircularProgress size={16} color="inherit" /> : <ThumbDownRoundedIcon />}
+              onClick={onMarkDeclined}
+              disabled={actioning}
+              sx={{ fontWeight: 700, textTransform: "none" }}
+            >
+              Marquer comme refusé
+            </Button>
+          </Box>
+        </>
+      )}
 
       {IS_DEV && (
         <Box sx={{ pt: 0.5 }}>
@@ -448,10 +527,11 @@ export default function ContractGenerateDialog({
 }: Props) {
   const { showSnackbar } = useSnackbar();
 
-  const [generating, setGenerating]     = useState(false);
-  const [sending, setSending]           = useState(false);
-  const [actioning, setActioning]       = useState(false);
-  const [confirmSign, setConfirmSign]   = useState(false);
+  const [generating, setGenerating]         = useState(false);
+  const [sending, setSending]               = useState(false);
+  const [actioning, setActioning]           = useState(false);
+  const [submittingReply, setSubmittingReply] = useState(false);
+  const [confirmSign, setConfirmSign]       = useState(false);
   const [confirmDecline, setConfirmDecline] = useState(false);
 
   const activeStep = statusToStep(contract.status);
@@ -535,6 +615,24 @@ export default function ContractGenerateDialog({
       });
     } finally {
       setActioning(false);
+    }
+  }
+
+  // ── Submit partner reply ──────────────────────────────────────────
+
+  async function handleSubmitReply(text: string) {
+    setSubmittingReply(true);
+    try {
+      const updated = await contractsApi.submitReply(contract.id, text);
+      onContractUpdate(updated);
+      showSnackbar({ message: "Réponse du partenaire enregistrée.", severity: "success" });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de l'enregistrement.",
+        severity: "error",
+      });
+    } finally {
+      setSubmittingReply(false);
     }
   }
 
@@ -640,7 +738,9 @@ export default function ContractGenerateDialog({
               onMarkSigned={() => setConfirmSign(true)}
               onMarkDeclined={() => setConfirmDecline(true)}
               onSimulateSigned={handleSimulateSigned}
+              onSubmitReply={handleSubmitReply}
               actioning={actioning}
+              submittingReply={submittingReply}
             />
           )}
           {(contract.status === "signed" || contract.status === "declined") && (
