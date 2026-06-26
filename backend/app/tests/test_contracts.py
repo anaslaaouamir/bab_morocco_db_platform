@@ -362,6 +362,39 @@ async def test_simulate_signed_requires_generated_status(client: AsyncClient):
 
 # ── 9. Submit partner reply ──────────────────────────────────────────────────
 
+async def test_simulate_partner_reply(client: AsyncClient):
+    """POST /simulate-reply → injects mock reply text with PDF mention."""
+    p = await _create_prospect(client)
+    await _move_to_closing(client, p["id"])
+    r_create = await client.post("/contracts", json={"prospect_id": p["id"]})
+    contract_id = r_create.json()["id"]
+    await client.post(f"/contracts/{contract_id}/generate")
+    await client.post(f"/contracts/{contract_id}/send")
+
+    r = await client.post(f"/contracts/{contract_id}/simulate-reply")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["partner_reply"] is not None
+    assert len(data["partner_reply"]) > 50
+    assert data["partner_replied_at"] is not None
+    assert data["status"] == "sent_to_partner"  # status unchanged
+    # Mock reply must mention PDF (so the PDF badge triggers in the UI)
+    assert "pdf" in data["partner_reply"].lower() or "pièce jointe" in data["partner_reply"].lower()
+
+
+async def test_simulate_partner_reply_wrong_status(client: AsyncClient):
+    """simulate-reply returns 400 if contract not in sent_to_partner."""
+    p = await _create_prospect(client)
+    await _move_to_closing(client, p["id"])
+    r_create = await client.post("/contracts", json={"prospect_id": p["id"]})
+    contract_id = r_create.json()["id"]
+    await client.post(f"/contracts/{contract_id}/generate")
+    # Not sent yet
+
+    r = await client.post(f"/contracts/{contract_id}/simulate-reply")
+    assert r.status_code == 400
+
+
 async def test_submit_reply_stores_text(client: AsyncClient):
     """POST /submit-reply → partner_reply stored, partner_replied_at set."""
     p = await _create_prospect(client)

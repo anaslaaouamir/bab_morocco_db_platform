@@ -249,6 +249,9 @@ export const contractsApi = {
       method: "POST",
       body: JSON.stringify({ reply_text: replyText }),
     }),
+
+  simulateReply: (contractId: string): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}/simulate-reply`, { method: "POST" }),
 };
 
 // ─── Negotiation ──────────────────────────────────────────────────────────────

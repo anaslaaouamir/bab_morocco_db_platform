@@ -183,6 +183,25 @@ async def mark_declined(
     return await svc.get_response(contract)
 
 
+@router.post("/{contract_id}/simulate-reply", response_model=ContractResponse)
+async def simulate_partner_reply(
+    contract_id: uuid.UUID,
+    db: AsyncSession = Depends(get_session),
+    svc: ContractService = Depends(get_contract_service),
+):
+    """DEV ONLY — inject a realistic mock partner reply mentioning a signed PDF."""
+    from app.config import settings as _settings
+    if _settings.ENV == "production":
+        raise HTTPException(status_code=403, detail="Not available in production.")
+
+    contract = await _get_contract_or_404(contract_id, svc, db)
+    try:
+        contract = await svc.simulate_partner_reply(db, contract)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return await svc.get_response(contract)
+
+
 @router.post("/{contract_id}/simulate-signed", response_model=ContractResponse)
 async def simulate_signed(
     contract_id: uuid.UUID,

@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 
 import Alert from "@mui/material/Alert";
-import TextField from "@mui/material/TextField";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -32,8 +31,8 @@ import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
 import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
-import EditNoteRoundedIcon from "@mui/icons-material/EditNoteRounded";
-import ForwardToInboxRoundedIcon from "@mui/icons-material/ForwardToInboxRounded";
+import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
+import InboxRoundedIcon from "@mui/icons-material/InboxRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import ThumbDownRoundedIcon from "@mui/icons-material/ThumbDownRounded";
@@ -282,20 +281,20 @@ function GeneratedPanel({
 }
 
 function SentPanel({
-  contract, prospect, onMarkSigned, onMarkDeclined, onSimulateSigned, onSubmitReply, actioning, submittingReply,
+  contract, prospect, onMarkSigned, onMarkDeclined, onSimulateSigned, onSimulateReply, actioning, simulatingReply,
 }: {
   contract: RawContract;
   prospect: Prospect;
   onMarkSigned: () => void;
   onMarkDeclined: () => void;
   onSimulateSigned: () => void;
-  onSubmitReply: (text: string) => void;
+  onSimulateReply: () => void;
   actioning: boolean;
-  submittingReply: boolean;
+  simulatingReply: boolean;
 }) {
   const theme = useTheme();
-  const [replyText, setReplyText] = useState("");
   const hasReply = !!contract.partner_reply;
+  const hasPdfMention = hasReply && /pdf|pièce jointe|joint|attachm/i.test(contract.partner_reply!);
 
   const sentDate = contract.sent_at
     ? new Date(contract.sent_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
@@ -341,11 +340,10 @@ function SentPanel({
 
       <Divider />
 
-      {/* Partner reply section */}
       {hasReply ? (
-        /* ── Reply already submitted — show it as a message bubble ── */
+        /* ── Reply received — show as message bubble ── */
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
             <MarkEmailReadRoundedIcon sx={{ color: "info.main", fontSize: 18 }} />
             <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
               Réponse du partenaire
@@ -356,69 +354,35 @@ function SentPanel({
               </Typography>
             )}
           </Box>
+
           <Box sx={{
             p: 2, borderRadius: 2,
             bgcolor: alpha(theme.palette.info.main, 0.06),
             border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
-            whiteSpace: "pre-wrap",
           }}>
             {contract.partner_reply!.split("\n").map((line, i) => (
-              <Typography key={i} variant="bodySmall" sx={{ display: "block", lineHeight: 1.7 }}>
+              <Typography key={i} variant="bodySmall" sx={{ display: "block", lineHeight: 1.7, fontSize: "0.8125rem" }}>
                 {line || <br />}
               </Typography>
             ))}
           </Box>
-          <Alert severity="info" sx={{ borderRadius: 2, py: 0.5 }}>
-            <Typography variant="bodySmall">
-              Lisez la réponse ci-dessus et décidez du résultat. Si le partenaire a joint un PDF signé,
-              consultez-le dans votre boîte mail puis cliquez <strong>Signé</strong>.
-            </Typography>
-          </Alert>
-        </Box>
-      ) : (
-        /* ── No reply yet — inbox paste area ── */
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <ForwardToInboxRoundedIcon sx={{ color: "primary.main", fontSize: 18 }} />
-            <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
-              Réponse reçue du partenaire ?
-            </Typography>
-          </Box>
-          <Typography variant="bodySmall" color="text.secondary">
-            Quand le partenaire répond à votre email, collez son message ici. Il sera enregistré
-            dans la plateforme et vous pourrez décider du résultat.
-          </Typography>
-          <TextField
-            multiline
-            minRows={4}
-            maxRows={10}
-            placeholder={`Coller ici la réponse email de ${prospect.nom}…`}
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            disabled={submittingReply}
-            size="small"
-            sx={{ "& .MuiInputBase-root": { borderRadius: 2, fontSize: "0.8125rem" } }}
-          />
-          <Button
-            variant="outlined"
-            color="primary"
-            startIcon={submittingReply ? <CircularProgress size={16} color="inherit" /> : <EditNoteRoundedIcon />}
-            onClick={() => onSubmitReply(replyText)}
-            disabled={submittingReply || replyText.trim().length < 10}
-            sx={{ fontWeight: 700, textTransform: "none", alignSelf: "flex-start" }}
-          >
-            {submittingReply ? "Enregistrement…" : "Enregistrer la réponse"}
-          </Button>
-        </Box>
-      )}
 
-      {/* Decision buttons — shown only once reply is submitted */}
-      {hasReply && (
-        <>
+          {hasPdfMention && (
+            <Box sx={{
+              display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 1, borderRadius: 2,
+              bgcolor: alpha(theme.palette.success.main, 0.07),
+              border: `1px solid ${alpha(theme.palette.success.main, 0.25)}`,
+            }}>
+              <AttachFileRoundedIcon sx={{ color: "success.main", fontSize: 18 }} />
+              <Typography variant="bodySmall" sx={{ fontWeight: 600, color: "success.dark" }}>
+                PDF joint détecté — consultez votre boîte mail pour l&apos;ouvrir
+              </Typography>
+            </Box>
+          )}
+
           <Divider />
-          <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
-            Votre décision
-          </Typography>
+
+          <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>Votre décision</Typography>
           <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
             <Button
               variant="contained"
@@ -442,13 +406,44 @@ function SentPanel({
               Marquer comme refusé
             </Button>
           </Box>
-        </>
+        </Box>
+      ) : (
+        /* ── No reply yet — waiting state ── */
+        <Box sx={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          gap: 1.5, py: 3, color: "text.disabled",
+        }}>
+          <InboxRoundedIcon sx={{ fontSize: 40, opacity: 0.4 }} />
+          <Typography variant="titleSmall" color="text.secondary" sx={{ fontWeight: 600 }}>
+            En attente de la réponse de {prospect.nom}
+          </Typography>
+          <Typography variant="bodySmall" color="text.disabled" sx={{ textAlign: "center", maxWidth: 320 }}>
+            Dès que le partenaire répond à votre email, sa réponse apparaîtra ici automatiquement.
+          </Typography>
+        </Box>
       )}
 
+      {/* DEV chips */}
       {IS_DEV && (
-        <Box sx={{ pt: 0.5 }}>
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", pt: 0.5 }}>
+          {!hasReply && (
+            <Chip
+              label={simulatingReply ? "Simulation réponse…" : "[DEV] Simuler réponse du partenaire →"}
+              size="small"
+              color="info"
+              variant="outlined"
+              onClick={simulatingReply ? undefined : onSimulateReply}
+              icon={simulatingReply ? <CircularProgress size={10} color="inherit" /> : undefined}
+              sx={{
+                height: 22, fontSize: "0.5625rem", fontWeight: 700,
+                cursor: simulatingReply ? "default" : "pointer",
+                borderStyle: "dashed",
+                "& .MuiChip-label": { px: 1 },
+              }}
+            />
+          )}
           <Chip
-            label={actioning ? "Simulation…" : "[DEV] Simuler signature partenaire →"}
+            label={actioning ? "Simulation…" : "[DEV] Simuler signature complète →"}
             size="small"
             color="warning"
             variant="outlined"
@@ -527,12 +522,12 @@ export default function ContractGenerateDialog({
 }: Props) {
   const { showSnackbar } = useSnackbar();
 
-  const [generating, setGenerating]         = useState(false);
-  const [sending, setSending]               = useState(false);
-  const [actioning, setActioning]           = useState(false);
-  const [submittingReply, setSubmittingReply] = useState(false);
-  const [confirmSign, setConfirmSign]       = useState(false);
-  const [confirmDecline, setConfirmDecline] = useState(false);
+  const [generating, setGenerating]           = useState(false);
+  const [sending, setSending]                 = useState(false);
+  const [actioning, setActioning]             = useState(false);
+  const [simulatingReply, setSimulatingReply] = useState(false);
+  const [confirmSign, setConfirmSign]         = useState(false);
+  const [confirmDecline, setConfirmDecline]   = useState(false);
 
   const activeStep = statusToStep(contract.status);
 
@@ -618,21 +613,21 @@ export default function ContractGenerateDialog({
     }
   }
 
-  // ── Submit partner reply ──────────────────────────────────────────
+  // ── Simulate partner reply (DEV) ─────────────────────────────────
 
-  async function handleSubmitReply(text: string) {
-    setSubmittingReply(true);
+  async function handleSimulateReply() {
+    setSimulatingReply(true);
     try {
-      const updated = await contractsApi.submitReply(contract.id, text);
+      const updated = await contractsApi.simulateReply(contract.id);
       onContractUpdate(updated);
-      showSnackbar({ message: "Réponse du partenaire enregistrée.", severity: "success" });
+      showSnackbar({ message: "[DEV] Réponse partenaire simulée — PDF joint détecté.", severity: "info" });
     } catch (err) {
       showSnackbar({
-        message: err instanceof ApiError ? err.detail : "Erreur lors de l'enregistrement.",
+        message: err instanceof ApiError ? err.detail : "Erreur lors de la simulation.",
         severity: "error",
       });
     } finally {
-      setSubmittingReply(false);
+      setSimulatingReply(false);
     }
   }
 
@@ -738,9 +733,9 @@ export default function ContractGenerateDialog({
               onMarkSigned={() => setConfirmSign(true)}
               onMarkDeclined={() => setConfirmDecline(true)}
               onSimulateSigned={handleSimulateSigned}
-              onSubmitReply={handleSubmitReply}
+              onSimulateReply={handleSimulateReply}
               actioning={actioning}
-              submittingReply={submittingReply}
+              simulatingReply={simulatingReply}
             />
           )}
           {(contract.status === "signed" || contract.status === "declined") && (

@@ -277,6 +277,25 @@ class ContractService:
         logger.info("[CONTRACT] Partner reply recorded — contract=%s", contract.id)
         return contract
 
+    async def simulate_partner_reply(self, db: AsyncSession, contract: Contract) -> Contract:
+        """
+        DEV ONLY — inject a realistic mock partner reply with a PDF mention.
+        Calls submit_reply internally so all business rules apply.
+        """
+        mock_reply = (
+            f"Bonjour,\n\n"
+            f"Merci pour l'envoi du contrat de partenariat concernant notre collaboration avec Bab Morocco.\n\n"
+            f"Après examen attentif des conditions proposées — notamment la commission de {contract.commission}% "
+            f"et les contreparties non-financières — nous sommes heureux de confirmer notre accord.\n\n"
+            f"Veuillez trouver en pièce jointe le contrat signé (PDF). "
+            f"Notre équipe juridique a paraphé chaque page et apposé le cachet officiel en page de signature.\n\n"
+            f"Nous sommes impatients de démarrer cette collaboration et d'être référencés sur babmorocco.com "
+            f"dès le lancement.\n\n"
+            f"Cordialement,\n"
+            f"Direction commerciale — {contract.partner_name}"
+        )
+        return await self.submit_reply(db, contract, mock_reply)
+
     # ── Queries ───────────────────────────────────────────────────────────────
 
     async def list_contracts(self, db: AsyncSession) -> list[ContractResponse]:
