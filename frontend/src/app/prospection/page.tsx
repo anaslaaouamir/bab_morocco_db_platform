@@ -198,6 +198,13 @@ export default function ProspectionPage() {
       setAllProspects((prev) =>
         prev.map((p) => (p.id === id ? { ...p, notes } : p)),
       );
+      prospectsApi.update(id, { notes }).catch((err) => {
+        showSnackbar({
+          message: err instanceof ApiError ? err.detail : "Erreur — note non enregistrée.",
+          severity: "error",
+          duration: 5000,
+        });
+      });
       showSnackbar({ message: "Note enregistrée", severity: "info", duration: 2500 });
     },
     [showSnackbar],
