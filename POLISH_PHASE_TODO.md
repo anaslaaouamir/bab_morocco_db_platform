@@ -111,25 +111,25 @@
 
 ## AREA 4 â€” Contracts
 
-- [ ] **P4-01 â€” `estimated_annual_value` never passed from frontend**
+- [x] **P4-01 â€” `estimated_annual_value` never passed from frontend**
   - **Layer:** Missing Frontend Only
   - **Backend:** `ContractCreate` schema has `estimated_annual_value: Optional[float]`. `ContractService._check_human_review()` fires a 403 when this exceeds $50,000. Gate is fully implemented.
   - **Frontend gap:** `ContractGenerateDialog` calls `contractsApi.create({ prospect_id })` with no `estimated_annual_value` â€” always `null`. The $50k human review gate can never trigger from the UI.
   - **Fix:** Add an optional numeric input field in the Step 0 "RÃ©viser" panel: "Valeur annuelle estimÃ©e (USD) â€” optionnel". Pass it to `create()`. Show `human_review_required` badge immediately if threshold exceeded.
 
-- [ ] **P4-02 â€” No link from ContractCard back to the prospect**
+- [x] **P4-02 â€” No link from ContractCard back to the prospect**
   - **Layer:** Missing Frontend Only
   - **Backend:** `RawContract` includes `prospect_id`.
   - **Frontend gap:** `ContractCard` in `contrats/page.tsx` shows partner name/country/commission/status but has no navigation back to the prospect's `ProspectDrawer` or the Prospection page.
   - **Fix:** Add a "Voir le prospect" icon button (`OpenInNewRoundedIcon`) on `ContractCard` that navigates to `/prospection` with the prospect highlighted, or opens the `ProspectDrawer` inline if prospection data is available.
 
-- [ ] **P4-03 â€” Contracts page may show stale data after Conclure redirect**
+- [x] **P4-03 â€” Contracts page may show stale data after Conclure redirect**
   - **Layer:** Missing Frontend Only
   - **Backend:** No gap. Contract is auto-created atomically in `PATCH /stage â†’ closing`.
   - **Frontend gap:** `router.push("/contrats")` in `handleConclude` (`negociation/page.tsx:827`) navigates to the contracts page, but Next.js may serve a cached version that doesn't include the newly created draft contract.
   - **Fix:** Add `router.refresh()` after `router.push("/contrats")` in `handleConclude`, or pass a `?refresh=1` query param that triggers a fresh `useEffect` fetch on the contracts page.
 
-- [ ] **P4-04 â€” `human_review_reason` text is never displayed**
+- [x] **P4-04 â€” `human_review_reason` text is never displayed**
   - **Layer:** Missing Frontend Only
   - **Backend:** `human_review_reason` is returned in `ContractResponse` and stored in `RawContract`.
   - **Frontend gap:** The amber warning badge on `ContractCard` and in `ContractGenerateDialog` shows that human review is required but never shows *why* (e.g., "Commission 7% est infÃ©rieure au plancher absolu de 8%").

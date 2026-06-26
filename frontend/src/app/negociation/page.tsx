@@ -927,6 +927,7 @@ export default function NegociationPage() {
         duration: 4000,
       });
       router.push("/contrats");
+      router.refresh(); // P4-03: force fresh fetch so the new draft contract is visible immediately
     } catch (err) {
       showSnackbar({
         message: err instanceof ApiError ? err.detail : "Erreur lors du passage en closing.",

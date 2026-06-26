@@ -7,6 +7,8 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import InputAdornment from "@mui/material/InputAdornment";
+import TextField from "@mui/material/TextField";
 import Collapse from "@mui/material/Collapse";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -123,6 +125,11 @@ function DraftPanel({
   generating: boolean;
 }) {
   const theme = useTheme();
+  // P4-01 — estimated annual value input (client-side $50k gate preview)
+  const [estimatedValue, setEstimatedValue] = useState<string>("");
+  const parsedValue = parseFloat(estimatedValue) || 0;
+  const overThreshold = parsedValue > 50000;
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {contract.human_review_required && (
@@ -156,6 +163,33 @@ function DraftPanel({
             <Typography variant="bodySmall" sx={{ fontWeight: 600 }}>{value}</Typography>
           </Box>
         ))}
+      </Box>
+
+      {/* P4-01 — Estimated annual value (§9 gate: >$50k requires human review) */}
+      <Box>
+        <TextField
+          label="Valeur annuelle estimée (USD) — optionnel"
+          size="small"
+          fullWidth
+          type="number"
+          value={estimatedValue}
+          onChange={(e) => setEstimatedValue(e.target.value)}
+          InputProps={{
+            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+          }}
+          helperText="Requis si la valeur dépasse 50 000 $ — déclenche une validation humaine (Spec §9)"
+          sx={{ "& .MuiFormHelperText-root": { fontSize: "0.6875rem" } }}
+        />
+        {overThreshold && (
+          <Alert
+            severity="warning"
+            icon={<WarningAmberRoundedIcon />}
+            sx={{ mt: 1, py: 0.5, borderRadius: 2, "& .MuiAlert-message": { fontSize: "0.8125rem" } }}
+          >
+            <strong>Valeur annuelle estimée {parsedValue.toLocaleString("fr-FR")} $</strong> — dépasse le seuil de 50 000 $.
+            La génération PDF sera bloquée et nécessitera une validation humaine.
+          </Alert>
+        )}
       </Box>
 
       {/* 9-clause checklist */}
