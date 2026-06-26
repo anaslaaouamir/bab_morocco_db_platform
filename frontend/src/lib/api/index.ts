@@ -10,6 +10,10 @@ export type {
   RawScenario,
   RawScorePreviewResponse,
   RawProspectStats,
+  RawContract,
+  RawContractClauses,
+  RawContractListResponse,
+  ContractStatus,
 } from "./types";
 
 import { apiFetch } from "./base";
@@ -25,6 +29,8 @@ import type {
   RawTriggerFollowupsResponse,
   RawNegotiationMessage,
   RawMessageAnalysis,
+  RawContract,
+  RawContractListResponse,
 } from "./types";
 import type { Prospect, PipelineStage, PartnerType, OutreachLanguage } from "@/types/prospect";
 
@@ -198,6 +204,45 @@ export const outreachApi = {
     apiFetch<RawTriggerFollowupsResponse>("/outreach/trigger-followups", {
       method: "POST",
     }),
+};
+
+// ─── Negotiation ──────────────────────────────────────────────────────────────
+
+// ─── Contracts ────────────────────────────────────────────────────────────────
+
+const _API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+export const contractsApi = {
+  list: (): Promise<RawContractListResponse> =>
+    apiFetch<RawContractListResponse>("/contracts"),
+
+  create: (prospectId: string, estimatedAnnualValue?: number): Promise<RawContract> =>
+    apiFetch<RawContract>("/contracts", {
+      method: "POST",
+      body: JSON.stringify({
+        prospect_id: prospectId,
+        estimated_annual_value: estimatedAnnualValue ?? null,
+      }),
+    }),
+
+  generate: (contractId: string): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}/generate`, { method: "POST" }),
+
+  /** Direct URL for PDF download — use as href or window.open target. */
+  pdfDownloadUrl: (contractId: string): string =>
+    `${_API_URL}/contracts/${contractId}/pdf`,
+
+  send: (contractId: string): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}/send`, { method: "POST" }),
+
+  markSigned: (contractId: string): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}/mark-signed`, { method: "POST" }),
+
+  markDeclined: (contractId: string): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}/mark-declined`, { method: "POST" }),
+
+  simulateSigned: (contractId: string): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}/simulate-signed`, { method: "POST" }),
 };
 
 // ─── Negotiation ──────────────────────────────────────────────────────────────

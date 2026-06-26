@@ -1,27 +1,20 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
-import Link from "next/link";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
-import CardActionArea from "@mui/material/CardActionArea";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
 import Button from "@mui/material/Button";
 import Alert from "@mui/material/Alert";
 import Tooltip from "@mui/material/Tooltip";
-import IconButton from "@mui/material/IconButton";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
+import Skeleton from "@mui/material/Skeleton";
 import { alpha, useTheme } from "@mui/material/styles";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
-import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import CloudDoneRoundedIcon from "@mui/icons-material/CloudDoneRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
@@ -29,228 +22,105 @@ import DrawRoundedIcon from "@mui/icons-material/DrawRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import LockClockRoundedIcon from "@mui/icons-material/LockClockRounded";
+import SendRoundedIcon from "@mui/icons-material/SendRounded";
+import DoNotDisturbRoundedIcon from "@mui/icons-material/DoNotDisturbRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import InboxRoundedIcon from "@mui/icons-material/InboxRounded";
+import Link from "next/link";
 
-import mockProspects from "@/data/mockProspects";
 import type { Prospect } from "@/types/prospect";
-import { PARTNER_TYPE_LABELS, STAGE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
+import { PARTNER_TYPE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
+import type { RawContract } from "@/lib/api";
+import { contractsApi, prospectsApi, ApiError } from "@/lib/api";
+import { rawToProspect } from "@/lib/api";
 import ProspectDrawer from "@/components/crm/ProspectDrawer";
+import ContractGenerateDialog from "@/components/contracts/ContractGenerateDialog";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 
-// ─── Contract status logic ────────────────────────────────────────────────
+// ─── Status helpers ───────────────────────────────────────────────────────────
 
-type ContractStatus = "draft" | "generated" | "sent_yousign" | "signed_active";
-
-interface ContractInfo {
-  status: ContractStatus;
+type StatusInfo = {
   label: string;
   description: string;
   chipColor: "default" | "info" | "warning" | "success" | "error";
   icon: React.ReactNode;
-  webhookFired?: boolean;
-  webhookDate?: string;
-  signedDate?: string;
+  accentColor: string;
+};
+
+function useStatusInfo(contract: RawContract): StatusInfo {
+  const theme = useTheme();
+  switch (contract.status) {
+    case "signed":
+      return {
+        label: "Signé & actif",
+        description: "Contrat signé · Partenaire actif sur babmorocco.com",
+        chipColor: "success",
+        icon: <CheckCircleRoundedIcon fontSize="small" />,
+        accentColor: theme.palette.success.main,
+      };
+    case "sent_to_partner":
+      return {
+        label: "En attente signature",
+        description: "Contrat envoyé · En attente de réponse du partenaire",
+        chipColor: "warning",
+        icon: <HourglassTopRoundedIcon fontSize="small" />,
+        accentColor: theme.palette.warning.main,
+      };
+    case "generated":
+      return {
+        label: "PDF généré",
+        description: "Contrat prêt · En attente envoi au partenaire",
+        chipColor: "info",
+        icon: <PictureAsPdfRoundedIcon fontSize="small" />,
+        accentColor: theme.palette.info.main,
+      };
+    case "declined":
+      return {
+        label: "Refusé",
+        description: "Partenaire a refusé · Retourné en négociation",
+        chipColor: "error",
+        icon: <DoNotDisturbRoundedIcon fontSize="small" />,
+        accentColor: theme.palette.error.main,
+      };
+    default: // draft
+      return {
+        label: "À préparer",
+        description: "Accord en cours · PDF non encore généré",
+        chipColor: "default",
+        icon: <DrawRoundedIcon fontSize="small" />,
+        accentColor: theme.palette.text.disabled,
+      };
+  }
 }
 
-function deriveContractInfo(p: Prospect): ContractInfo {
-  const notes = p.notes ?? "";
-
-  if (p.stage === "activation_ota") {
-    const webhookMatch = notes.match(/depuis (\d{4}-\d{2}-\d{2})/);
-    const signedMatch  = notes.match(/Signé (\d{4}-\d{2}-\d{2})/);
-    return {
-      status: "signed_active",
-      label: "Signé & actif",
-      description: "Contrat signé · Partenaire actif sur babmorocco.com",
-      chipColor: "success",
-      icon: <CheckCircleRoundedIcon fontSize="small" />,
-      webhookFired: notes.includes("Webhook"),
-      webhookDate: webhookMatch?.[1],
-      signedDate: signedMatch?.[1],
-    };
-  }
-
-  if (notes.includes("YouSign")) {
-    return {
-      status: "sent_yousign",
-      label: "En attente signature",
-      description: "Contrat envoyé via YouSign · Relance possible",
-      chipColor: "warning",
-      icon: <HourglassTopRoundedIcon fontSize="small" />,
-    };
-  }
-
-  if (notes.includes("Contrat généré") || notes.includes("Accord verbal")) {
-    return {
-      status: "generated",
-      label: "Contrat généré",
-      description: "Draft prêt · En attente envoi YouSign",
-      chipColor: "info",
-      icon: <DescriptionOutlinedIcon fontSize="small" />,
-    };
-  }
-
-  return {
-    status: "draft",
-    label: "À préparer",
-    description: "Accord en cours · Contrat non encore généré",
-    chipColor: "default",
-    icon: <DrawRoundedIcon fontSize="small" />,
-  };
-}
-
-// ─── Contracts derived from mockProspects ────────────────────────────────
-
-const CONTRACT_STAGES = ["closing", "activation_ota"] as const;
-const contractProspects = mockProspects
-  .filter((p) => (CONTRACT_STAGES as readonly string[]).includes(p.stage))
-  .sort((a, b) => {
-    const order = { activation_ota: 0, closing: 1 };
-    return (order[a.stage as keyof typeof order] ?? 2) - (order[b.stage as keyof typeof order] ?? 2);
-  });
-
-const closingCount    = contractProspects.filter((p) => p.stage === "closing").length;
-const activatedCount  = contractProspects.filter((p) => p.stage === "activation_ota").length;
-const avgCommission   = Math.round(
-  contractProspects.reduce((s, p) => s + p.commissionStandard, 0) / (contractProspects.length || 1)
-);
-
-// ─── Phase 2 Dialog ───────────────────────────────────────────────────────
-
-function Phase2Dialog({ open, onClose, prospect }: { open: boolean; onClose: () => void; prospect: Prospect | null }) {
-  if (!prospect) return null;
-  const info = deriveContractInfo(prospect);
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
-      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5, pb: 1 }}>
-        <Box
-          sx={{
-            width: 36,
-            height: 36,
-            borderRadius: 2,
-            bgcolor: alpha("#B5451B", 0.1),
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <PictureAsPdfRoundedIcon sx={{ color: "primary.main", fontSize: 20 }} />
-        </Box>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>
-            Génération de contrat
-          </Typography>
-          <Typography variant="bodySmall" color="text.secondary">
-            {prospect.nom}
-          </Typography>
-        </Box>
-      </DialogTitle>
-
-      <DialogContent>
-        <Alert severity="info" icon={<LockClockRoundedIcon />} sx={{ mb: 2, borderRadius: 2 }}>
-          <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
-            Fonctionnalité Phase 2
-          </Typography>
-          <Typography variant="bodySmall" sx={{ display: "block", mt: 0.25 }}>
-            La génération PDF (ReportLab) et la signature électronique YouSign (EIDAS) sont
-            planifiées pour la Phase 2 (J60–J120). Le connecteur OTA webhook sera activé
-            automatiquement après signature.
-          </Typography>
-        </Alert>
-
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-          <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
-            Structure du contrat standard
-          </Typography>
-          {[
-            "Parties contractantes + coordonnées",
-            "Objet du partenariat et périmètre",
-            `Commission ${prospect.commissionStandard}% · paiement sous 45 jours`,
-            "Obligations Bab Morocco (visibilité, tracking, reporting mensuel)",
-            "Obligations partenaire (tarifs à jour, qualité de service)",
-            "Durée 12 mois · renouvellement tacite · préavis 30 jours",
-            "Confidentialité et propriété intellectuelle",
-            "Conformité RGPD / PDPL selon zone",
-            "Juridiction et droit applicable",
-          ].map((clause, i) => (
-            <Box key={i} sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
-              <Typography
-                sx={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: "50%",
-                  bgcolor: "primary.main",
-                  color: "primary.contrastText",
-                  fontSize: "0.6875rem",
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  mt: "2px",
-                }}
-                component="span"
-              >
-                {i + 1}
-              </Typography>
-              <Typography variant="bodySmall">{clause}</Typography>
-            </Box>
-          ))}
-        </Box>
-
-        <Divider sx={{ my: 2 }} />
-
-        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-          <Chip label={`Statut actuel : ${info.label}`} color={info.chipColor} size="small" />
-          <Chip label={`Commission : ${prospect.commissionStandard}%`} color="primary" variant="outlined" size="small" />
-          <Chip label={`Plancher : ${prospect.commissionPlancher}%`} color="default" variant="outlined" size="small" />
-        </Box>
-      </DialogContent>
-
-      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-        <Button onClick={onClose} variant="text">Fermer</Button>
-        <Tooltip title="Disponible en Phase 2">
-          <span>
-            <Button
-              variant="contained"
-              startIcon={<PictureAsPdfRoundedIcon />}
-              disabled
-              disableElevation
-            >
-              Générer le PDF
-            </Button>
-          </span>
-        </Tooltip>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// ─── Contract Card ────────────────────────────────────────────────────────
+// ─── ContractCard ─────────────────────────────────────────────────────────────
 
 function ContractCard({
-  prospect,
-  onOpenFiche,
-  onOpenContract,
+  contract, prospect,
+  onOpenFiche, onOpenDialog,
 }: {
+  contract: RawContract;
   prospect: Prospect;
   onOpenFiche: (p: Prospect) => void;
-  onOpenContract: (p: Prospect) => void;
+  onOpenDialog: (c: RawContract, p: Prospect) => void;
 }) {
   const theme = useTheme();
-  const info = deriveContractInfo(prospect);
-  const isHumanRequired = prospect.notes?.includes("VALIDATION HUMAINE REQUISE") ?? false;
+  const info = useStatusInfo(contract);
 
-  const accentColor =
-    info.status === "signed_active"
-      ? theme.palette.success.main
-      : info.status === "sent_yousign"
-      ? theme.palette.warning.main
-      : info.status === "generated"
-      ? theme.palette.info.main
-      : theme.palette.text.disabled;
+  const sentDate = contract.sent_at
+    ? new Date(contract.sent_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })
+    : null;
+  const signedDate = contract.signed_at
+    ? new Date(contract.signed_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+
+  // Label for the primary action button
+  const actionLabel = (() => {
+    if (contract.status === "signed" || contract.status === "declined") return null;
+    if (contract.status === "sent_to_partner") return "Réponse reçue ?";
+    if (contract.status === "generated") return "Envoyer au partenaire";
+    return "Générer le contrat";
+  })();
 
   return (
     <Card
@@ -259,11 +129,15 @@ function ContractCard({
       sx={{
         borderRadius: 3,
         overflow: "hidden",
-        borderColor: info.status === "signed_active" ? alpha(theme.palette.success.main, 0.4) : "divider",
+        borderColor: contract.status === "signed"
+          ? alpha(theme.palette.success.main, 0.4)
+          : contract.status === "declined"
+          ? alpha(theme.palette.error.main, 0.3)
+          : "divider",
       }}
     >
       {/* Status accent strip */}
-      <Box sx={{ height: 4, bgcolor: accentColor }} />
+      <Box sx={{ height: 4, bgcolor: info.accentColor }} />
 
       <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}>
 
@@ -271,9 +145,7 @@ function ContractCard({
         <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, mb: 1.5 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mb: 0.5 }}>
-              <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
-                {prospect.nom}
-              </Typography>
+              <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>{contract.partner_name}</Typography>
               <Chip
                 icon={info.icon as React.ReactElement}
                 label={info.label}
@@ -281,7 +153,7 @@ function ContractCard({
                 size="small"
                 sx={{ fontWeight: 700, fontSize: "0.6875rem" }}
               />
-              {isHumanRequired && (
+              {contract.human_review_required && (
                 <Chip
                   icon={<WarningAmberRoundedIcon sx={{ fontSize: "14px !important" }} />}
                   label="Validation humaine"
@@ -294,7 +166,7 @@ function ContractCard({
             </Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
               <Chip
-                label={PARTNER_TYPE_LABELS[prospect.type]}
+                label={PARTNER_TYPE_LABELS[prospect.type] ?? contract.partner_type}
                 size="small"
                 sx={{ height: 18, fontSize: "0.625rem", "& .MuiChip-label": { px: 0.75 } }}
               />
@@ -313,7 +185,7 @@ function ContractCard({
           {/* Commission block */}
           <Box sx={{ textAlign: "right", flexShrink: 0 }}>
             <Typography sx={{ fontSize: "1.5rem", fontWeight: 800, lineHeight: 1, color: "primary.main" }}>
-              {prospect.commissionStandard}%
+              {contract.commission}%
             </Typography>
             <Typography variant="labelSmall" color="text.secondary">
               plancher {prospect.commissionPlancher}%
@@ -328,84 +200,59 @@ function ContractCard({
           {info.description}
         </Typography>
 
-        {/* Webhook status for active partners */}
-        {info.status === "signed_active" && (
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1,
-              p: 1.25,
-              borderRadius: 2,
-              bgcolor: alpha(theme.palette.success.main, 0.07),
-              border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`,
-              mb: 1.5,
-            }}
-          >
+        {/* Signed banner */}
+        {contract.status === "signed" && (
+          <Box sx={{
+            display: "flex", alignItems: "center", gap: 1, p: 1.25, borderRadius: 2, mb: 1.5,
+            bgcolor: alpha(theme.palette.success.main, 0.07),
+            border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`,
+          }}>
             <CloudDoneRoundedIcon sx={{ color: "success.main", fontSize: 18, flexShrink: 0 }} />
             <Box sx={{ flex: 1 }}>
               <Typography variant="labelSmall" sx={{ fontWeight: 700, color: "success.main", display: "block" }}>
-                Webhook OTA déclenché ✓
+                Partenaire actif ✓
               </Typography>
               <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
-                {info.signedDate && `Signé le ${info.signedDate}`}
-                {info.webhookDate && ` · Actif depuis le ${info.webhookDate}`}
+                {signedDate && `Signé le ${signedDate}`}
               </Typography>
             </Box>
-            <Chip
-              label="Actif babmorocco.com"
-              color="success"
-              size="small"
-              sx={{ fontWeight: 700, fontSize: "0.625rem", "& .MuiChip-label": { px: 0.75 } }}
-            />
+            <Chip label="Actif babmorocco.com" color="success" size="small"
+              sx={{ fontWeight: 700, fontSize: "0.625rem", "& .MuiChip-label": { px: 0.75 } }} />
           </Box>
         )}
 
-        {/* YouSign pending relance for sent contracts */}
-        {info.status === "sent_yousign" && (
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1,
-              p: 1.25,
-              borderRadius: 2,
-              bgcolor: alpha(theme.palette.warning.main, 0.07),
-              border: `1px solid ${alpha(theme.palette.warning.main, 0.2)}`,
-              mb: 1.5,
-            }}
-          >
+        {/* Awaiting banner */}
+        {contract.status === "sent_to_partner" && (
+          <Box sx={{
+            display: "flex", alignItems: "center", gap: 1, p: 1.25, borderRadius: 2, mb: 1.5,
+            bgcolor: alpha(theme.palette.warning.main, 0.07),
+            border: `1px solid ${alpha(theme.palette.warning.main, 0.2)}`,
+          }}>
             <SendRoundedIcon sx={{ color: "warning.main", fontSize: 18, flexShrink: 0 }} />
             <Box>
               <Typography variant="labelSmall" sx={{ fontWeight: 700, color: "warning.main", display: "block" }}>
-                YouSign · En attente de signature
+                En attente de réponse
               </Typography>
               <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
-                {prospect.dateProchainContact
-                  ? `Relance prévue le ${prospect.dateProchainContact}`
-                  : "Surveiller la boîte de réception"}
+                {sentDate ? `Envoyé le ${sentDate}` : "Surveiller la boîte de réception"}
+                {prospect.emailContact && ` · ${prospect.emailContact}`}
               </Typography>
             </Box>
           </Box>
         )}
 
-        {/* Notes excerpt */}
-        {prospect.notes && (
-          <Typography
-            variant="bodySmall"
-            color="text.secondary"
-            sx={{
-              fontSize: "0.6875rem",
-              mb: 1.5,
-              fontStyle: "italic",
-              overflow: "hidden",
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-            }}
-          >
-            {prospect.notes}
-          </Typography>
+        {/* Declined banner */}
+        {contract.status === "declined" && (
+          <Box sx={{
+            display: "flex", alignItems: "center", gap: 1, p: 1.25, borderRadius: 2, mb: 1.5,
+            bgcolor: alpha(theme.palette.error.main, 0.07),
+            border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
+          }}>
+            <DoNotDisturbRoundedIcon sx={{ color: "error.main", fontSize: 18, flexShrink: 0 }} />
+            <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+              Refusé · Le prospect a été remis en négociation
+            </Typography>
+          </Box>
         )}
 
         {/* Actions row */}
@@ -420,45 +267,42 @@ function ContractCard({
             Voir la fiche
           </Button>
 
-          {info.status !== "signed_active" && (
-            <Tooltip
-              title={
-                info.status === "sent_yousign"
-                  ? "Relancer via YouSign — Phase 2"
-                  : "Générer le contrat PDF — Phase 2"
-              }
+          {actionLabel && (
+            <Button
+              size="small"
+              variant="contained"
+              disableElevation
+              startIcon={contract.status === "sent_to_partner" ? <HourglassTopRoundedIcon /> : <PictureAsPdfRoundedIcon />}
+              onClick={() => onOpenDialog(contract, prospect)}
+              sx={{ fontWeight: 600, textTransform: "none", borderRadius: 2 }}
             >
-              <span>
-                <Button
-                  size="small"
-                  variant="contained"
-                  disableElevation
-                  startIcon={
-                    info.status === "sent_yousign" ? (
-                      <SendRoundedIcon />
-                    ) : (
-                      <PictureAsPdfRoundedIcon />
-                    )
-                  }
-                  onClick={() => onOpenContract(prospect)}
-                  sx={{ fontWeight: 600, textTransform: "none", borderRadius: 2 }}
-                >
-                  {info.status === "sent_yousign" ? "Relancer YouSign" : "Générer contrat"}
-                </Button>
-              </span>
+              {actionLabel}
+            </Button>
+          )}
+
+          {contract.has_pdf && (
+            <Tooltip title="Télécharger le PDF">
+              <Button
+                size="small"
+                variant="text"
+                startIcon={<PictureAsPdfRoundedIcon sx={{ fontSize: 14 }} />}
+                component="a"
+                href={contractsApi.pdfDownloadUrl(contract.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{ fontWeight: 600, textTransform: "none", fontSize: "0.75rem" }}
+              >
+                PDF
+              </Button>
             </Tooltip>
           )}
 
-          {info.status === "signed_active" && prospect.adresseWeb && (
+          {contract.status === "signed" && prospect.adresseWeb && (
             <Button
               size="small"
               variant="text"
               endIcon={<OpenInNewRoundedIcon sx={{ fontSize: 14 }} />}
-              href={
-                prospect.adresseWeb.startsWith("http")
-                  ? prospect.adresseWeb
-                  : `https://${prospect.adresseWeb}`
-              }
+              href={prospect.adresseWeb.startsWith("http") ? prospect.adresseWeb : `https://${prospect.adresseWeb}`}
               target="_blank"
               rel="noopener noreferrer"
               sx={{ fontWeight: 600, textTransform: "none" }}
@@ -472,209 +316,251 @@ function ContractCard({
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ContratsPage() {
   const theme = useTheme();
   const { showSnackbar } = useSnackbar();
 
-  // Local state for the prospects (allows stage/notes changes from drawer)
-  const [prospects, setProspects] = useState(contractProspects);
+  // Data
+  const [contracts, setContracts] = useState<RawContract[]>([]);
+  const [prospectsMap, setProspectsMap] = useState<Record<string, Prospect>>({});
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Fiche partenaire drawer
+  // Fiche drawer
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Phase 2 dialog
-  const [contractDialogProspect, setContractDialogProspect] = useState<Prospect | null>(null);
+  // Contract dialog
+  const [dialogContract, setDialogContract] = useState<RawContract | null>(null);
+  const [dialogProspect, setDialogProspect] = useState<Prospect | null>(null);
 
-  const liveSelected = selectedProspect
-    ? (prospects.find((p) => p.id === selectedProspect.id) ?? null)
-    : null;
+  // ── Fetch ───────────────────────────────────────────────────────
+
+  async function fetchData() {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const [contractsRes, closingRes, activationRes] = await Promise.all([
+        contractsApi.list(),
+        prospectsApi.list({ stage: "closing", pageSize: 100 }),
+        prospectsApi.list({ stage: "activation_ota", pageSize: 100 }),
+      ]);
+
+      setContracts(contractsRes.items);
+
+      // Build a map of prospect_id → Prospect for O(1) lookup
+      const map: Record<string, Prospect> = {};
+      for (const p of [...closingRes.items, ...activationRes.items]) {
+        map[p.id] = p;
+      }
+      // Also include prospects from contracts whose prospect_id may be in negociation (declined)
+      // We'll fetch those lazily — for now mark as unknown if not found
+      setProspectsMap(map);
+    } catch (err) {
+      setFetchError(err instanceof ApiError ? err.detail : "Impossible de charger les contrats.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Handlers ────────────────────────────────────────────────────
 
   const handleOpenFiche = useCallback((p: Prospect) => {
     setSelectedProspect(p);
     setDrawerOpen(true);
   }, []);
 
-  const handleStageChange = useCallback(
-    (id: string, newStage: import("@/types/prospect").PipelineStage) => {
-      setProspects((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, stage: newStage } : p))
-      );
-      showSnackbar({ message: "Étape mise à jour", severity: "success", duration: 3000 });
-    },
-    [showSnackbar]
+  const handleOpenDialog = useCallback((c: RawContract, p: Prospect) => {
+    setDialogContract(c);
+    setDialogProspect(p);
+  }, []);
+
+  const handleContractUpdate = useCallback((updated: RawContract) => {
+    setContracts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    setDialogContract(updated);
+
+    // If signed → prospect stage changed to activation_ota; refresh prospect list
+    if (updated.status === "signed" || updated.status === "declined") {
+      fetchData();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleStageChange = useCallback((id: string, newStage: import("@/types/prospect").PipelineStage) => {
+    setProspectsMap((prev) => prev[id] ? { ...prev, [id]: { ...prev[id], stage: newStage } } : prev);
+    showSnackbar({ message: "Étape mise à jour", severity: "success", duration: 3000 });
+  }, [showSnackbar]);
+
+  const handleNotesChange = useCallback((id: string, notes: string) => {
+    setProspectsMap((prev) => prev[id] ? { ...prev, [id]: { ...prev[id], notes } } : prev);
+    showSnackbar({ message: "Note enregistrée", severity: "info", duration: 2500 });
+  }, [showSnackbar]);
+
+  // ── Derived data ────────────────────────────────────────────────
+
+  // Only show contracts where we have the prospect data
+  const enriched = useMemo(() =>
+    contracts
+      .filter((c) => prospectsMap[c.prospect_id])
+      .map((c) => ({ contract: c, prospect: prospectsMap[c.prospect_id] })),
+    [contracts, prospectsMap],
   );
 
-  const handleNotesChange = useCallback(
-    (id: string, notes: string) => {
-      setProspects((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, notes } : p))
-      );
-      showSnackbar({ message: "Note enregistrée", severity: "info", duration: 2500 });
-    },
-    [showSnackbar]
-  );
+  const signed    = enriched.filter(({ contract: c }) => c.status === "signed");
+  const inProgress = enriched.filter(({ contract: c }) => ["draft", "generated", "sent_to_partner"].includes(c.status));
+  const declined  = enriched.filter(({ contract: c }) => c.status === "declined");
 
-  const activeSigned   = prospects.filter((p) => p.stage === "activation_ota");
-  const activeClosing  = prospects.filter((p) => p.stage === "closing");
+  const avgCommission = enriched.length
+    ? Math.round(enriched.reduce((s, { contract: c }) => s + c.commission, 0) / enriched.length * 10) / 10
+    : 0;
+
+  // ─────────────────────────────────────────────────────────────────
 
   return (
     <Box sx={{ px: { xs: 2, sm: 3, md: 4 }, py: { xs: 2, md: 3 }, display: "flex", flexDirection: "column", gap: 3 }}>
 
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <Box>
-        <Typography variant="headlineMedium" component="h1" sx={{ mb: 0.5 }}>
-          Contrats
-        </Typography>
-        <Typography variant="bodyMedium" color="text.secondary">
-          Génération PDF · Signature YouSign · Activation webhook OTA
-        </Typography>
+      {/* Header */}
+      <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 2, flexWrap: "wrap" }}>
+        <Box>
+          <Typography variant="headlineMedium" component="h1" sx={{ mb: 0.5 }}>Contrats</Typography>
+          <Typography variant="bodyMedium" color="text.secondary">
+            Génération PDF · Envoi partenaire · Suivi signature · Activation OTA
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={loading ? undefined : <RefreshRoundedIcon />}
+          onClick={fetchData}
+          disabled={loading}
+          sx={{ textTransform: "none", fontWeight: 600 }}
+        >
+          {loading ? "Chargement…" : "Actualiser"}
+        </Button>
       </Box>
 
-      {/* ── 8.1 Summary stats ──────────────────────────────────── */}
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr 1fr", md: "repeat(4, 1fr)" },
-          gap: 2,
-        }}
-      >
+      {/* Summary stats */}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", md: "repeat(4, 1fr)" }, gap: 2 }}>
         {[
-          {
-            value: prospects.length,
-            label: "Contrats total",
-            color: theme.palette.info.main,
-            icon: <DescriptionOutlinedIcon />,
-          },
-          {
-            value: activeClosing.length,
-            label: "En cours de closing",
-            color: theme.palette.warning.main,
-            icon: <HourglassTopRoundedIcon />,
-          },
-          {
-            value: activeSigned.length,
-            label: "Signés & actifs",
-            color: theme.palette.success.main,
-            icon: <CheckCircleRoundedIcon />,
-          },
-          {
-            value: `${avgCommission}%`,
-            label: "Commission moyenne",
-            color: theme.palette.primary.main,
-            icon: <DrawRoundedIcon />,
-          },
+          { value: loading ? "—" : enriched.length,       label: "Contrats total",        color: theme.palette.info.main,    icon: <DescriptionOutlinedIcon /> },
+          { value: loading ? "—" : inProgress.length,     label: "En cours",              color: theme.palette.warning.main, icon: <HourglassTopRoundedIcon /> },
+          { value: loading ? "—" : signed.length,         label: "Signés & actifs",       color: theme.palette.success.main, icon: <CheckCircleRoundedIcon /> },
+          { value: loading ? "—" : `${avgCommission}%`,   label: "Commission moyenne",    color: theme.palette.primary.main, icon: <DrawRoundedIcon /> },
         ].map(({ value, label, color, icon }) => (
           <Card key={label} elevation={0} variant="outlined" sx={{ borderRadius: 3, overflow: "hidden" }}>
             <Box sx={{ height: 3, bgcolor: color }} />
             <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-              <Box
-                sx={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 2,
-                  bgcolor: alpha(color, 0.12),
-                  color,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  mb: 1,
-                }}
-              >
+              <Box sx={{
+                width: 36, height: 36, borderRadius: 2,
+                bgcolor: alpha(color, 0.12), color, display: "flex",
+                alignItems: "center", justifyContent: "center", mb: 1,
+              }}>
                 {icon}
               </Box>
               <Typography sx={{ fontSize: "1.75rem", fontWeight: 800, lineHeight: 1, color }}>
                 {value}
               </Typography>
-              <Typography variant="bodySmall" color="text.secondary" sx={{ mt: 0.25 }}>
-                {label}
-              </Typography>
+              <Typography variant="bodySmall" color="text.secondary" sx={{ mt: 0.25 }}>{label}</Typography>
             </CardContent>
           </Card>
         ))}
       </Box>
 
-      {/* ── Phase 2 notice ──────────────────────────────────────── */}
-      <Alert
-        severity="info"
-        icon={<LockClockRoundedIcon />}
-        sx={{ borderRadius: 2 }}
-        action={
-          <Chip
-            label="Roadmap Phase 2 →"
-            component={Link}
-            href="/prospection"
-            clickable
-            size="small"
-            sx={{ fontSize: "0.625rem" }}
-          />
-        }
-      >
-        <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
-          Génération automatique de contrats & signature électronique — Phase 2 (J60–J120)
-        </Typography>
-        <Typography variant="bodySmall" sx={{ display: "block" }}>
-          ReportLab PDF · YouSign EIDAS · Webhook babmorocco.com API · Activation automatique dans l&apos;heure après signature.
-        </Typography>
-      </Alert>
+      {/* Error */}
+      {fetchError && (
+        <Alert severity="error"
+          action={<Button color="inherit" size="small" onClick={fetchData}>Réessayer</Button>}
+          sx={{ borderRadius: 2 }}>
+          {fetchError}
+        </Alert>
+      )}
 
-      {/* ── 8.2 / 8.3 Signed & Active ──────────────────────────── */}
-      {activeSigned.length > 0 && (
+      {/* Loading skeletons */}
+      {loading && (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} variant="rounded" height={160} sx={{ borderRadius: 3 }} />
+          ))}
+        </Box>
+      )}
+
+      {/* Signed section */}
+      {!loading && signed.length > 0 && (
         <Box>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
             <CheckCircleRoundedIcon sx={{ color: "success.main", fontSize: 20 }} />
-            <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>
-              Partenaires signés & actifs
-            </Typography>
-            <Chip label={activeSigned.length} color="success" size="small" sx={{ fontWeight: 700 }} />
+            <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>Partenaires signés & actifs</Typography>
+            <Chip label={signed.length} color="success" size="small" sx={{ fontWeight: 700 }} />
           </Box>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {activeSigned.map((p) => (
+            {signed.map(({ contract, prospect }) => (
               <ContractCard
-                key={p.id}
-                prospect={p}
+                key={contract.id}
+                contract={contract}
+                prospect={prospect}
                 onOpenFiche={handleOpenFiche}
-                onOpenContract={setContractDialogProspect}
+                onOpenDialog={handleOpenDialog}
               />
             ))}
           </Box>
         </Box>
       )}
 
-      {/* ── 8.4 / 8.5 Closing contracts ────────────────────────── */}
-      {activeClosing.length > 0 && (
+      {/* In-progress section */}
+      {!loading && inProgress.length > 0 && (
         <Box>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
             <HourglassTopRoundedIcon sx={{ color: "warning.main", fontSize: 20 }} />
-            <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>
-              Contrats en cours de finalisation
-            </Typography>
-            <Chip label={activeClosing.length} color="warning" size="small" sx={{ fontWeight: 700 }} />
+            <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>Contrats en cours</Typography>
+            <Chip label={inProgress.length} color="warning" size="small" sx={{ fontWeight: 700 }} />
           </Box>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {activeClosing.map((p) => (
+            {inProgress.map(({ contract, prospect }) => (
               <ContractCard
-                key={p.id}
-                prospect={p}
+                key={contract.id}
+                contract={contract}
+                prospect={prospect}
                 onOpenFiche={handleOpenFiche}
-                onOpenContract={setContractDialogProspect}
+                onOpenDialog={handleOpenDialog}
               />
             ))}
           </Box>
         </Box>
       )}
 
-      {prospects.length === 0 && (
+      {/* Declined section */}
+      {!loading && declined.length > 0 && (
+        <Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
+            <DoNotDisturbRoundedIcon sx={{ color: "error.main", fontSize: 20 }} />
+            <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>Contrats refusés</Typography>
+            <Chip label={declined.length} color="error" size="small" sx={{ fontWeight: 700 }} />
+          </Box>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {declined.map(({ contract, prospect }) => (
+              <ContractCard
+                key={contract.id}
+                contract={contract}
+                prospect={prospect}
+                onOpenFiche={handleOpenFiche}
+                onOpenDialog={handleOpenDialog}
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
+
+      {/* Empty state */}
+      {!loading && enriched.length === 0 && !fetchError && (
         <Card elevation={0} variant="outlined" sx={{ borderRadius: 3 }}>
           <CardContent sx={{ py: 6, textAlign: "center" }}>
-            <DescriptionOutlinedIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1 }} />
-            <Typography variant="titleSmall" color="text.secondary">
-              Aucun contrat en cours
-            </Typography>
+            <InboxRoundedIcon sx={{ fontSize: 48, color: "text.disabled", mb: 1 }} />
+            <Typography variant="titleSmall" color="text.secondary">Aucun contrat en cours</Typography>
             <Typography variant="bodySmall" color="text.disabled" sx={{ mt: 0.5 }}>
-              Les prospects en Closing et Activation OTA apparaîtront ici.
+              Déplacez un prospect en étape Closing pour créer un contrat automatiquement.
             </Typography>
             <Button
               component={Link}
@@ -688,21 +574,25 @@ export default function ContratsPage() {
         </Card>
       )}
 
-      {/* ── Fiche Partenaire drawer ─────────────────────────────── */}
+      {/* Fiche drawer */}
       <ProspectDrawer
-        prospect={liveSelected}
+        prospect={selectedProspect}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         onStageChange={handleStageChange}
         onNotesChange={handleNotesChange}
       />
 
-      {/* ── Phase 2 contract dialog ─────────────────────────────── */}
-      <Phase2Dialog
-        open={!!contractDialogProspect}
-        onClose={() => setContractDialogProspect(null)}
-        prospect={contractDialogProspect}
-      />
+      {/* Contract dialog */}
+      {dialogContract && dialogProspect && (
+        <ContractGenerateDialog
+          open
+          onClose={() => { setDialogContract(null); setDialogProspect(null); }}
+          prospect={dialogProspect}
+          contract={dialogContract}
+          onContractUpdate={handleContractUpdate}
+        />
+      )}
     </Box>
   );
 }

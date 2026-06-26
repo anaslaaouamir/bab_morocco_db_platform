@@ -141,3 +141,47 @@ export interface RawMessageAnalysis {
   requires_human: boolean;
   scenarios: RawScenario[];
 }
+
+// ─── Contracts ────────────────────────────────────────────────────────────────
+
+export interface RawContractClauses {
+  parties: string;
+  objet: string;
+  commission_clause: string;
+  obligations_bab: string;
+  obligations_partner: string;
+  duree_clause: string;
+  confidentialite: string;
+  rgpd_clause: string;
+  juridiction: string;
+  post_signature_note: string;
+}
+
+export type ContractStatus = "draft" | "generated" | "sent_to_partner" | "signed" | "declined";
+
+export interface RawContract {
+  id: string;
+  prospect_id: string;
+  status: ContractStatus;
+  partner_name: string;
+  partner_type: string;
+  partner_email: string | null;
+  country: string;
+  language: string;
+  commission: number;
+  estimated_annual_value: number | null;
+  clauses: RawContractClauses | null;
+  has_pdf: boolean;
+  human_review_required: boolean;
+  human_review_reason: string | null;
+  sent_at: string | null;
+  signed_at: string | null;
+  declined_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RawContractListResponse {
+  items: RawContract[];
+  total: number;
+}
