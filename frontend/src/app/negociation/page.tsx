@@ -33,6 +33,8 @@ import HandshakeRoundedIcon from "@mui/icons-material/HandshakeRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import EscalatorRoundedIcon from "@mui/icons-material/EscalatorRounded";
 import EmojiEventsRoundedIcon from "@mui/icons-material/EmojiEventsRounded";
+import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import ForumRoundedIcon from "@mui/icons-material/ForumRounded";
 import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
@@ -41,6 +43,8 @@ import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import HourglassEmptyRoundedIcon from "@mui/icons-material/HourglassEmptyRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import ReplyRoundedIcon from "@mui/icons-material/ReplyRounded";
+
+import { useRouter } from "next/navigation";
 
 import type { Prospect } from "@/types/prospect";
 import { scoreTotal, scoreColor, PARTNER_TYPE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
@@ -641,6 +645,7 @@ interface RespondedState {
 export default function NegociationPage() {
   const { showSnackbar } = useSnackbar();
   const theme = useTheme();
+  const router = useRouter();
 
   const [prospects, setProspects]   = useState<Prospect[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -672,6 +677,10 @@ export default function NegociationPage() {
   // escalade dialog (C)
   const [escaladeScenario, setEscaladeScenario] = useState<RawScenario | null>(null);
   const [escalading, setEscalading] = useState(false);
+
+  // conclude / closing
+  const [confirmConclude, setConfirmConclude] = useState(false);
+  const [concluding, setConcluding] = useState(false);
 
   // ── Data fetching ─────────────────────────────────────────────────
 
@@ -794,6 +803,33 @@ export default function NegociationPage() {
   const toggleCounterpart = useCallback((id: string) => {
     setCounterparts((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }, []);
+
+  // ── Conclude deal → closing ───────────────────────────────────────
+
+  async function handleConclude() {
+    if (!selectedId || !selectedProspect) return;
+    setConcluding(true);
+    try {
+      await prospectsApi.patchStage(selectedId, "closing");
+      setProspects((prev) => prev.filter((p) => p.id !== selectedId));
+      setSelectedId(null);
+      setConfirmConclude(false);
+      showSnackbar({
+        message: `${selectedProspect.nom} passé en Closing — contrat créé automatiquement.`,
+        severity: "success",
+        duration: 4000,
+      });
+      router.push("/contrats");
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors du passage en closing.",
+        severity: "error",
+        duration: 5000,
+      });
+    } finally {
+      setConcluding(false);
+    }
+  }
 
   // ── Confirm scenario A or B ────────────────────────────────────────
 
@@ -973,7 +1009,19 @@ export default function NegociationPage() {
                     <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>
                       Analyse — {selectedProspect.nom}
                     </Typography>
-                    <Box sx={{ display: "flex", gap: 1 }}>
+                    <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                      <Tooltip title="Conclure le partenariat — passer en Closing" placement="top">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="success"
+                          startIcon={<TaskAltRoundedIcon />}
+                          onClick={() => setConfirmConclude(true)}
+                          sx={{ fontWeight: 700, textTransform: "none", borderRadius: 2, fontSize: "0.75rem" }}
+                        >
+                          Conclure
+                        </Button>
+                      </Tooltip>
                       <Tooltip title="Soumettre un nouveau message" placement="top">
                         <IconButton size="small" onClick={handleResetForNewMessage} sx={{ color: "text.secondary" }}>
                           <AutoAwesomeRoundedIcon fontSize="small" />
@@ -1081,6 +1129,35 @@ export default function NegociationPage() {
                 </CardContent>
               </Card>
 
+              {/* Deal-ready banner — shown when partner is clearly motivated */}
+              {(analysis.intent_score ?? 0) >= 4 && (
+                <Box sx={{
+                  display: "flex", alignItems: "center", gap: 2, p: 2, borderRadius: 2.5,
+                  bgcolor: alpha(theme.palette.success.main, 0.08),
+                  border: `2px solid ${alpha(theme.palette.success.main, 0.4)}`,
+                }}>
+                  <TaskAltRoundedIcon sx={{ color: "success.main", fontSize: 28, flexShrink: 0 }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="titleSmall" sx={{ fontWeight: 700, color: "success.main" }}>
+                      Partenaire très motivé — prêt à conclure ?
+                    </Typography>
+                    <Typography variant="bodySmall" color="text.secondary">
+                      Si le partenaire a confirmé son accord, cliquez pour passer en Closing et générer le contrat.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    disableElevation
+                    endIcon={<ArrowForwardRoundedIcon />}
+                    onClick={() => setConfirmConclude(true)}
+                    sx={{ fontWeight: 700, textTransform: "none", borderRadius: 2, flexShrink: 0 }}
+                  >
+                    Conclure le partenariat
+                  </Button>
+                </Box>
+              )}
+
               {/* 3 Scenario cards */}
               {analysis.scenarios.length > 0 && (
                 <Box>
@@ -1163,6 +1240,26 @@ export default function NegociationPage() {
         onConfirm={handleEscaladeConfirm}
         scenario={escaladeScenario}
         confirming={escalading}
+      />
+
+      {/* Conclude → Closing confirmation */}
+      <ConfirmationDialog
+        open={confirmConclude}
+        onClose={() => { if (!concluding) setConfirmConclude(false); }}
+        onConfirm={handleConclude}
+        title="Conclure le partenariat ?"
+        description={
+          <Box>
+            <Typography variant="bodyMedium" sx={{ mb: 1 }}>
+              <strong>{selectedProspect?.nom}</strong> va passer en étape <strong>Closing</strong>.
+            </Typography>
+            <Typography variant="bodySmall" color="text.secondary">
+              Un contrat PDF sera créé automatiquement. Vous serez redirigé vers la page Contrats pour le générer et l&apos;envoyer au partenaire.
+            </Typography>
+          </Box>
+        }
+        confirmLabel={concluding ? "En cours…" : "Conclure & aller aux Contrats"}
+        confirmColor="success"
       />
     </Box>
   );
