@@ -367,6 +367,7 @@ function WaitingForReplyPanel({
   scenarioChosen,
   sentMessage,
   isEscalation,
+  sentAt,
   onPartnerReplied,
   onAnalysisReady,
 }: {
@@ -374,6 +375,7 @@ function WaitingForReplyPanel({
   scenarioChosen: string;
   sentMessage: string;
   isEscalation: boolean;
+  sentAt: string;
   onPartnerReplied: () => void;
   onAnalysisReady: (analysis: RawMessageAnalysis) => void;
 }) {
@@ -442,6 +444,22 @@ function WaitingForReplyPanel({
             </Typography>
           ))}
         </Box>
+
+        {/* P3-03 — Follow-up timing hint (Spec §5: relance J+3 / J+7) */}
+        {sentAt && !isEscalation && (
+          <Alert
+            severity="info"
+            sx={{ mb: 1.5, py: 0.5, "& .MuiAlert-message": { fontSize: "0.8125rem" } }}
+          >
+            Si pas de réponse d&apos;ici le{" "}
+            <strong>
+              {new Date(new Date(sentAt).getTime() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString("fr-FR", {
+                day: "numeric", month: "long",
+              })}
+            </strong>
+            , envisagez une relance via le bouton ci-dessous.
+          </Alert>
+        )}
 
         <Button
           variant="outlined"
@@ -635,12 +653,87 @@ function NegotiationProspectCard({ prospect, selected, state, onSelect }: {
   );
 }
 
+// ─── InlineLastExchanges (P3-02) ─────────────────────────────────────────────
+
+function InlineLastExchanges({ messages, prospect }: { messages: RawNegotiationMessage[]; prospect: Prospect }) {
+  const theme = useTheme();
+  const [expanded, setExpanded] = useState(false);
+  const last3 = messages.slice(-3);
+  if (last3.length === 0) return null;
+
+  return (
+    <Card elevation={0} variant="outlined" sx={{ borderRadius: 2.5, borderStyle: "dashed" }}>
+      <CardContent sx={{ p: "12px 16px !important" }}>
+        <Box
+          sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <ForumRoundedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+            <Typography variant="labelMedium" sx={{ fontWeight: 700, color: "text.secondary" }}>
+              Derniers échanges
+            </Typography>
+            <Chip
+              label={`${last3.length} message${last3.length > 1 ? "s" : ""}`}
+              size="small"
+              sx={{ height: 18, fontSize: "0.5625rem", "& .MuiChip-label": { px: 0.75 } }}
+            />
+          </Box>
+          <Typography variant="labelSmall" color="primary.main" sx={{ fontWeight: 600 }}>
+            {expanded ? "Masquer" : "Afficher"}
+          </Typography>
+        </Box>
+
+        {expanded && (
+          <Box sx={{ mt: 1.5, display: "flex", flexDirection: "column", gap: 1 }}>
+            {last3.map((msg) => {
+              const isBab = msg.direction === "outbound";
+              return (
+                <Box
+                  key={msg.id}
+                  sx={{ display: "flex", flexDirection: isBab ? "row-reverse" : "row", gap: 1, alignItems: "flex-start" }}
+                >
+                  <Avatar sx={{
+                    width: 24, height: 24, flexShrink: 0,
+                    bgcolor: isBab ? "primary.main" : alpha(theme.palette.secondary.main, 0.15),
+                    color: isBab ? "primary.contrastText" : "secondary.main",
+                    fontSize: "0.5625rem", fontWeight: 700,
+                  }}>
+                    {isBab ? "BM" : prospect.nomContact.charAt(0)}
+                  </Avatar>
+                  <Box sx={{
+                    maxWidth: "80%",
+                    p: "8px 12px",
+                    borderRadius: isBab ? "10px 3px 10px 10px" : "3px 10px 10px 10px",
+                    bgcolor: isBab ? alpha(theme.palette.primary.main, 0.08) : "action.hover",
+                    border: `1px solid ${isBab ? alpha(theme.palette.primary.main, 0.18) : theme.palette.divider}`,
+                  }}>
+                    <Typography variant="bodySmall" sx={{ fontSize: "0.75rem", lineHeight: 1.55, display: "-webkit-box",
+                      WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                      {msg.corps}
+                    </Typography>
+                    <Typography variant="labelSmall" color="text.disabled" sx={{ fontSize: "0.5625rem", mt: 0.375, display: "block",
+                      textAlign: isBab ? "left" : "right" }}>
+                      {new Date(msg.date_message).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                    </Typography>
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 interface RespondedState {
   scenarioChosen: string;
   sentMessage: string;
   isEscalation: boolean;
+  sentAt: string; // ISO timestamp — used for P3-03 follow-up timing hint
 }
 
 export default function NegociationPage() {
@@ -652,6 +745,10 @@ export default function NegociationPage() {
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // P3-01 — perdu prospects
+  const [perduProspects, setPerduProspects] = useState<Prospect[]>([]);
+  const [showPerdus, setShowPerdus]         = useState(false);
 
   // analysis per prospect (undefined = not fetched yet, null = no analysis exists)
   const [analysisCache, setAnalysisCache] = useState<Record<string, RawMessageAnalysis | null | undefined>>({});
@@ -693,8 +790,12 @@ export default function NegociationPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      const result = await prospectsApi.list({ stage: "negociation", pageSize: 100 });
-      setProspects(result.items);
+      const [negResult, perduResult] = await Promise.all([
+        prospectsApi.list({ stage: "negociation", pageSize: 100 }),
+        prospectsApi.list({ stage: "perdu", pageSize: 100 }),
+      ]);
+      setProspects(negResult.items);
+      setPerduProspects(perduResult.items);
     } catch (err) {
       setFetchError(err instanceof ApiError ? err.detail : "Impossible de charger les prospects.");
     } finally {
@@ -743,6 +844,7 @@ export default function NegociationPage() {
               scenarioChosen: isEscalation ? "C" : "?",
               sentMessage: last.corps,
               isEscalation,
+              sentAt: last.date_message,
             },
           }));
         }
@@ -869,7 +971,7 @@ export default function NegociationPage() {
     setConfirming(true);
     try {
       const msg = await negotiationApi.respond(selectedId, confirmScenario.scenario as "A" | "B" | "C");
-      handleRespondDone(selectedId, { scenarioChosen: confirmScenario.scenario, sentMessage: msg.corps, isEscalation: false });
+      handleRespondDone(selectedId, { scenarioChosen: confirmScenario.scenario, sentMessage: msg.corps, isEscalation: false, sentAt: new Date().toISOString() });
       showSnackbar({ message: `Scénario ${confirmScenario.scenario} envoyé à ${selectedProspect?.nom}.`, severity: "success", duration: 5000 });
       setConfirmScenario(null);
     } catch (err) {
@@ -889,7 +991,7 @@ export default function NegociationPage() {
     setEscalading(true);
     try {
       const msg = await negotiationApi.respond(selectedId, "C", message);
-      handleRespondDone(selectedId, { scenarioChosen: "C", sentMessage: msg.corps, isEscalation: true });
+      handleRespondDone(selectedId, { scenarioChosen: "C", sentMessage: msg.corps, isEscalation: true, sentAt: new Date().toISOString() });
       showSnackbar({ message: "Escalade confirmée — Responsable commercial en charge.", severity: "warning", duration: 6000 });
       setEscaladeScenario(null);
     } catch (err) {
@@ -907,6 +1009,24 @@ export default function NegociationPage() {
       setEscaladeScenario(scenario);
     } else {
       setConfirmScenario(scenario);
+    }
+  }
+
+  // ── P3-01 — Reactivate a perdu prospect ──────────────────────────
+
+  async function handleReactivate(id: string) {
+    const p = perduProspects.find((x) => x.id === id);
+    if (!p) return;
+    try {
+      await prospectsApi.patchStage(id, "negociation");
+      setPerduProspects((prev) => prev.filter((x) => x.id !== id));
+      setProspects((prev) => [{ ...p, stage: "negociation" } as Prospect, ...prev]);
+      showSnackbar({ message: `${p.nom} réactivé en Négociation.`, severity: "success" });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de la réactivation.",
+        severity: "error",
+      });
     }
   }
 
@@ -992,7 +1112,67 @@ export default function NegociationPage() {
               />
             ))
           )}
-        </Box>
+
+          {/* P3-01 — Perdus section */}
+          {!loading && perduProspects.length > 0 && (
+            <Box sx={{ mt: 1 }}>
+              <Divider sx={{ mb: 1.5 }} />
+              <Box
+                sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", mb: showPerdus ? 1.25 : 0 }}
+                onClick={() => setShowPerdus((v) => !v)}
+              >
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                  <BlockRoundedIcon sx={{ fontSize: 14, color: "text.disabled" }} />
+                  <Typography variant="labelMedium" color="text.secondary" sx={{ fontWeight: 700 }}>
+                    Perdus
+                  </Typography>
+                  <Chip
+                    label={perduProspects.length}
+                    size="small"
+                    sx={{ height: 16, fontSize: "0.5625rem", "& .MuiChip-label": { px: 0.75 } }}
+                  />
+                </Box>
+                <Typography variant="labelSmall" color="primary.main" sx={{ fontWeight: 600, fontSize: "0.6875rem" }}>
+                  {showPerdus ? "Masquer" : "Afficher"}
+                </Typography>
+              </Box>
+
+              {showPerdus && perduProspects.map((p) => (
+                <Card key={p.id} elevation={0} variant="outlined" sx={{
+                  borderRadius: 2.5, mb: 1,
+                  borderStyle: "dashed",
+                  opacity: 0.75,
+                }}>
+                  <CardContent sx={{ p: "10px 14px !important" }}>
+                    <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1, mb: 0.5 }}>
+                      <Typography variant="titleSmall" sx={{ fontWeight: 700, lineHeight: 1.3, flex: 1, fontSize: "0.8125rem" }}>
+                        {p.nom}
+                      </Typography>
+                      <Chip
+                        label="Perdu"
+                        size="small"
+                        sx={{ height: 16, fontSize: "0.5rem", "& .MuiChip-label": { px: 0.5 }, flexShrink: 0 }}
+                      />
+                    </Box>
+                    <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.6875rem", mb: 1 }}>
+                      {PARTNER_TYPE_LABELS[p.type]} · {p.ville} · {LANGUAGE_FLAGS[p.langue]}
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="secondary"
+                      startIcon={<AutoAwesomeRoundedIcon sx={{ fontSize: "14px !important" }} />}
+                      onClick={() => handleReactivate(p.id)}
+                      sx={{ fontWeight: 700, textTransform: "none", fontSize: "0.6875rem", py: 0.375 }}
+                    >
+                      Réactiver
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
+          )}
+        </Box>  {/* end left panel */}
 
         {/* Right: analysis panel */}
         <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -1011,17 +1191,36 @@ export default function NegociationPage() {
             [1, 2].map((i) => <Skeleton key={i} variant="rounded" height={i === 1 ? 180 : 120} sx={{ borderRadius: 2.5 }} />)
           ) : responded ? (
             // ── Responded state ──────────────────────────────────────
-            <WaitingForReplyPanel
-              prospect={selectedProspect}
-              scenarioChosen={responded.scenarioChosen}
-              sentMessage={responded.sentMessage}
-              isEscalation={responded.isEscalation}
-              onPartnerReplied={handlePartnerReplied}
-              onAnalysisReady={handleAnalysisReady}
-            />
+            <>
+              <WaitingForReplyPanel
+                prospect={selectedProspect}
+                scenarioChosen={responded.scenarioChosen}
+                sentMessage={responded.sentMessage}
+                isEscalation={responded.isEscalation}
+                sentAt={responded.sentAt}
+                onPartnerReplied={handlePartnerReplied}
+                onAnalysisReady={handleAnalysisReady}
+              />
+              {/* P3-02 — Inline last exchanges */}
+              {(historyCache[selectedId ?? ""] ?? []).length > 0 && (
+                <InlineLastExchanges
+                  messages={historyCache[selectedId ?? ""] ?? []}
+                  prospect={selectedProspect}
+                />
+              )}
+            </>
           ) : !analysis ? (
             // ── No analysis yet ──────────────────────────────────────
-            <SubmitMessagePanel prospect={selectedProspect} onAnalysisReady={handleAnalysisReady} />
+            <>
+              <SubmitMessagePanel prospect={selectedProspect} onAnalysisReady={handleAnalysisReady} />
+              {/* P3-02 — Inline last exchanges */}
+              {(historyCache[selectedId ?? ""] ?? []).length > 0 && (
+                <InlineLastExchanges
+                  messages={historyCache[selectedId ?? ""] ?? []}
+                  prospect={selectedProspect}
+                />
+              )}
+            </>
           ) : (
             // ── Analysis + scenarios ─────────────────────────────────
             <>

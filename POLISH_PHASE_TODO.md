@@ -89,19 +89,19 @@
 
 ## AREA 3 â€” Negotiation
 
-- [ ] **P3-01 â€” No way to view or reactivate `perdu` prospects**
+- [x] **P3-01 â€” No way to view or reactivate `perdu` prospects**
   - **Layer:** Missing Frontend Only
   - **Backend:** `GET /prospects?stage=perdu` works. Negotiation history is preserved in `negotiation_messages` table.
   - **Frontend gap:** `negociation/page.tsx` filters by `stage=negociation` only. Once marked `perdu`, a prospect and their full conversation history are inaccessible from the negotiation page.
   - **Fix:** Add a "Perdus" secondary section or tab on the Negotiation page. Show lost prospects with their last message date and a "RÃ©activer" button (`PATCH /stage â†’ negociation`). Pair with P1-03.
 
-- [ ] **P3-02 â€” No inline history in the main negotiation panel**
+- [x] **P3-02 â€” No inline history in the main negotiation panel**
   - **Layer:** Missing Frontend Only
   - **Backend:** `GET /negotiation/{id}/history` exists and returns full message list.
   - **Frontend gap:** Conversation history is only accessible via the dialog button. The main panel shows no running thread â€” the user must remember what was said from a separate modal.
   - **Fix:** Add a collapsible "Derniers Ã©changes" section between the SubmitMessagePanel and the analysis card, showing the last 2â€“3 messages inline (direction-aware alignment: inbound left, outbound right). Reuses the already-loaded `historyCache`.
 
-- [ ] **P3-03 â€” No follow-up timing hint in WaitingForReplyPanel**
+- [x] **P3-03 â€” No follow-up timing hint in WaitingForReplyPanel**
   - **Layer:** Missing Frontend Only
   - **Backend:** No gap. Timing logic exists in `outreach_service.py` but not in negotiation.
   - **Frontend gap:** After sending a negotiation response, the `WaitingForReplyPanel` says "En attente de sa rÃ©ponse" but gives no guidance on follow-up timing (CLAUDE.md Â§5 defines a 3â€“7 day window).
