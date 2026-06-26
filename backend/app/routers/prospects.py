@@ -105,7 +105,14 @@ async def patch_stage(
     prospect = await svc.get_prospect(db, prospect_id)
     if not prospect:
         raise HTTPException(status_code=404, detail="Prospect introuvable.")
-    return await svc.patch_stage(db, prospect, data)
+    updated = await svc.patch_stage(db, prospect, data)
+
+    # Auto-create a draft contract when prospect enters closing stage
+    if data.stage == "closing":
+        from app.services.contract_service import ContractService
+        await ContractService().create_from_prospect(db, updated)
+
+    return updated
 
 
 @router.delete("/{prospect_id}", status_code=204)

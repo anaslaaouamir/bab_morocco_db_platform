@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from app.routers import health, prospects, scan, outreach, negotiation
+from app.routers import health, prospects, scan, outreach, negotiation, contracts
 
 app = FastAPI(title="Bab Morocco BD Intelligence Platform", version="1.0.0")
 
@@ -19,6 +19,7 @@ app.include_router(prospects.router)
 app.include_router(scan.router)
 app.include_router(outreach.router)
 app.include_router(negotiation.router)
+app.include_router(contracts.router)
 
 
 @app.get("/", include_in_schema=False)
