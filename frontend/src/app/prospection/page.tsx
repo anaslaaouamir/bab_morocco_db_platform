@@ -210,6 +210,27 @@ export default function ProspectionPage() {
     [showSnackbar],
   );
 
+  const handleDeleteProspect = useCallback(
+    (id: string) => {
+      setAllProspects((prev) => prev.filter((p) => p.id !== id));
+      setDrawerOpen(false);
+      setSelectedProspect(null);
+      showSnackbar({ message: "Prospect supprimé", severity: "info", duration: 3000 });
+    },
+    [showSnackbar],
+  );
+
+  const handleUpdateProspect = useCallback(
+    (updated: Prospect) => {
+      setAllProspects((prev) =>
+        prev.map((p) => (p.id === updated.id ? updated : p)),
+      );
+      setSelectedProspect(updated);
+      showSnackbar({ message: "Prospect mis à jour", severity: "success", duration: 3000 });
+    },
+    [],
+  );
+
   const handleAddProspect = useCallback(
     (prospect: Prospect) => {
       setAllProspects((prev) => [prospect, ...prev]);
@@ -428,6 +449,8 @@ export default function ProspectionPage() {
         onClose={handleDrawerClose}
         onStageChange={handleStageChange}
         onNotesChange={handleNotesChange}
+        onDelete={handleDeleteProspect}
+        onUpdate={handleUpdateProspect}
       />
     </Box>
   );

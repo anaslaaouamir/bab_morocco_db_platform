@@ -23,6 +23,9 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import Skeleton from "@mui/material/Skeleton";
 import CircularProgress from "@mui/material/CircularProgress";
+import Switch from "@mui/material/Switch";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Autocomplete from "@mui/material/Autocomplete";
 import { alpha, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
@@ -41,8 +44,12 @@ import VerifiedRoundedIcon from "@mui/icons-material/VerifiedRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
+import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
+import CancelRoundedIcon from "@mui/icons-material/CancelRounded";
 
-import type { Prospect, PipelineStage } from "@/types/prospect";
+import type { Prospect, PipelineStage, PartnerType, OutreachLanguage } from "@/types/prospect";
 import {
   scoreTotal,
   scoreColor,
@@ -50,9 +57,11 @@ import {
   STAGE_LABELS,
   LANGUAGE_FLAGS,
 } from "@/types/prospect";
-import { outreachApi, ApiError } from "@/lib/api";
+import { outreachApi, prospectsApi, ApiError } from "@/lib/api";
 import type { RawOutreachEmail } from "@/lib/api";
 import { useSnackbar } from "@/contexts/SnackbarContext";
+import ConfirmationDialog from "@/components/shared/ConfirmationDialog";
+import { COUNTRIES, CITIES_BY_COUNTRY } from "@/lib/constants/geography";
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -669,6 +678,187 @@ function OutreachSection({ prospectId, prospectScore }: OutreachSectionProps) {
   );
 }
 
+// ─── Edit form ────────────────────────────────────────────────────────────
+
+const PARTNER_TYPES: PartnerType[] = [
+  "hotel_riad", "hotel_luxe", "tour_operateur", "agence_voyage",
+  "prestataire_activites", "transport", "to_golfe", "mice",
+];
+const LANGUES: { value: OutreachLanguage; label: string }[] = [
+  { value: "fr", label: "Français" },
+  { value: "en", label: "English" },
+  { value: "es", label: "Español" },
+  { value: "de", label: "Deutsch" },
+  { value: "ar", label: "العربية" },
+];
+
+interface EditForm {
+  nom: string;
+  type: PartnerType;
+  pays: string;
+  ville: string;
+  region: string;
+  adresseWeb: string;
+  emailContact: string;
+  linkedinContact: string;
+  nomContact: string;
+  posteContact: string;
+  nbChambres: string;
+  capaciteDescription: string;
+  presenceBooking: boolean;
+  noteBooking: string;
+  presenceExpedia: boolean;
+  commissionStandard: string;
+  commissionPlancher: string;
+  langue: OutreachLanguage;
+  dateProchainContact: string;
+}
+
+function prospectToEditForm(p: Prospect): EditForm {
+  return {
+    nom: p.nom,
+    type: p.type,
+    pays: p.pays,
+    ville: p.ville,
+    region: p.region ?? "",
+    adresseWeb: p.adresseWeb,
+    emailContact: p.emailContact,
+    linkedinContact: p.linkedinContact ?? "",
+    nomContact: p.nomContact,
+    posteContact: p.posteContact,
+    nbChambres: p.nbChambres != null ? String(p.nbChambres) : "",
+    capaciteDescription: p.capaciteDescription ?? "",
+    presenceBooking: p.presenceBooking,
+    noteBooking: p.noteBooking != null ? String(p.noteBooking) : "",
+    presenceExpedia: p.presenceExpedia,
+    commissionStandard: String(p.commissionStandard),
+    commissionPlancher: String(p.commissionPlancher),
+    langue: p.langue as OutreachLanguage,
+    dateProchainContact: p.dateProchainContact ?? "",
+  };
+}
+
+function EditProspectForm({
+  form,
+  onChange,
+}: {
+  form: EditForm;
+  onChange: (next: EditForm) => void;
+}) {
+  const set = (key: keyof EditForm, value: string | boolean) =>
+    onChange({ ...form, [key]: value });
+
+  const cities = (CITIES_BY_COUNTRY as Record<string, string[]>)[form.pays] ?? [];
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {/* Identité */}
+      <Box>
+        <Typography variant="labelMedium" sx={{ display: "block", textTransform: "uppercase", letterSpacing: "0.08em", color: "text.secondary", fontWeight: 700, mb: 1.5 }}>
+          Identité
+        </Typography>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <TextField size="small" label="Nom de l'établissement" fullWidth value={form.nom} onChange={(e) => set("nom", e.target.value)} />
+          <FormControl size="small" fullWidth>
+            <InputLabel>Type de partenaire</InputLabel>
+            <Select value={form.type} label="Type de partenaire" onChange={(e) => set("type", e.target.value as PartnerType)}>
+              {PARTNER_TYPES.map((t) => <MenuItem key={t} value={t}>{PARTNER_TYPE_LABELS[t]}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Langue</InputLabel>
+            <Select value={form.langue} label="Langue" onChange={(e) => set("langue", e.target.value as OutreachLanguage)}>
+              {LANGUES.map((l) => <MenuItem key={l.value} value={l.value}>{LANGUAGE_FLAGS[l.value]} {l.label}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </Box>
+      </Box>
+
+      <Divider />
+
+      {/* Localisation */}
+      <Box>
+        <Typography variant="labelMedium" sx={{ display: "block", textTransform: "uppercase", letterSpacing: "0.08em", color: "text.secondary", fontWeight: 700, mb: 1.5 }}>
+          Localisation
+        </Typography>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <Autocomplete
+            freeSolo
+            options={COUNTRIES as unknown as string[]}
+            value={form.pays}
+            onInputChange={(_, v) => set("pays", v)}
+            renderInput={(params) => <TextField {...params} size="small" label="Pays" />}
+          />
+          <Autocomplete
+            freeSolo
+            options={cities}
+            value={form.ville}
+            onInputChange={(_, v) => set("ville", v)}
+            renderInput={(params) => <TextField {...params} size="small" label="Ville" />}
+          />
+          <TextField size="small" label="Région (optionnel)" fullWidth value={form.region} onChange={(e) => set("region", e.target.value)} />
+          <TextField size="small" label="Site web" fullWidth value={form.adresseWeb} onChange={(e) => set("adresseWeb", e.target.value)} />
+        </Box>
+      </Box>
+
+      <Divider />
+
+      {/* Contact */}
+      <Box>
+        <Typography variant="labelMedium" sx={{ display: "block", textTransform: "uppercase", letterSpacing: "0.08em", color: "text.secondary", fontWeight: 700, mb: 1.5 }}>
+          Contact décideur
+        </Typography>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <TextField size="small" label="Nom du contact" fullWidth value={form.nomContact} onChange={(e) => set("nomContact", e.target.value)} />
+          <TextField size="small" label="Poste / Fonction" fullWidth value={form.posteContact} onChange={(e) => set("posteContact", e.target.value)} />
+          <TextField size="small" label="Email" fullWidth value={form.emailContact} onChange={(e) => set("emailContact", e.target.value)} />
+          <TextField size="small" label="LinkedIn (optionnel)" fullWidth value={form.linkedinContact} onChange={(e) => set("linkedinContact", e.target.value)} />
+          <TextField size="small" label="Prochain contact (YYYY-MM-DD)" fullWidth value={form.dateProchainContact} onChange={(e) => set("dateProchainContact", e.target.value)} />
+        </Box>
+      </Box>
+
+      <Divider />
+
+      {/* Établissement */}
+      <Box>
+        <Typography variant="labelMedium" sx={{ display: "block", textTransform: "uppercase", letterSpacing: "0.08em", color: "text.secondary", fontWeight: 700, mb: 1.5 }}>
+          Établissement
+        </Typography>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+            <TextField size="small" label="Nb. chambres" type="number" value={form.nbChambres} onChange={(e) => set("nbChambres", e.target.value)} />
+            <TextField size="small" label="Note Booking" type="number" value={form.noteBooking} onChange={(e) => set("noteBooking", e.target.value)} slotProps={{ htmlInput: { step: 0.1, min: 0, max: 10 } }} />
+          </Box>
+          <TextField size="small" label="Capacité (description)" fullWidth value={form.capaciteDescription} onChange={(e) => set("capaciteDescription", e.target.value)} />
+          <Box sx={{ display: "flex", gap: 2 }}>
+            <FormControlLabel
+              control={<Switch checked={form.presenceBooking} onChange={(e) => set("presenceBooking", e.target.checked)} size="small" />}
+              label={<Typography variant="bodySmall">Booking.com</Typography>}
+            />
+            <FormControlLabel
+              control={<Switch checked={form.presenceExpedia} onChange={(e) => set("presenceExpedia", e.target.checked)} size="small" />}
+              label={<Typography variant="bodySmall">Expedia</Typography>}
+            />
+          </Box>
+        </Box>
+      </Box>
+
+      <Divider />
+
+      {/* Commission */}
+      <Box>
+        <Typography variant="labelMedium" sx={{ display: "block", textTransform: "uppercase", letterSpacing: "0.08em", color: "text.secondary", fontWeight: 700, mb: 1.5 }}>
+          Commission
+        </Typography>
+        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+          <TextField size="small" label="Taux standard (%)" type="number" value={form.commissionStandard} onChange={(e) => set("commissionStandard", e.target.value)} slotProps={{ htmlInput: { step: 0.5, min: 0, max: 100 } }} />
+          <TextField size="small" label="Plancher absolu (%)" type="number" value={form.commissionPlancher} onChange={(e) => set("commissionPlancher", e.target.value)} slotProps={{ htmlInput: { step: 0.5, min: 0, max: 100 } }} />
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
 // ─── Props ─────────────────────────────────────────────────────────────────
 
 export interface ProspectDrawerProps {
@@ -677,6 +867,8 @@ export interface ProspectDrawerProps {
   onClose: () => void;
   onStageChange: (id: string, stage: PipelineStage) => void;
   onNotesChange: (id: string, notes: string) => void;
+  onDelete?: (id: string) => void;
+  onUpdate?: (updated: Prospect) => void;
 }
 
 // ─── Main component ────────────────────────────────────────────────────────
@@ -687,15 +879,104 @@ export default function ProspectDrawer({
   onClose,
   onStageChange,
   onNotesChange,
+  onDelete,
+  onUpdate,
 }: ProspectDrawerProps) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
+  const { showSnackbar } = useSnackbar();
 
   // Local notes state — synced when prospect changes
   const [notes, setNotes] = useState(prospect?.notes ?? "");
   useEffect(() => {
     setNotes(prospect?.notes ?? "");
   }, [prospect?.id, prospect?.notes]);
+
+  // Edit mode state
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Delete state
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Reset edit mode when prospect changes
+  useEffect(() => {
+    setEditMode(false);
+    setEditForm(null);
+  }, [prospect?.id]);
+
+  function handleStartEdit() {
+    if (!prospect) return;
+    setEditForm(prospectToEditForm(prospect));
+    setEditMode(true);
+  }
+
+  function handleCancelEdit() {
+    setEditMode(false);
+    setEditForm(null);
+  }
+
+  async function handleSaveEdit() {
+    if (!prospect || !editForm) return;
+    setSaving(true);
+    try {
+      const updated = await prospectsApi.update(prospect.id, {
+        nom: editForm.nom,
+        type: editForm.type as PartnerType,
+        pays: editForm.pays,
+        ville: editForm.ville,
+        region: editForm.region || undefined,
+        adresseWeb: editForm.adresseWeb,
+        emailContact: editForm.emailContact,
+        linkedinContact: editForm.linkedinContact || undefined,
+        nomContact: editForm.nomContact,
+        posteContact: editForm.posteContact,
+        nbChambres: editForm.nbChambres ? parseInt(editForm.nbChambres, 10) : undefined,
+        capaciteDescription: editForm.capaciteDescription || undefined,
+        presenceBooking: editForm.presenceBooking,
+        noteBooking: editForm.noteBooking ? parseFloat(editForm.noteBooking) : undefined,
+        presenceExpedia: editForm.presenceExpedia,
+        commissionStandard: parseFloat(editForm.commissionStandard),
+        commissionPlancher: parseFloat(editForm.commissionPlancher),
+        langue: editForm.langue,
+        dateProchainContact: editForm.dateProchainContact || undefined,
+      } as Partial<Prospect>);
+      onUpdate?.(updated);
+      setEditMode(false);
+      setEditForm(null);
+      showSnackbar({ message: `${updated.nom} mis à jour.`, severity: "success", duration: 3000 });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de la mise à jour.",
+        severity: "error",
+        duration: 5000,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!prospect) return;
+    setDeleting(true);
+    try {
+      await prospectsApi.delete(prospect.id);
+      onDelete?.(prospect.id);
+      setConfirmDelete(false);
+      onClose();
+      showSnackbar({ message: `${prospect.nom} supprimé.`, severity: "warning", duration: 4000 });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de la suppression.",
+        severity: "error",
+        duration: 5000,
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function handleNotesBlur() {
     if (prospect && notes !== (prospect.notes ?? "")) {
@@ -736,10 +1017,10 @@ export default function ProspectDrawer({
           </Box>
         )}
 
-        {/* Close button + escalation alert */}
+        {/* Header: title + action buttons */}
         <Box sx={{ display: "flex", alignItems: "flex-start", mb: 1.5 }}>
           <Box sx={{ flex: 1 }}>
-            {needsHumanValidation && (
+            {needsHumanValidation && !editMode && (
               <Alert
                 severity="error"
                 icon={<WarningAmberRoundedIcon fontSize="small" />}
@@ -760,12 +1041,61 @@ export default function ProspectDrawer({
               component="h2"
               sx={{ fontWeight: 700, lineHeight: 1.25, pr: 1 }}
             >
-              {prospect.nom}
+              {editMode && editForm ? editForm.nom || prospect.nom : prospect.nom}
             </Typography>
           </Box>
-          <IconButton onClick={onClose} size="small" aria-label="Fermer" sx={{ mt: -0.5 }}>
-            <CloseRoundedIcon fontSize="small" />
-          </IconButton>
+
+          {/* View mode: Edit + Delete + Close */}
+          {!editMode && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <Tooltip title="Modifier ce prospect">
+                <IconButton onClick={handleStartEdit} size="small" aria-label="Modifier">
+                  <EditRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Supprimer ce prospect">
+                <IconButton
+                  onClick={() => setConfirmDelete(true)}
+                  size="small"
+                  aria-label="Supprimer"
+                  sx={{ color: "error.main" }}
+                >
+                  <DeleteRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <IconButton onClick={onClose} size="small" aria-label="Fermer" sx={{ ml: 0.5 }}>
+                <CloseRoundedIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          )}
+
+          {/* Edit mode: Save + Cancel */}
+          {editMode && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <Tooltip title="Enregistrer les modifications">
+                <span>
+                  <IconButton
+                    onClick={handleSaveEdit}
+                    size="small"
+                    aria-label="Enregistrer"
+                    disabled={saving}
+                    sx={{ color: "primary.main" }}
+                  >
+                    {saving ? (
+                      <CircularProgress size={16} color="inherit" thickness={4} />
+                    ) : (
+                      <SaveRoundedIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title="Annuler">
+                <IconButton onClick={handleCancelEdit} size="small" aria-label="Annuler" disabled={saving}>
+                  <CancelRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
         </Box>
 
         {/* Chips row */}
@@ -821,6 +1151,14 @@ export default function ProspectDrawer({
           "&::-webkit-scrollbar-thumb": { bgcolor: "divider", borderRadius: 2 },
         }}
       >
+        {/* ── Edit form (edit mode only) ────────────────────────── */}
+        {editMode && editForm && (
+          <EditProspectForm form={editForm} onChange={setEditForm} />
+        )}
+
+        {/* ── Read-only sections (view mode only) ──────────────── */}
+        {!editMode && <>
+
         {/* ── Score Breakdown ──────────────────────────────────────── */}
         <Box>
           <SectionTitle>Score de qualification</SectionTitle>
@@ -1126,9 +1464,23 @@ export default function ProspectDrawer({
           </Typography>
         </Box>
 
+        </> /* end read-only sections */}
+
         {/* Bottom spacer for mobile safe area */}
         <Box sx={{ pb: { xs: "env(safe-area-inset-bottom, 0px)", md: 0 } }} />
       </Box>
+
+      {/* ── Delete confirmation dialog ──────────────────────── */}
+      <ConfirmationDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleConfirmDelete}
+        title="Supprimer ce prospect ?"
+        description={`"${prospect.nom}" sera définitivement supprimé. Cette action est irréversible.`}
+        confirmLabel="Supprimer"
+        confirmColor="error"
+        loading={deleting}
+      />
     </Box>
   ) : null;
 
