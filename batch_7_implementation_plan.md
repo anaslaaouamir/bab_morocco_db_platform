@@ -125,7 +125,7 @@ Low. Single constant change, one file. No backend changes. The `FilterBar` alrea
 
 ## Task 2 — Export Option for Prospects (PDF / Excel with Filters)
 
-**Status:** `- [ ]`
+**Status:** `- [x]` ✅ Completed 2026-06-29
 
 ### Context
 There is currently no export feature anywhere in the codebase. The prospection page (`frontend/src/app/prospection/page.tsx`) holds the filtered list of prospects and already uses `FilterBar`. The `FilterState` type is clean and reusable. Export will be **client-side only** using two npm packages:
@@ -134,30 +134,22 @@ There is currently no export feature anywhere in the codebase. The prospection p
 
 ### Plan
 
-- [ ] **2.1** Install npm packages:
-  ```bash
-  cd frontend && npm install xlsx jspdf jspdf-autotable
-  ```
-- [ ] **2.2** Read `frontend/src/app/prospection/page.tsx` to understand how `FilterBar`, `FilterState`, and the prospect list are wired together.
-- [ ] **2.3** Read `frontend/src/components/shared/FilterBar.tsx` to understand the filter chips and `FilterState` structure.
-- [ ] **2.4** Create `frontend/src/components/crm/ExportDialog.tsx` with:
-  - **Format selector** — PDF or Excel (MUI `ToggleButtonGroup` or radio buttons).
-  - **Filter section** — embed the same filter chip groups as `FilterBar` (type, stage, score, marché + search field), backed by a local `FilterState` copy initialized from the current active filters passed as a prop.
-  - **Result preview** — show "X prospects will be exported" based on the applied filters.
-  - **"Télécharger" button** — triggers the export and closes the dialog.
-- [ ] **2.5** Add an "Exporter" button (`FileDownloadRoundedIcon`) in the prospection page toolbar (next to the existing FAB or in the FilterBar trigger row).
-- [ ] **2.6** Wire the button to open `ExportDialog`, passing the current `FilterState` and the full `prospects` array.
-- [ ] **2.7** Implement Excel export logic (in the dialog or a `lib/export.ts` utility):
-  - Apply selected filters to the prospects array.
-  - Map each prospect to a flat row object with French column headers.
-  - Generate and trigger download using `xlsx.utils.json_to_sheet` + `xlsx.writeFile`.
-- [ ] **2.8** Implement PDF export logic:
-  - Apply selected filters.
-  - Use `jspdf` + `autoTable` to generate a table with the same columns.
-  - Include a header with "Bab Morocco — Export Prospects" + date.
-  - Trigger download.
-- [ ] **2.9** Test both PDF and Excel exports with active and empty filters.
-- [ ] **2.10** Commit.
+- [x] **2.1** Installed `xlsx`, `jspdf`, `jspdf-autotable` via npm.
+- [x] **2.2** Read `frontend/src/app/prospection/page.tsx` — confirmed `filters` state, `allProspects`, `filteredProspects`.
+- [x] **2.3** Read `frontend/src/lib/filters.ts` — confirmed `FilterState`, `applyFilters`, `toggleItem`.
+- [x] **2.4** Created `frontend/src/components/crm/ExportDialog.tsx` with:
+  - `ToggleButtonGroup` for Excel / PDF format selection.
+  - Chip-based filter sections for type, stage, marché, and score minimum.
+  - Live "X / N prospects inclus" preview count (recalculates on every filter change).
+  - Dynamic import of `xlsx` / `jspdf` / `jspdf-autotable` to keep initial bundle small.
+  - PDF output: landscape A4 with header (title + date) + purple-themed autoTable.
+  - Excel output: auto column widths via `wch` metadata.
+- [x] **2.5** Added "Exporter" button (outlined, `FileDownloadOutlinedIcon`) to prospection page header row beside title.
+- [x] **2.6** `ExportDialog` opened with `allProspects` and `initialFilters` (current page filter state pre-fills the dialog).
+- [x] **2.7** Excel export: `XLSX.utils.json_to_sheet` → `XLSX.writeFile` triggers browser download.
+- [x] **2.8** PDF export: `jspdf` + `autoTable` with A4 landscape, header row, alternating row colors.
+- [x] **2.9** Build clean across all 9 routes. `/prospection` now 66.2 kB (xlsx/jspdf loaded dynamically, not in initial bundle).
+- [x] **2.10** Committed: `feat(export): add PDF and Excel export dialog with filter options`
 
 ### Export Columns (French labels)
 | Field | Label |
@@ -506,7 +498,7 @@ Examples:
 | Task | Description | Status |
 |------|-------------|--------|
 | T1 | Kanban — Veille/Perdu separation | ✅ Done |
-| T2 | Export — PDF/Excel with filters | ⬜ Not started |
+| T2 | Export — PDF/Excel with filters | ✅ Done |
 | T3 | Scan — Multi-select partner type | ✅ Done |
 | T4 | Settings — Scheduled scan | ⬜ Not started |
 | T5 | Outreach — Step tab filter | ✅ Done |

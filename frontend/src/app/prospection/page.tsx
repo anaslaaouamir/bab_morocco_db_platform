@@ -12,6 +12,7 @@ import Fab from "@mui/material/Fab";
 import Skeleton from "@mui/material/Skeleton";
 import Alert from "@mui/material/Alert";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
 import ViewKanbanOutlinedIcon from "@mui/icons-material/ViewKanbanOutlined";
 
@@ -27,6 +28,7 @@ import ProspectDrawer from "@/components/crm/ProspectDrawer";
 import AddProspectDialog from "@/components/crm/AddProspectDialog";
 import ProspectionModeDialog from "@/components/crm/ProspectionModeDialog";
 import ScanProspectDialog from "@/components/crm/ScanProspectDialog";
+import ExportDialog from "@/components/crm/ExportDialog";
 import type { ProspectionMode } from "@/components/crm/ProspectionModeDialog";
 
 // ─── Loading skeleton ──────────────────────────────────────────────────────
@@ -94,6 +96,7 @@ export default function ProspectionPage() {
   const [modeDialogOpen, setModeDialogOpen]     = useState(false);
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [scanDialogOpen, setScanDialogOpen]     = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   function handleModeSelect(mode: ProspectionMode) {
     setModeDialogOpen(false);
@@ -262,9 +265,20 @@ export default function ProspectionPage() {
 
       {/* Page header */}
       <Box sx={{ px: { xs: 2, sm: 3, md: 4 }, pt: { xs: 2, md: 3 }, pb: 0 }}>
-        <Typography variant="headlineMedium" component="h1" sx={{ mb: 0.5 }}>
-          Prospection
-        </Typography>
+        <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", mb: 0.5 }}>
+          <Typography variant="headlineMedium" component="h1">
+            Prospection
+          </Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<FileDownloadOutlinedIcon />}
+            onClick={() => setExportDialogOpen(true)}
+            sx={{ textTransform: "none", mt: 0.5 }}
+          >
+            Exporter
+          </Button>
+        </Box>
         <Typography variant="bodyMedium" color="text.secondary" sx={{ mb: 2 }}>
           Pipeline partenaires B2B — Bab Morocco BD Intelligence Platform
         </Typography>
@@ -440,6 +454,14 @@ export default function ProspectionPage() {
         onClose={() => setScanDialogOpen(false)}
         onBack={() => { setScanDialogOpen(false); setModeDialogOpen(true); }}
         onScanComplete={fetchProspects}
+      />
+
+      {/* Export dialog */}
+      <ExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        allProspects={allProspects}
+        initialFilters={filters}
       />
 
       {/* Fiche Partenaire drawer */}
