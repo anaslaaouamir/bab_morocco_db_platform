@@ -1,3 +1,7 @@
+:root {
+  --font-google-sans: "Google Sans", sans-serif;
+}
+
 *,
 *::before,
 *::after {

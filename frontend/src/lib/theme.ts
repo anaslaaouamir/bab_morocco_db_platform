@@ -75,7 +75,7 @@ const babMoroccoTheme = createTheme({
     },
   },
   typography: {
-    fontFamily: '"Roboto", sans-serif',
+    fontFamily: '"Google Sans", var(--font-google-sans), "Roboto", sans-serif',
     // MD3 Type Scale
     displayLarge: { fontSize: "3.5625rem", fontWeight: 400, lineHeight: 1.13 },
     displayMedium: { fontSize: "2.8125rem", fontWeight: 400, lineHeight: 1.16 },

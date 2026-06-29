@@ -1,8 +1,4 @@
 import type { Metadata } from "next";
-import "@fontsource/roboto/300.css";
-import "@fontsource/roboto/400.css";
-import "@fontsource/roboto/500.css";
-import "@fontsource/roboto/700.css";
 import "./globals.css";
 import ThemeRegistry from "@/components/ThemeRegistry";
 import { SnackbarProvider } from "@/contexts/SnackbarContext";
@@ -19,6 +15,14 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@300;400;500;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body>
         {/*
          * Provider order (inner to outer):
