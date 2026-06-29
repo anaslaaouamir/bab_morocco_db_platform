@@ -49,7 +49,8 @@ const COLUMNS: KanbanColumn[] = [
   { id: "negociation",    label: "Négociation",    stages: ["negociation"],    accent: "#AB47BC", targetStage: "negociation" },
   { id: "closing",        label: "Closing",        stages: ["closing"],        accent: "#66BB6A", targetStage: "closing" },
   { id: "activation_ota", label: "Activation OTA", stages: ["activation_ota"], accent: "#2E7D32", targetStage: "activation_ota" },
-  { id: "veille_perdu",   label: "Veille / Perdu", stages: ["veille", "perdu"], accent: "#BDBDBD", targetStage: "veille" },
+  { id: "veille",          label: "Veille",          stages: ["veille"],          accent: "#BDBDBD", targetStage: "veille" },
+  { id: "perdu",           label: "Perdu",           stages: ["perdu"],           accent: "#EF5350", targetStage: "perdu" },
 ];
 
 // ─── Props ─────────────────────────────────────────────────────────────────
