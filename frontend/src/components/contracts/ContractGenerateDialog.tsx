@@ -121,7 +121,7 @@ function DraftPanel({
 }: {
   contract: RawContract;
   prospect: Prospect;
-  onGenerate: (overrides: Partial<Record<keyof RawContractClauses, string>>) => void;
+  onGenerate: () => void;
   generating: boolean;
 }) {
   const theme = useTheme();
@@ -129,16 +129,6 @@ function DraftPanel({
   const [estimatedValue, setEstimatedValue] = useState<string>("");
   const parsedValue = parseFloat(estimatedValue) || 0;
   const overThreshold = parsedValue > 50000;
-
-  // Editable clause overrides — empty string means "let AI generate"
-  const [localClauses, setLocalClauses] = useState<Partial<Record<keyof RawContractClauses, string>>>({});
-  const [openClause, setOpenClause] = useState<keyof RawContractClauses | null>(null);
-
-  const customizedCount = Object.values(localClauses).filter((v) => v && v.trim()).length;
-
-  function setClause(key: keyof RawContractClauses, value: string) {
-    setLocalClauses((prev) => ({ ...prev, [key]: value }));
-  }
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -202,78 +192,18 @@ function DraftPanel({
         )}
       </Box>
 
-      {/* Editable clause accordions */}
+      {/* 9-clause checklist */}
       <Box>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-          <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
-            Clauses du contrat
-          </Typography>
-          <Chip
-            label={customizedCount > 0
-              ? `${customizedCount} / ${Object.keys(CLAUSE_LABELS).length} personnalisées`
-              : "Toutes générées par l'IA"}
-            size="small"
-            color={customizedCount > 0 ? "primary" : "default"}
-            variant="outlined"
-            sx={{ fontSize: "0.6875rem" }}
-          />
-        </Box>
-        <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 1.5, display: "block", fontSize: "0.75rem" }}>
-          Pré-remplissez les clauses à personnaliser. Laissez vide pour laisser l&apos;IA générer automatiquement.
+        <Typography variant="titleSmall" sx={{ fontWeight: 700, mb: 1 }}>
+          Structure du contrat (9 clauses)
         </Typography>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.625 }}>
-          {(Object.keys(CLAUSE_LABELS) as Array<keyof RawContractClauses>).map((key) => {
-            const isOpen = openClause === key;
-            const hasContent = !!(localClauses[key] && localClauses[key]!.trim());
-            return (
-              <Box key={key} sx={{ border: `1px solid ${hasContent ? theme.palette.primary.main : theme.palette.divider}`, borderRadius: 2, overflow: "hidden" }}>
-                <Box
-                  onClick={() => setOpenClause(isOpen ? null : key)}
-                  sx={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    px: 1.5, py: 1, cursor: "pointer",
-                    bgcolor: hasContent ? `${theme.palette.primary.main}08` : "action.hover",
-                    "&:hover": { bgcolor: hasContent ? `${theme.palette.primary.main}12` : `${theme.palette.primary.main}05` },
-                    userSelect: "none",
-                  }}
-                >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0 }}>
-                    {hasContent
-                      ? <CheckCircleRoundedIcon sx={{ fontSize: 14, color: "primary.main", flexShrink: 0 }} />
-                      : <AutoAwesomeRoundedIcon sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }} />
-                    }
-                    <Typography variant="labelSmall" sx={{ fontWeight: 700, fontSize: "0.75rem", color: hasContent ? "primary.main" : "text.primary" }} noWrap>
-                      {CLAUSE_LABELS[key]}
-                    </Typography>
-                  </Box>
-                  <ExpandMoreRoundedIcon sx={{
-                    fontSize: 18, color: "text.secondary", flexShrink: 0,
-                    transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 200ms ease",
-                  }} />
-                </Box>
-                <Collapse in={isOpen}>
-                  <Box sx={{ px: 1.5, py: 1.25, borderTop: `1px solid ${theme.palette.divider}` }}>
-                    <TextField
-                      multiline
-                      minRows={3}
-                      maxRows={8}
-                      fullWidth
-                      size="small"
-                      value={localClauses[key] ?? ""}
-                      onChange={(e) => setClause(key, e.target.value)}
-                      placeholder="Laissez vide pour laisser l'IA générer automatiquement…"
-                      disabled={generating}
-                      sx={{
-                        "& .MuiInputBase-root": { fontSize: "0.8125rem", lineHeight: 1.6 },
-                        "& .MuiInputBase-input::placeholder": { fontSize: "0.75rem", fontStyle: "italic" },
-                      }}
-                    />
-                  </Box>
-                </Collapse>
-              </Box>
-            );
-          })}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
+          {Object.entries(CLAUSE_LABELS).map(([, label]) => (
+            <Box key={label} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <CheckCircleRoundedIcon sx={{ fontSize: 16, color: "success.main", flexShrink: 0 }} />
+              <Typography variant="bodySmall" color="text.secondary">{label}</Typography>
+            </Box>
+          ))}
         </Box>
       </Box>
 
@@ -281,14 +211,14 @@ function DraftPanel({
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
         <Typography variant="bodySmall" color="text.secondary">
-          L&apos;IA va rédiger les clauses non personnalisées dans la langue du partenaire ({contract.language.toUpperCase()}),
+          L&apos;IA va rédiger l&apos;intégralité des clauses dans la langue du partenaire ({contract.language.toUpperCase()}),
           puis générer un PDF professionnel prêt à envoyer.
         </Typography>
         <Button
           variant="contained"
           disableElevation
           startIcon={generating ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdfRoundedIcon />}
-          onClick={() => onGenerate(localClauses)}
+          onClick={onGenerate}
           disabled={generating || contract.human_review_required}
           sx={{ fontWeight: 700, textTransform: "none", alignSelf: "flex-start" }}
         >
@@ -306,14 +236,45 @@ function DraftPanel({
 }
 
 function GeneratedPanel({
-  contract, onSend, sending,
+  contract, onSend, onRegenerate, sending, regenerating,
 }: {
   contract: RawContract;
   onSend: () => void;
+  onRegenerate: (overrides: Record<string, string>) => void;
   sending: boolean;
+  regenerating: boolean;
 }) {
   const theme = useTheme();
   const clauses = contract.clauses;
+
+  // Local editable copy of AI-generated clauses
+  const [localClauses, setLocalClauses] = useState<Record<string, string>>(
+    () => clauses ? Object.fromEntries(
+      (Object.keys(CLAUSE_LABELS) as Array<keyof RawContractClauses>).map((k) => [k, clauses[k] ?? ""])
+    ) : {}
+  );
+  const [openClause, setOpenClause] = useState<string | null>(null);
+
+  // Re-sync when contract clauses change (e.g. after a regeneration)
+  React.useEffect(() => {
+    if (clauses) {
+      setLocalClauses(
+        Object.fromEntries(
+          (Object.keys(CLAUSE_LABELS) as Array<keyof RawContractClauses>).map((k) => [k, clauses[k] ?? ""])
+        )
+      );
+    }
+  }, [contract.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const originalClauses = clauses
+    ? Object.fromEntries((Object.keys(CLAUSE_LABELS) as Array<keyof RawContractClauses>).map((k) => [k, clauses[k] ?? ""]))
+    : {};
+  const editedKeys = Object.keys(localClauses).filter(
+    (k) => localClauses[k] !== (originalClauses as Record<string, string>)[k]
+  );
+  const hasEdits = editedKeys.length > 0;
+
+  const isDisabled = sending || regenerating;
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -347,16 +308,78 @@ function GeneratedPanel({
         </Button>
       </Box>
 
-      {/* Clause review (collapsible) */}
+      {/* Editable clause review */}
       {clauses && (
         <Box>
-          <Typography variant="titleSmall" sx={{ fontWeight: 700, mb: 1 }}>
-            Réviser les clauses générées
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+            <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
+              Réviser les clauses générées
+            </Typography>
+            {hasEdits && (
+              <Chip
+                label={`${editedKeys.length} clause${editedKeys.length > 1 ? "s" : ""} modifiée${editedKeys.length > 1 ? "s" : ""}`}
+                size="small"
+                color="warning"
+                variant="outlined"
+                sx={{ fontSize: "0.6875rem" }}
+              />
+            )}
+          </Box>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 0.625 }}>
-            {(Object.keys(CLAUSE_LABELS) as Array<keyof RawContractClauses>).map((key) => (
-              <ClauseAccordion key={key} label={CLAUSE_LABELS[key]} text={clauses[key] ?? ""} />
-            ))}
+            {(Object.keys(CLAUSE_LABELS) as Array<keyof RawContractClauses>).map((key) => {
+              const isOpen = openClause === key;
+              const isEdited = localClauses[key] !== (originalClauses as Record<string, string>)[key];
+              return (
+                <Box
+                  key={key}
+                  sx={{
+                    border: `1px solid ${isEdited ? theme.palette.warning.main : theme.palette.divider}`,
+                    borderRadius: 2, overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    onClick={() => !isDisabled && setOpenClause(isOpen ? null : key)}
+                    sx={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      px: 1.5, py: 1,
+                      cursor: isDisabled ? "default" : "pointer",
+                      bgcolor: isEdited ? alpha(theme.palette.warning.main, 0.06) : "action.hover",
+                      "&:hover": isDisabled ? {} : { bgcolor: isEdited ? alpha(theme.palette.warning.main, 0.1) : alpha(theme.palette.primary.main, 0.05) },
+                      userSelect: "none",
+                    }}
+                  >
+                    <Typography
+                      variant="labelSmall"
+                      sx={{ fontWeight: 700, fontSize: "0.75rem", color: isEdited ? "warning.dark" : "text.primary" }}
+                    >
+                      {CLAUSE_LABELS[key]}
+                    </Typography>
+                    <ExpandMoreRoundedIcon sx={{
+                      fontSize: 18, color: "text.secondary",
+                      transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 200ms ease",
+                    }} />
+                  </Box>
+                  <Collapse in={isOpen}>
+                    <Box sx={{ px: 1.5, py: 1.25, borderTop: `1px solid ${theme.palette.divider}` }}>
+                      <TextField
+                        multiline
+                        minRows={4}
+                        maxRows={12}
+                        fullWidth
+                        size="small"
+                        value={localClauses[key] ?? ""}
+                        onChange={(e) => setLocalClauses((prev) => ({ ...prev, [key]: e.target.value }))}
+                        disabled={isDisabled}
+                        sx={{
+                          "& .MuiInputBase-root": { fontSize: "0.8125rem", lineHeight: 1.65 },
+                        }}
+                      />
+                    </Box>
+                  </Collapse>
+                </Box>
+              );
+            })}
           </Box>
         </Box>
       )}
@@ -364,21 +387,43 @@ function GeneratedPanel({
       <Divider />
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-        <Typography variant="bodySmall" color="text.secondary">
-          Le PDF va être envoyé à <strong>{contract.partner_email ?? contract.partner_name}</strong> avec
-          une demande de signature. Vous serez notifié dès que le partenaire aura signé ou décliné.
-        </Typography>
-        <Button
-          variant="contained"
-          disableElevation
-          color="primary"
-          startIcon={sending ? <CircularProgress size={16} color="inherit" /> : <SendRoundedIcon />}
-          onClick={onSend}
-          disabled={sending}
-          sx={{ fontWeight: 700, textTransform: "none", alignSelf: "flex-start" }}
-        >
-          {sending ? "Envoi en cours…" : "Envoyer au partenaire"}
-        </Button>
+        {hasEdits ? (
+          <>
+            <Typography variant="bodySmall" color="text.secondary">
+              Vous avez modifié {editedKeys.length} clause{editedKeys.length > 1 ? "s" : ""}.
+              Régénérez le PDF pour intégrer vos modifications avant l&apos;envoi.
+            </Typography>
+            <Button
+              variant="contained"
+              disableElevation
+              color="warning"
+              startIcon={regenerating ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdfRoundedIcon />}
+              onClick={() => onRegenerate(localClauses)}
+              disabled={isDisabled}
+              sx={{ fontWeight: 700, textTransform: "none", alignSelf: "flex-start" }}
+            >
+              {regenerating ? "Régénération en cours…" : "Régénérer le PDF avec modifications"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Typography variant="bodySmall" color="text.secondary">
+              Le PDF va être envoyé à <strong>{contract.partner_email ?? contract.partner_name}</strong> avec
+              une demande de signature. Vous serez notifié dès que le partenaire aura signé ou décliné.
+            </Typography>
+            <Button
+              variant="contained"
+              disableElevation
+              color="primary"
+              startIcon={sending ? <CircularProgress size={16} color="inherit" /> : <SendRoundedIcon />}
+              onClick={onSend}
+              disabled={isDisabled}
+              sx={{ fontWeight: 700, textTransform: "none", alignSelf: "flex-start" }}
+            >
+              {sending ? "Envoi en cours…" : "Envoyer au partenaire"}
+            </Button>
+          </>
+        )}
       </Box>
     </Box>
   );
@@ -611,6 +656,7 @@ export default function ContractGenerateDialog({
   const { showSnackbar } = useSnackbar();
 
   const [generating, setGenerating]           = useState(false);
+  const [regenerating, setRegenerating]       = useState(false);
   const [sending, setSending]                 = useState(false);
   const [actioning, setActioning]             = useState(false);
   const [simulatingReply, setSimulatingReply] = useState(false);
@@ -624,7 +670,7 @@ export default function ContractGenerateDialog({
   async function handleGenerate(overrides: Partial<Record<keyof RawContractClauses, string>> = {}) {
     setGenerating(true);
     try {
-      const updated = await contractsApi.generate(contract.id, overrides);
+      const updated = await contractsApi.generate(contract.id, Object.keys(overrides).length > 0 ? overrides : undefined);
       onContractUpdate(updated);
       showSnackbar({ message: "PDF généré avec succès.", severity: "success" });
     } catch (err) {
@@ -634,6 +680,24 @@ export default function ContractGenerateDialog({
       });
     } finally {
       setGenerating(false);
+    }
+  }
+
+  // ── Regenerate PDF with edited clauses ───────────────────────────
+
+  async function handleRegenerate(overrides: Record<string, string>) {
+    setRegenerating(true);
+    try {
+      const updated = await contractsApi.generate(contract.id, overrides);
+      onContractUpdate(updated);
+      showSnackbar({ message: "PDF régénéré avec vos modifications.", severity: "success" });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de la régénération.",
+        severity: "error",
+      });
+    } finally {
+      setRegenerating(false);
     }
   }
 
@@ -745,7 +809,7 @@ export default function ContractGenerateDialog({
     <>
       <Dialog
         open={open}
-        onClose={isDone || !generating && !sending && !actioning ? onClose : undefined}
+        onClose={isDone || !generating && !regenerating && !sending && !actioning ? onClose : undefined}
         maxWidth="sm"
         fullWidth
         scroll="paper"
@@ -771,7 +835,7 @@ export default function ContractGenerateDialog({
           <IconButton
             size="small"
             onClick={onClose}
-            disabled={generating || sending || actioning}
+            disabled={generating || regenerating || sending || actioning}
             sx={{ flexShrink: 0, mt: 0.25 }}
           >
             <CloseRoundedIcon fontSize="small" />
@@ -803,7 +867,7 @@ export default function ContractGenerateDialog({
             <DraftPanel
               contract={contract}
               prospect={prospect}
-              onGenerate={(overrides) => handleGenerate(overrides)}
+              onGenerate={() => handleGenerate()}
               generating={generating}
             />
           )}
@@ -811,7 +875,9 @@ export default function ContractGenerateDialog({
             <GeneratedPanel
               contract={contract}
               onSend={handleSend}
+              onRegenerate={handleRegenerate}
               sending={sending}
+              regenerating={regenerating}
             />
           )}
           {contract.status === "sent_to_partner" && (
@@ -836,7 +902,7 @@ export default function ContractGenerateDialog({
             onClick={onClose}
             variant={isDone ? "contained" : "text"}
             disableElevation
-            disabled={generating || sending || actioning}
+            disabled={generating || regenerating || sending || actioning}
             endIcon={isDone ? undefined : <ChevronRightRoundedIcon sx={{ fontSize: 16 }} />}
             sx={{ fontWeight: 600, textTransform: "none" }}
           >
