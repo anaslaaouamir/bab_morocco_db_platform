@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Autocomplete from "@mui/material/Autocomplete";
+import Checkbox from "@mui/material/Checkbox";
+import ListItemText from "@mui/material/ListItemText";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -68,20 +70,20 @@ function stepLabel(job: RawScanJob): string {
 interface ScanForm {
   pays: string;
   ville: string;
-  type: PartnerType | "";
+  types: PartnerType[];
   // Backend caps at 100; slider max matches
   limite: number;
 }
 
-const INITIAL: ScanForm = { pays: "", ville: "", type: "", limite: 50 };
+const INITIAL: ScanForm = { pays: "", ville: "", types: [], limite: 50 };
 
-interface FormErrors { pays?: string; ville?: string; type?: string; }
+interface FormErrors { pays?: string; ville?: string; types?: string; }
 
 function validate(v: ScanForm): FormErrors {
   const e: FormErrors = {};
-  if (!v.pays)         e.pays  = "Le pays est requis.";
-  if (!v.ville.trim()) e.ville = "La ville est requise.";
-  if (!v.type)         e.type  = "Le type de partenaire est requis.";
+  if (!v.pays)              e.pays  = "Le pays est requis.";
+  if (!v.ville.trim())      e.ville = "La ville est requise.";
+  if (v.types.length === 0) e.types = "Sélectionnez au moins un type de partenaire.";
   return e;
 }
 
@@ -112,6 +114,11 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
   const [done, setDone]             = useState(false);
   const [scanError, setScanError]   = useState<string | null>(null);
 
+  // Multi-type job queue state
+  const [typeQueue, setTypeQueue]           = useState<PartnerType[]>([]);
+  const [typeQueueIndex, setTypeQueueIndex] = useState(0);
+  const [accumulated, setAccumulated]       = useState({ nb_ajoutes: 0, nb_veille: 0, nb_doublons: 0, nb_trouves: 0 });
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function stopPolling() {
@@ -132,6 +139,9 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
       setJob(null);
       setDone(false);
       setScanError(null);
+      setTypeQueue([]);
+      setTypeQueueIndex(0);
+      setAccumulated({ nb_ajoutes: 0, nb_veille: 0, nb_doublons: 0, nb_trouves: 0 });
       stopPolling();
     }
     return stopPolling; // cleanup on unmount
@@ -148,13 +158,46 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
 
         if (updated.statut === "done") {
           stopPolling();
-          setDone(true);
-          onScanComplete?.();
-          showSnackbar({
-            message: `Scan terminé — ${updated.nb_ajoutes} prospect(s) ajouté(s) au pipeline.`,
-            severity: "success",
-            duration: 6000,
-          });
+
+          // Accumulate this job's results
+          const newAccumulated = {
+            nb_ajoutes:  accumulated.nb_ajoutes  + updated.nb_ajoutes,
+            nb_veille:   accumulated.nb_veille   + updated.nb_veille,
+            nb_doublons: accumulated.nb_doublons + updated.nb_doublons,
+            nb_trouves:  accumulated.nb_trouves  + updated.nb_trouves,
+          };
+          setAccumulated(newAccumulated);
+
+          const nextIndex = typeQueueIndex + 1;
+
+          if (nextIndex < typeQueue.length) {
+            // More types to scan — launch next job
+            setTypeQueueIndex(nextIndex);
+            try {
+              const nextJob = await scanApi.start({
+                ville:          form.ville,
+                pays:           form.pays,
+                typePartenaire: typeQueue[nextIndex],
+                limite:         form.limite,
+              });
+              setJob(nextJob);
+              // done stays false — polling useEffect re-fires on new job.id
+            } catch (err) {
+              const msg = err instanceof ApiError ? err.detail : "Erreur réseau lors du lancement du scan suivant.";
+              setScanError(msg);
+              setDone(true);
+              showSnackbar({ message: msg, severity: "error", duration: 8000 });
+            }
+          } else {
+            // All types scanned — truly done
+            setDone(true);
+            onScanComplete?.();
+            showSnackbar({
+              message: `Scan terminé — ${newAccumulated.nb_ajoutes} prospect(s) ajouté(s) au pipeline.`,
+              severity: "success",
+              duration: 6000,
+            });
+          }
         } else if (updated.statut === "error") {
           stopPolling();
           setDone(true);
@@ -196,11 +239,16 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
 
     setSubmitting(true);
     try {
+      // Initialize queue and start the first job
+      setTypeQueue(form.types);
+      setTypeQueueIndex(0);
+      setAccumulated({ nb_ajoutes: 0, nb_veille: 0, nb_doublons: 0, nb_trouves: 0 });
+
       const started = await scanApi.start({
         ville:          form.ville,
         pays:           form.pays,
-        typePartenaire: form.type as PartnerType,
-        limite:         form.limite, // slider already capped at 100
+        typePartenaire: form.types[0],
+        limite:         form.limite,
       });
       setJob(started);
       setScanning(true);
@@ -217,10 +265,11 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
 
   const progress = job ? job.progression : 0;
   const isRunning = scanning && !done;
+  const isMultiJob = typeQueue.length > 1;
 
   const queryPreview =
-    form.type && form.ville && form.pays
-      ? `"${TYPE_QUERY[form.type as PartnerType]} ${form.ville} ${form.pays}"`
+    form.types.length > 0 && form.ville && form.pays
+      ? form.types.map((t) => `"${TYPE_QUERY[t]} ${form.ville} ${form.pays}"`).join(" + ")
       : null;
 
   return (
@@ -313,25 +362,46 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
             {/* ── Type de partenaire ──────────────────────────────────── */}
             <Box>
               <Typography variant="titleSmall" sx={{ fontWeight: 700, color: "secondary.main", mb: 2, display: "block" }}>
-                ② Type de partenaire
+                ② Type(s) de partenaire
               </Typography>
-              <FormControl size="small" error={!!errors.type} fullWidth>
-                <InputLabel>Type *</InputLabel>
-                <Select
-                  value={form.type}
-                  label="Type *"
-                  onChange={(e) => set("type", e.target.value as PartnerType)}
-                >
-                  {(Object.keys(PARTNER_TYPE_LABELS) as PartnerType[]).map((t) => (
-                    <MenuItem key={t} value={t}>{PARTNER_TYPE_LABELS[t]}</MenuItem>
-                  ))}
-                </Select>
-                {errors.type && <FormHelperText>{errors.type}</FormHelperText>}
-              </FormControl>
+              <Autocomplete
+                multiple
+                disableCloseOnSelect
+                options={Object.keys(PARTNER_TYPE_LABELS) as PartnerType[]}
+                value={form.types}
+                onChange={(_, newValue) => set("types", newValue)}
+                getOptionLabel={(t) => PARTNER_TYPE_LABELS[t]}
+                renderOption={(props, option, { selected }) => (
+                  <li {...props}>
+                    <Checkbox size="small" checked={selected} sx={{ mr: 0.5, p: 0.5 }} />
+                    <ListItemText primary={PARTNER_TYPE_LABELS[option]} primaryTypographyProps={{ fontSize: "0.875rem" }} />
+                  </li>
+                )}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Type(s) *"
+                    size="small"
+                    error={!!errors.types}
+                    helperText={errors.types ?? "Vous pouvez sélectionner plusieurs types — un scan sera lancé pour chacun."}
+                  />
+                )}
+                renderTags={(selected, getTagProps) =>
+                  selected.map((t, i) => (
+                    <Chip
+                      {...getTagProps({ index: i })}
+                      key={t}
+                      label={PARTNER_TYPE_LABELS[t]}
+                      size="small"
+                      sx={{ fontSize: "0.625rem", height: 20, "& .MuiChip-label": { px: 0.75 } }}
+                    />
+                  ))
+                }
+              />
 
               {queryPreview && (
                 <Alert severity="info" sx={{ mt: 1.5, "& .MuiAlert-message": { fontSize: "0.8125rem" } }}>
-                  Requête Google Maps : <strong>{queryPreview}</strong>
+                  Requête{form.types.length > 1 ? "s" : ""} Google Maps : <strong>{queryPreview}</strong>
                 </Alert>
               )}
             </Box>
@@ -391,8 +461,13 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
                 {scanError ? "Scan échoué" : done ? "Scan terminé !" : "Scan en cours…"}
               </Typography>
               <Typography variant="bodySmall" color="text.secondary">
-                {form.ville}, {form.pays} · {PARTNER_TYPE_LABELS[form.type as PartnerType]} · {form.limite} max
+                {form.ville}, {form.pays} · {form.limite} max
               </Typography>
+              {isMultiJob && (
+                <Typography variant="labelSmall" sx={{ mt: 0.5, color: "secondary.main", fontWeight: 700 }}>
+                  Scan {typeQueueIndex + 1} / {typeQueue.length} — {PARTNER_TYPE_LABELS[typeQueue[typeQueueIndex] ?? form.types[0]]}
+                </Typography>
+              )}
             </Box>
 
             {/* Progress bar */}
@@ -414,30 +489,30 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
             </Box>
 
             {/* Result summary when done */}
-            {done && job && !scanError && (
+            {done && !scanError && (
               <Alert severity="success">
                 <Typography variant="bodySmall" sx={{ fontWeight: 700, mb: 0.5, display: "block" }}>
-                  Scan terminé avec succès
+                  {isMultiJob ? `${typeQueue.length} scans terminés avec succès` : "Scan terminé avec succès"}
                 </Typography>
                 <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, mt: 0.75 }}>
                   <Chip
-                    label={`${job.nb_trouves} trouvés`}
+                    label={`${accumulated.nb_trouves} trouvés`}
                     size="small" variant="outlined"
                     sx={{ fontSize: "0.625rem", height: 20, "& .MuiChip-label": { px: 0.75 } }}
                   />
                   <Chip
-                    label={`${job.nb_ajoutes} ajoutés au pipeline`}
+                    label={`${accumulated.nb_ajoutes} ajoutés au pipeline`}
                     size="small" color="success"
                     sx={{ fontSize: "0.625rem", height: 20, "& .MuiChip-label": { px: 0.75 } }}
                   />
                   <Chip
-                    label={`${job.nb_veille} mis en veille`}
+                    label={`${accumulated.nb_veille} mis en veille`}
                     size="small" color="warning" variant="outlined"
                     sx={{ fontSize: "0.625rem", height: 20, "& .MuiChip-label": { px: 0.75 } }}
                   />
-                  {job.nb_doublons > 0 && (
+                  {accumulated.nb_doublons > 0 && (
                     <Chip
-                      label={`${job.nb_doublons} doublons ignorés`}
+                      label={`${accumulated.nb_doublons} doublons ignorés`}
                       size="small" variant="outlined"
                       sx={{ fontSize: "0.625rem", height: 20, "& .MuiChip-label": { px: 0.75 } }}
                     />
