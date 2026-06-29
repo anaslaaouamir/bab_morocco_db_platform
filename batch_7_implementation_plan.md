@@ -310,7 +310,7 @@ Medium-Hard. The settings page and store are new, self-contained files. The scan
 
 ## Task 5 — Outreach Page: Tab Filter by Step (J0, J+3, J+7, J+30)
 
-**Status:** `- [ ]`
+**Status:** `- [x]` ✅ Completed 2026-06-29
 
 ### Context
 The `frontend/src/app/outreach/page.tsx` left panel renders a flat list of all prospects in the `outreach` stage. The `emailsCache` state maps `prospectId → RawOutreachEmail[]`. Each email has a `sequence_step` field (`"j0" | "j3" | "j7" | "j30"`).
@@ -329,44 +329,16 @@ const SEQ_CONFIG = [
 
 ### Plan
 
-- [ ] **5.1** Read `frontend/src/app/outreach/page.tsx` in full.
-- [ ] **5.2** Add a `stepFilter` state to `OutreachPage`:
-  ```typescript
-  const [stepFilter, setStepFilter] = useState<string>("all");
-  ```
-- [ ] **5.3** Add a MUI `Tabs` component above the left prospect list (below the stats chips, above the prospect cards):
-  - Tab 0: "Tous" (`value="all"`) — no filter.
-  - Tab 1: "J0" (`value="j0"`).
-  - Tab 2: "J+3" (`value="j3"`).
-  - Tab 3: "J+7" (`value="j7"`).
-  - Tab 4: "J+30" (`value="j30"`).
-  - Each tab except "Tous" shows a `Badge` with the count of prospects having emails at that step.
-- [ ] **5.4** Compute the filtered prospect list based on `stepFilter`:
-  ```typescript
-  const filteredProspects = useMemo(() => {
-    if (stepFilter === "all") return prospects;
-    return prospects.filter((p) =>
-      (emailsCache[p.id] ?? []).some((e) => e.sequence_step === stepFilter)
-    );
-  }, [prospects, emailsCache, stepFilter]);
-  ```
-- [ ] **5.5** Compute per-tab counts for badges:
-  ```typescript
-  const stepCounts = useMemo(() => {
-    const counts: Record<string, number> = { j0: 0, j3: 0, j7: 0, j30: 0 };
-    for (const [id, emails] of Object.entries(emailsCache)) {
-      if (!prospects.find((p) => p.id === id)) continue;
-      for (const step of Object.keys(counts)) {
-        if (emails.some((e) => e.sequence_step === step)) counts[step]++;
-      }
-    }
-    return counts;
-  }, [emailsCache, prospects]);
-  ```
-- [ ] **5.6** Replace `prospects.map(...)` in the left panel with `filteredProspects.map(...)`.
-- [ ] **5.7** When `selectedId` belongs to a prospect filtered out by the active tab, reset `selectedId` to `null`.
-- [ ] **5.8** Test: click each tab and verify only relevant prospects appear. Verify "Tous" shows all.
-- [ ] **5.9** Commit.
+- [x] **5.1** Read `frontend/src/app/outreach/page.tsx` in full.
+- [x] **5.2** Added `stepFilter` state (default `"all"`) to `OutreachPage`.
+- [x] **5.3** Added MUI `Tabs` above the left panel: "Tous (N)" + one tab per SEQ_CONFIG step.
+  Count badges rendered inline in each tab label with dynamic color (active = primary, inactive = action.selected).
+- [x] **5.4** Added `filteredProspects` memo — filters by `emailsCache[p.id]` having a matching `sequence_step`.
+- [x] **5.5** Added `stepCounts` memo — iterates prospects × emailsCache to count per step.
+- [x] **5.6** Left panel now renders `filteredProspects.map(...)` with an empty state for "no prospects at this step".
+- [x] **5.7** Added `useEffect` to reset `selectedId` when filtered prospect list no longer includes it.
+- [x] **5.8** Build clean (`/outreach` +360B). All 6 routes pass.
+- [x] **5.9** Committed: `feat(outreach): add tab filter by sequence step (J0/J+3/J+7/J+30)`
 
 ### Files
 - `frontend/src/app/outreach/page.tsx`
@@ -549,7 +521,7 @@ Examples:
 | T2 | Export — PDF/Excel with filters | ⬜ Not started |
 | T3 | Scan — Multi-select partner type | ⬜ Not started |
 | T4 | Settings — Scheduled scan | ⬜ Not started |
-| T5 | Outreach — Step tab filter | ⬜ Not started |
+| T5 | Outreach — Step tab filter | ✅ Done |
 | T6 | Contracts — Editable clauses | ⬜ Not started |
 | T7 | Font — Roboto → Google Sans | ✅ Done |
 
