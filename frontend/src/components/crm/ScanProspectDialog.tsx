@@ -117,6 +117,7 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
   // Multi-type job queue state
   const [typeQueue, setTypeQueue]           = useState<PartnerType[]>([]);
   const [typeQueueIndex, setTypeQueueIndex] = useState(0);
+  const [limiteParType, setLimiteParType]   = useState(50); // limite ÷ nb types
   const [accumulated, setAccumulated]       = useState({ nb_ajoutes: 0, nb_veille: 0, nb_doublons: 0, nb_trouves: 0 });
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -141,6 +142,7 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
       setScanError(null);
       setTypeQueue([]);
       setTypeQueueIndex(0);
+      setLimiteParType(50);
       setAccumulated({ nb_ajoutes: 0, nb_veille: 0, nb_doublons: 0, nb_trouves: 0 });
       stopPolling();
     }
@@ -178,7 +180,7 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
                 ville:          form.ville,
                 pays:           form.pays,
                 typePartenaire: typeQueue[nextIndex],
-                limite:         form.limite,
+                limite:         limiteParType,
               });
               setJob(nextJob);
               // done stays false — polling useEffect re-fires on new job.id
@@ -239,16 +241,20 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
 
     setSubmitting(true);
     try {
+      // Divide the total limite equally across all selected types
+      const perType = Math.max(1, Math.floor(form.limite / form.types.length));
+
       // Initialize queue and start the first job
       setTypeQueue(form.types);
       setTypeQueueIndex(0);
+      setLimiteParType(perType);
       setAccumulated({ nb_ajoutes: 0, nb_veille: 0, nb_doublons: 0, nb_trouves: 0 });
 
       const started = await scanApi.start({
         ville:          form.ville,
         pays:           form.pays,
         typePartenaire: form.types[0],
-        limite:         form.limite,
+        limite:         perType,
       });
       setJob(started);
       setScanning(true);
@@ -461,7 +467,7 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
                 {scanError ? "Scan échoué" : done ? "Scan terminé !" : "Scan en cours…"}
               </Typography>
               <Typography variant="bodySmall" color="text.secondary">
-                {form.ville}, {form.pays} · {form.limite} max
+                {form.ville}, {form.pays} · {form.limite} max ({isMultiJob ? `${limiteParType} par type` : `${form.limite} prospects`})
               </Typography>
               {isMultiJob && (
                 <Typography variant="labelSmall" sx={{ mt: 0.5, color: "secondary.main", fontWeight: 700 }}>
