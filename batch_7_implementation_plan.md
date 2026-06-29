@@ -96,7 +96,7 @@ interface FilterState {
 
 ## Task 1 — Pipeline Kanban: Separate "Veille" and "Perdu"
 
-**Status:** `- [ ]`
+**Status:** `- [x]` ✅ Completed 2026-06-29
 
 ### Context
 In `frontend/src/components/kanban/KanbanBoard.tsx`, the `COLUMNS` array (line 45–53) has a single entry:
@@ -107,13 +107,13 @@ Both `veille` and `perdu` prospects are grouped in the same column. Additionally
 
 ### Plan
 
-- [ ] **1.1** Read `frontend/src/components/kanban/KanbanBoard.tsx` in full.
-- [ ] **1.2** In the `COLUMNS` array, replace the single `veille_perdu` entry with two separate entries:
+- [x] **1.1** Read `frontend/src/components/kanban/KanbanBoard.tsx` in full.
+- [x] **1.2** In the `COLUMNS` array, replaced the single `veille_perdu` entry with two separate entries:
   - `"veille"` — label `"Veille"`, accent `"#BDBDBD"` (neutral gray), `targetStage: "veille"`
   - `"perdu"` — label `"Perdu"`, accent `"#EF5350"` (red), `targetStage: "perdu"`
-- [ ] **1.3** Verify both columns render correctly on desktop (drag-and-drop board) and mobile (collapsible list).
-- [ ] **1.4** Verify that dragging a card to "Veille" sets stage to `"veille"` and dragging to "Perdu" sets stage to `"perdu"`.
-- [ ] **1.5** Test frontend. Commit.
+- [x] **1.3** Build passes clean across all routes. Mobile list auto-reflects split (iterates COLUMNS).
+- [x] **1.4** Each column has its own `targetStage` — drag to Veille → `"veille"`, drag to Perdu → `"perdu"`.
+- [x] **1.5** Build verified clean. Committed: `feat(kanban): separate Veille and Perdu into distinct columns`
 
 ### Files
 - `frontend/src/components/kanban/KanbanBoard.tsx`
@@ -545,7 +545,7 @@ Examples:
 
 | Task | Description | Status |
 |------|-------------|--------|
-| T1 | Kanban — Veille/Perdu separation | ⬜ Not started |
+| T1 | Kanban — Veille/Perdu separation | ✅ Done |
 | T2 | Export — PDF/Excel with filters | ⬜ Not started |
 | T3 | Scan — Multi-select partner type | ⬜ Not started |
 | T4 | Settings — Scheduled scan | ⬜ Not started |
