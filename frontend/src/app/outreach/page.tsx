@@ -1138,13 +1138,6 @@ export default function OutreachPage() {
     );
   }, [prospects, emailsCache, stepFilter]);
 
-  // Reset selected prospect when it no longer appears in the filtered list
-  useEffect(() => {
-    if (selectedId && !filteredProspects.find((p) => p.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [filteredProspects, selectedId]);
-
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       {/* Page header */}
@@ -1230,7 +1223,7 @@ export default function OutreachPage() {
           {!loading && prospects.length > 0 && (
             <Tabs
               value={stepFilter}
-              onChange={(_, v: string) => setStepFilter(v)}
+              onChange={(_, v: string) => { setStepFilter(v); setSelectedId(null); }}
               variant="scrollable"
               scrollButtons="auto"
               sx={{
