@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Alert from "@mui/material/Alert";
@@ -49,32 +50,25 @@ function NavigationRail({ pathname }: { pathname: string }) {
         overflow: "hidden",
       }}
     >
-      {/* Brand monogram — top of rail */}
+      {/* Brand logo — top of rail */}
       <Box
         sx={{
-          width: 40,
-          height: 40,
+          width: 44,
+          height: 44,
           borderRadius: "50%",
-          bgcolor: "primary.main",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          overflow: "hidden",
           mb: 2,
           flexShrink: 0,
         }}
       >
-        <Typography
-          component="span"
-          sx={{
-            color: "primary.contrastText",
-            fontWeight: 700,
-            fontSize: "0.75rem",
-            fontFamily: "inherit",
-            letterSpacing: "0.05em",
-          }}
-        >
-          BM
-        </Typography>
+        <Image
+          src="/favicon.png"
+          alt="Bab Morocco"
+          width={44}
+          height={44}
+          style={{ objectFit: "cover", width: "100%", height: "100%" }}
+          priority
+        />
       </Box>
 
       {/* Navigation items */}
