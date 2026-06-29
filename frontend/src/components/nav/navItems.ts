@@ -19,6 +19,8 @@ import HandshakeIcon from "@mui/icons-material/Handshake";
 import HandshakeOutlinedIcon from "@mui/icons-material/HandshakeOutlined";
 import DescriptionIcon from "@mui/icons-material/Description";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import SettingsIcon from "@mui/icons-material/Settings";
+import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 
 const navItems: NavItem[] = [
   {
@@ -50,6 +52,12 @@ const navItems: NavItem[] = [
     href: "/contrats",
     ActiveIcon: DescriptionIcon,
     InactiveIcon: DescriptionOutlinedIcon,
+  },
+  {
+    label: "Paramètres",
+    href: "/settings",
+    ActiveIcon: SettingsIcon,
+    InactiveIcon: SettingsOutlinedIcon,
   },
 ];
 

@@ -216,7 +216,7 @@ Medium. Only `ScanProspectDialog.tsx` is modified. The `scanApi.start()` call si
 
 ## Task 4 — Scheduled Scan: Settings Page & Throttling
 
-**Status:** `- [ ]`
+**Status:** `- [x]` ✅ Completed 2026-06-29
 
 ### Context
 Currently, all scans run immediately in the background. There is no settings page and no `/settings` route. The `AppShell.tsx` navigation rail/bar is driven by `navItems.ts` (5 items currently: Dashboard, Prospection, Outreach, Négociation, Contrats).
@@ -494,7 +494,7 @@ Examples:
 | T1 | Kanban — Veille/Perdu separation | ✅ Done |
 | T2 | Export — PDF/Excel with filters | ✅ Done |
 | T3 | Scan — Multi-select partner type | ✅ Done |
-| T4 | Settings — Scheduled scan | ⬜ Not started |
+| T4 | Settings — Scheduled scan | ✅ Done |
 | T5 | Outreach — Step tab filter | ✅ Done |
 | T6 | Contracts — Editable clauses | ✅ Done |
 | T7 | Font — Roboto → Google Sans | ✅ Done |

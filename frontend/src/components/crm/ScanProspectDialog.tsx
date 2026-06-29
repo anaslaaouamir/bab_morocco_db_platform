@@ -31,12 +31,14 @@ import TravelExploreRoundedIcon from "@mui/icons-material/TravelExploreRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 
 import type { PartnerType } from "@/types/prospect";
 import { PARTNER_TYPE_LABELS } from "@/types/prospect";
 import { scanApi, ApiError, type RawScanJob } from "@/lib/api";
 import { COUNTRIES_BY_MARKET, CITIES_BY_COUNTRY } from "@/lib/constants/geography";
 import { useSnackbar } from "@/contexts/SnackbarContext";
+import { useSettings, buildScheduledJobs, loadScheduledJobs, saveScheduledJobs } from "@/lib/settingsStore";
 
 // ─── Config maps ──────────────────────────────────────────────────────────────
 
@@ -102,6 +104,7 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { showSnackbar } = useSnackbar();
+  const { settings } = useSettings();
 
   const [form, setForm]           = useState<ScanForm>(INITIAL);
   const [errors, setErrors]       = useState<FormErrors>({});
@@ -239,12 +242,39 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
+    const ss = settings.scheduledScan;
+    const perType = Math.max(1, Math.floor(form.limite / form.types.length));
+
+    // ── Scheduled mode ────────────────────────────────────────────
+    if (ss.enabled) {
+      const jobs = buildScheduledJobs({
+        ville:           form.ville,
+        pays:            form.pays,
+        types:           form.types,
+        limiteParType:   perType,
+        batchSize:       ss.batchSize,
+        windowStartHour: ss.windowStartHour,
+        windowEndHour:   ss.windowEndHour,
+      });
+
+      // Append to any existing queued jobs
+      const existing = loadScheduledJobs();
+      saveScheduledJobs([...existing, ...jobs]);
+
+      const startLabel = `${String(ss.windowStartHour).padStart(2, "0")}:00`;
+      const endLabel   = `${String(ss.windowEndHour).padStart(2, "0")}:00`;
+      showSnackbar({
+        message: `${jobs.length} scan${jobs.length > 1 ? "s" : ""} planifié${jobs.length > 1 ? "s" : ""} entre ${startLabel} et ${endLabel}.`,
+        severity: "info",
+        duration: 7000,
+      });
+      onClose();
+      return;
+    }
+
+    // ── Immediate mode (default) ──────────────────────────────────
     setSubmitting(true);
     try {
-      // Divide the total limite equally across all selected types
-      const perType = Math.max(1, Math.floor(form.limite / form.types.length));
-
-      // Initialize queue and start the first job
       setTypeQueue(form.types);
       setTypeQueueIndex(0);
       setLimiteParType(perType);
@@ -572,12 +602,22 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
       </DialogContent>
 
       {/* Actions */}
-      <DialogActions sx={{ px: { xs: 2.5, md: 4 }, py: 2, borderTop: 1, borderColor: "divider", gap: 1.5 }}>
+      <DialogActions sx={{ px: { xs: 2.5, md: 4 }, py: 2, borderTop: 1, borderColor: "divider", gap: 1.5, flexWrap: "wrap" }}>
         {!scanning ? (
           <>
             <Button onClick={onBack} variant="text" disabled={submitting}>
               Retour
             </Button>
+            {settings.scheduledScan.enabled && (
+              <Chip
+                icon={<ScheduleRoundedIcon sx={{ fontSize: "14px !important" }} />}
+                label={`Planifié ${String(settings.scheduledScan.windowStartHour).padStart(2, "0")}:00–${String(settings.scheduledScan.windowEndHour).padStart(2, "0")}:00`}
+                size="small"
+                color="secondary"
+                variant="outlined"
+                sx={{ fontSize: "0.6875rem", mr: "auto" }}
+              />
+            )}
             <Button
               onClick={handleLaunch}
               variant="contained"
@@ -587,11 +627,13 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
               startIcon={
                 submitting
                   ? <CircularProgress size={16} color="inherit" />
-                  : <TravelExploreRoundedIcon />
+                  : settings.scheduledScan.enabled
+                    ? <ScheduleRoundedIcon />
+                    : <TravelExploreRoundedIcon />
               }
               sx={{ minWidth: 160 }}
             >
-              {submitting ? "Lancement…" : "Lancer le scan"}
+              {submitting ? "Planification…" : settings.scheduledScan.enabled ? "Planifier le scan" : "Lancer le scan"}
             </Button>
           </>
         ) : (
