@@ -998,6 +998,7 @@ export default function OutreachPage() {
   const [loading, setLoading]           = useState(true);
   const [fetchError, setFetchError]     = useState<string | null>(null);
   const [selectedId, setSelectedId]     = useState<string | null>(null);
+  const [stepFilter, setStepFilter]     = useState<string>("all");
 
   const [emailsCache, setEmailsCache]   = useState<Record<string, RawOutreachEmail[]>>({});
 
@@ -1117,6 +1118,33 @@ export default function OutreachPage() {
     [emailsCache],
   );
 
+  // Per-step prospect counts for tab badges
+  const stepCounts = useMemo(() => {
+    const counts: Record<string, number> = { j0: 0, j3: 0, j7: 0, j30: 0 };
+    for (const p of prospects) {
+      const emails = emailsCache[p.id] ?? [];
+      for (const step of Object.keys(counts)) {
+        if (emails.some((e) => e.sequence_step === step)) counts[step]++;
+      }
+    }
+    return counts;
+  }, [emailsCache, prospects]);
+
+  // Prospects filtered by the active step tab
+  const filteredProspects = useMemo(() => {
+    if (stepFilter === "all") return prospects;
+    return prospects.filter((p) =>
+      (emailsCache[p.id] ?? []).some((e) => e.sequence_step === stepFilter)
+    );
+  }, [prospects, emailsCache, stepFilter]);
+
+  // Reset selected prospect when it no longer appears in the filtered list
+  useEffect(() => {
+    if (selectedId && !filteredProspects.find((p) => p.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [filteredProspects, selectedId]);
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       {/* Page header */}
@@ -1198,6 +1226,53 @@ export default function OutreachPage() {
             gap: 1.5,
           }}
         >
+          {/* Step filter tabs */}
+          {!loading && prospects.length > 0 && (
+            <Tabs
+              value={stepFilter}
+              onChange={(_, v: string) => setStepFilter(v)}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{
+                minHeight: 38,
+                bgcolor: "action.hover",
+                borderRadius: 2,
+                "& .MuiTabs-indicator": { height: 3, borderRadius: "3px 3px 0 0" },
+                "& .MuiTab-root": { minHeight: 38, fontSize: "0.75rem", fontWeight: 600, textTransform: "none", py: 0 },
+              }}
+            >
+              <Tab label={`Tous (${prospects.length})`} value="all" />
+              {SEQ_CONFIG.map(({ key, label }) => (
+                <Tab
+                  key={key}
+                  value={key}
+                  label={
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                      {label}
+                      {stepCounts[key] > 0 && (
+                        <Box
+                          component="span"
+                          sx={{
+                            fontSize: "0.625rem",
+                            fontWeight: 800,
+                            lineHeight: 1,
+                            px: 0.5,
+                            py: 0.25,
+                            borderRadius: 1,
+                            bgcolor: stepFilter === key ? "primary.main" : "action.selected",
+                            color: stepFilter === key ? "primary.contrastText" : "text.secondary",
+                          }}
+                        >
+                          {stepCounts[key]}
+                        </Box>
+                      )}
+                    </Box>
+                  }
+                />
+              ))}
+            </Tabs>
+          )}
+
           {loading ? (
             [1, 2, 3].map((i) => (
               <Skeleton key={i} variant="rounded" height={120} sx={{ borderRadius: 2.5 }} />
@@ -1207,8 +1282,13 @@ export default function OutreachPage() {
               <InboxRoundedIcon sx={{ fontSize: 40 }} />
               <Typography variant="bodyMedium">Aucun prospect en outreach</Typography>
             </Box>
+          ) : filteredProspects.length === 0 ? (
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", py: 6, gap: 1, color: "text.disabled" }}>
+              <InboxRoundedIcon sx={{ fontSize: 36 }} />
+              <Typography variant="bodyMedium">Aucun prospect à cette étape</Typography>
+            </Box>
           ) : (
-            prospects.map((p) => (
+            filteredProspects.map((p) => (
               <OutreachProspectCard
                 key={p.id}
                 prospect={p}
