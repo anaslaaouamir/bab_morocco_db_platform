@@ -330,7 +330,7 @@ Easy-Medium. Self-contained change to one file. All data is already loaded in `e
 
 ## Task 6 — Editable Contract Dialog
 
-**Status:** `- [ ]`
+**Status:** `- [x]` ✅ Completed 2026-06-29
 
 ### Context
 In `frontend/src/components/contracts/ContractGenerateDialog.tsx`:
@@ -350,28 +350,22 @@ The goal: in the `DraftPanel`, replace the static checklist with **editable Text
 
 ### Plan
 
-- [ ] **6.1** Read `frontend/src/components/contracts/ContractGenerateDialog.tsx` in full.
-- [ ] **6.2** Read `frontend/src/lib/api.ts` — specifically `contractsApi.generate()` to understand its current signature.
-- [ ] **6.3** Add `localClauses` state to `DraftPanel` (or lift to parent if needed):
-  ```typescript
-  const [localClauses, setLocalClauses] = useState<Partial<Record<keyof RawContractClauses, string>>>({});
-  ```
-  - Pre-populated as empty strings (the AI will fill what the user leaves blank).
-  - If the contract already has `contract.clauses` (re-opened draft), pre-populate with existing values.
-- [ ] **6.4** Replace the static 9-clause checklist in `DraftPanel` with an editable accordion section:
-  - Keep the section heading "Structure du contrat (9 clauses)" + "Éditable avant génération".
-  - Each clause is a `MUI Accordion` (or the existing `ClauseAccordion` pattern made editable) with:
-    - Header: clause label (e.g., "1. Parties contractantes") + an expand icon.
-    - Body (when expanded): a `TextField` `multiline` pre-filled with `localClauses[key] ?? ""`.
-    - Placeholder text: `"Laissez vide pour laisser l'IA générer automatiquement…"`.
-  - A chip below the section header showing "X / 10 clauses personnalisées" as the user fills them.
-- [ ] **6.5** Pass `localClauses` to `handleGenerate`:
-  - If `contractsApi.generate()` does not currently accept clause overrides, update the API call to include them in the request body: `{ clause_overrides: localClauses }`.
-  - Check `frontend/src/lib/api.ts` — if the backend doesn't support this yet, store `localClauses` in a way that can be added later (i.e., still send the generate call but log/save the overrides locally as a note).
-  - For now, if the backend doesn't accept overrides: save the edited text into `contract.notes` or display it in the `GeneratedPanel` so the user can compare. Document this as a Phase 2 backend task.
-- [ ] **6.6** Ensure the "Générer le PDF" button is disabled if any required field is empty (i.e., `human_review_required` flag, already implemented).
-- [ ] **6.7** Test: open a contract in draft state, expand clauses, type in a clause, click generate. Verify the flow completes.
-- [ ] **6.8** Commit.
+- [x] **6.1** Read `frontend/src/components/contracts/ContractGenerateDialog.tsx` in full.
+- [x] **6.2** Read `frontend/src/lib/api/index.ts` — `contractsApi.generate()` was `(contractId: string)` with no body.
+- [x] **6.3** Added `localClauses` state to `DraftPanel`:
+  `const [localClauses, setLocalClauses] = useState<Partial<Record<keyof RawContractClauses, string>>>({})`.
+  Empty string = AI generates. Non-empty = user override.
+- [x] **6.4** Replaced static 9-clause checklist with editable accordion section:
+  - Each clause has a clickable header (label + expand icon) with a `CheckCircle` icon when filled, `AutoAwesome` (AI) when empty.
+  - Header border turns `primary.main` when clause has content.
+  - Body: `TextField multiline` (3–8 rows), placeholder "Laissez vide pour laisser l'IA générer automatiquement…"
+  - Counter chip: "X / 10 personnalisées" or "Toutes générées par l'IA"
+- [x] **6.5** `handleGenerate` updated to accept `overrides: Partial<Record<keyof RawContractClauses, string>>`.
+  `contractsApi.generate()` updated to send `{ clause_overrides }` in the POST body when non-empty.
+  Backend fully supports overrides: `generate_pdf()` merges non-blank user values over AI output.
+- [x] **6.6** "Générer le PDF" button remains disabled when `human_review_required`. No change needed.
+- [x] **6.7** Build clean. `/contrats` +0.4 kB (accordion replaces static list). All 9 routes pass.
+- [x] **6.8** Committed: `feat(contracts): make contract clauses editable before PDF generation`
 
 ### Files
 - `frontend/src/components/contracts/ContractGenerateDialog.tsx`
@@ -502,7 +496,7 @@ Examples:
 | T3 | Scan — Multi-select partner type | ✅ Done |
 | T4 | Settings — Scheduled scan | ⬜ Not started |
 | T5 | Outreach — Step tab filter | ✅ Done |
-| T6 | Contracts — Editable clauses | ⬜ Not started |
+| T6 | Contracts — Editable clauses | ✅ Done |
 | T7 | Font — Roboto → Google Sans | ✅ Done |
 
 ---

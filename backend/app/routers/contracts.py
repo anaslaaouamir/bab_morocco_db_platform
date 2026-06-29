@@ -1,7 +1,8 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -9,6 +10,10 @@ from app.models.prospect import Prospect
 from app.schemas.contract import ContractCreate, ContractListResponse, ContractResponse, PartnerReplySubmit
 from app.services.contract_generator import ContractGeneratorProtocol, get_contract_generator
 from app.services.contract_service import ContractService
+
+
+class GenerateRequest(BaseModel):
+    clause_overrides: Optional[dict[str, str]] = None
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
 
@@ -76,6 +81,7 @@ async def get_contract(
 @router.post("/{contract_id}/generate", response_model=ContractResponse)
 async def generate_pdf(
     contract_id: uuid.UUID,
+    body: GenerateRequest = GenerateRequest(),
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
 ):
@@ -83,7 +89,7 @@ async def generate_pdf(
     contract = await _get_contract_or_404(contract_id, svc, db)
     prospect = await _get_prospect_or_404(contract.prospect_id, db)
     try:
-        contract = await svc.generate_pdf(db, contract, prospect)
+        contract = await svc.generate_pdf(db, contract, prospect, clause_overrides=body.clause_overrides)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:

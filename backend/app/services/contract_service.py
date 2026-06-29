@@ -160,10 +160,17 @@ class ContractService:
 
     # ── Generate PDF ──────────────────────────────────────────────────────────
 
-    async def generate_pdf(self, db: AsyncSession, contract: Contract, prospect: Prospect) -> Contract:
+    async def generate_pdf(
+        self,
+        db: AsyncSession,
+        contract: Contract,
+        prospect: Prospect,
+        clause_overrides: dict[str, str] | None = None,
+    ) -> Contract:
         """
         Generate contract clauses (via AI or mock) then render a real ReportLab PDF.
         Blocked if human_review_required is True.
+        Optional clause_overrides: non-empty values replace the AI-generated text for that key.
         """
         if contract.human_review_required:
             raise PermissionError(
@@ -177,6 +184,12 @@ class ContractService:
             clauses = await self._generator.generate_clauses(prospect)
         except ValueError as exc:
             raise ValueError(f"Clause generation failed: {exc}") from exc
+
+        # Merge user-provided overrides (non-blank values win over AI output)
+        if clause_overrides:
+            for key, text in clause_overrides.items():
+                if text and text.strip():
+                    clauses[key] = text.strip()
 
         # Render PDF
         pdf_bytes = generate_contract_pdf(

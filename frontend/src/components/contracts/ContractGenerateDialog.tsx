@@ -121,7 +121,7 @@ function DraftPanel({
 }: {
   contract: RawContract;
   prospect: Prospect;
-  onGenerate: () => void;
+  onGenerate: (overrides: Partial<Record<keyof RawContractClauses, string>>) => void;
   generating: boolean;
 }) {
   const theme = useTheme();
@@ -129,6 +129,16 @@ function DraftPanel({
   const [estimatedValue, setEstimatedValue] = useState<string>("");
   const parsedValue = parseFloat(estimatedValue) || 0;
   const overThreshold = parsedValue > 50000;
+
+  // Editable clause overrides — empty string means "let AI generate"
+  const [localClauses, setLocalClauses] = useState<Partial<Record<keyof RawContractClauses, string>>>({});
+  const [openClause, setOpenClause] = useState<keyof RawContractClauses | null>(null);
+
+  const customizedCount = Object.values(localClauses).filter((v) => v && v.trim()).length;
+
+  function setClause(key: keyof RawContractClauses, value: string) {
+    setLocalClauses((prev) => ({ ...prev, [key]: value }));
+  }
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -192,18 +202,78 @@ function DraftPanel({
         )}
       </Box>
 
-      {/* 9-clause checklist */}
+      {/* Editable clause accordions */}
       <Box>
-        <Typography variant="titleSmall" sx={{ fontWeight: 700, mb: 1 }}>
-          Structure du contrat (9 clauses)
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+          <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
+            Clauses du contrat
+          </Typography>
+          <Chip
+            label={customizedCount > 0
+              ? `${customizedCount} / ${Object.keys(CLAUSE_LABELS).length} personnalisées`
+              : "Toutes générées par l'IA"}
+            size="small"
+            color={customizedCount > 0 ? "primary" : "default"}
+            variant="outlined"
+            sx={{ fontSize: "0.6875rem" }}
+          />
+        </Box>
+        <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 1.5, display: "block", fontSize: "0.75rem" }}>
+          Pré-remplissez les clauses à personnaliser. Laissez vide pour laisser l&apos;IA générer automatiquement.
         </Typography>
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
-          {Object.entries(CLAUSE_LABELS).map(([, label]) => (
-            <Box key={label} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <CheckCircleRoundedIcon sx={{ fontSize: 16, color: "success.main", flexShrink: 0 }} />
-              <Typography variant="bodySmall" color="text.secondary">{label}</Typography>
-            </Box>
-          ))}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.625 }}>
+          {(Object.keys(CLAUSE_LABELS) as Array<keyof RawContractClauses>).map((key) => {
+            const isOpen = openClause === key;
+            const hasContent = !!(localClauses[key] && localClauses[key]!.trim());
+            return (
+              <Box key={key} sx={{ border: `1px solid ${hasContent ? theme.palette.primary.main : theme.palette.divider}`, borderRadius: 2, overflow: "hidden" }}>
+                <Box
+                  onClick={() => setOpenClause(isOpen ? null : key)}
+                  sx={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    px: 1.5, py: 1, cursor: "pointer",
+                    bgcolor: hasContent ? `${theme.palette.primary.main}08` : "action.hover",
+                    "&:hover": { bgcolor: hasContent ? `${theme.palette.primary.main}12` : `${theme.palette.primary.main}05` },
+                    userSelect: "none",
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0 }}>
+                    {hasContent
+                      ? <CheckCircleRoundedIcon sx={{ fontSize: 14, color: "primary.main", flexShrink: 0 }} />
+                      : <AutoAwesomeRoundedIcon sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }} />
+                    }
+                    <Typography variant="labelSmall" sx={{ fontWeight: 700, fontSize: "0.75rem", color: hasContent ? "primary.main" : "text.primary" }} noWrap>
+                      {CLAUSE_LABELS[key]}
+                    </Typography>
+                  </Box>
+                  <ExpandMoreRoundedIcon sx={{
+                    fontSize: 18, color: "text.secondary", flexShrink: 0,
+                    transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 200ms ease",
+                  }} />
+                </Box>
+                <Collapse in={isOpen}>
+                  <Box sx={{ px: 1.5, py: 1.25, borderTop: `1px solid ${theme.palette.divider}` }}>
+                    <TextField
+                      multiline
+                      minRows={3}
+                      maxRows={8}
+                      fullWidth
+                      size="small"
+                      value={localClauses[key] ?? ""}
+                      onChange={(e) => setClause(key, e.target.value)}
+                      placeholder="Laissez vide pour laisser l'IA générer automatiquement…"
+                      disabled={generating}
+                      sx={{
+                        "& .MuiInputBase-root": { fontSize: "0.8125rem", lineHeight: 1.6 },
+                        "& .MuiInputBase-input::placeholder": { fontSize: "0.75rem", fontStyle: "italic" },
+                      }}
+                    />
+                  </Box>
+                </Collapse>
+              </Box>
+            );
+          })}
         </Box>
       </Box>
 
@@ -211,14 +281,14 @@ function DraftPanel({
 
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
         <Typography variant="bodySmall" color="text.secondary">
-          L&apos;IA va rédiger l&apos;intégralité des clauses dans la langue du partenaire ({contract.language.toUpperCase()}),
+          L&apos;IA va rédiger les clauses non personnalisées dans la langue du partenaire ({contract.language.toUpperCase()}),
           puis générer un PDF professionnel prêt à envoyer.
         </Typography>
         <Button
           variant="contained"
           disableElevation
           startIcon={generating ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdfRoundedIcon />}
-          onClick={onGenerate}
+          onClick={() => onGenerate(localClauses)}
           disabled={generating || contract.human_review_required}
           sx={{ fontWeight: 700, textTransform: "none", alignSelf: "flex-start" }}
         >
@@ -551,10 +621,10 @@ export default function ContractGenerateDialog({
 
   // ── Generate PDF ──────────────────────────────────────────────────
 
-  async function handleGenerate() {
+  async function handleGenerate(overrides: Partial<Record<keyof RawContractClauses, string>> = {}) {
     setGenerating(true);
     try {
-      const updated = await contractsApi.generate(contract.id);
+      const updated = await contractsApi.generate(contract.id, overrides);
       onContractUpdate(updated);
       showSnackbar({ message: "PDF généré avec succès.", severity: "success" });
     } catch (err) {
@@ -733,7 +803,7 @@ export default function ContractGenerateDialog({
             <DraftPanel
               contract={contract}
               prospect={prospect}
-              onGenerate={handleGenerate}
+              onGenerate={(overrides) => handleGenerate(overrides)}
               generating={generating}
             />
           )}

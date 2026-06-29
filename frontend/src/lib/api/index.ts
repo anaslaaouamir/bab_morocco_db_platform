@@ -225,8 +225,13 @@ export const contractsApi = {
       }),
     }),
 
-  generate: (contractId: string): Promise<RawContract> =>
-    apiFetch<RawContract>(`/contracts/${contractId}/generate`, { method: "POST" }),
+  generate: (contractId: string, clauseOverrides?: Partial<Record<string, string>>): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}/generate`, {
+      method: "POST",
+      ...(clauseOverrides && Object.keys(clauseOverrides).length > 0
+        ? { body: JSON.stringify({ clause_overrides: clauseOverrides }) }
+        : {}),
+    }),
 
   /** Direct URL for PDF download — use as href or window.open target. */
   pdfDownloadUrl: (contractId: string): string =>
