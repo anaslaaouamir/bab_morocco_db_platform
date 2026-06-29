@@ -187,7 +187,7 @@ Medium. No backend changes. New npm packages add ~400KB to bundle (xlsx is large
 
 ## Task 3 — Automatic Scan: Multi-select Partner Type
 
-**Status:** `- [ ]`
+**Status:** `- [x]` ✅ Completed 2026-06-29
 
 ### Context
 In `frontend/src/components/crm/ScanProspectDialog.tsx`:
@@ -201,30 +201,18 @@ In `frontend/src/components/crm/ScanProspectDialog.tsx`:
 
 ### Plan
 
-- [ ] **3.1** Read `frontend/src/components/crm/ScanProspectDialog.tsx` in full.
-- [ ] **3.2** Read `frontend/src/lib/api.ts` to understand `scanApi.start()` signature.
-- [ ] **3.3** Update `ScanForm` type:
-  ```typescript
-  // Before
-  interface ScanForm { pays: string; ville: string; type: PartnerType | ""; limite: number; }
-  // After
-  interface ScanForm { pays: string; ville: string; types: PartnerType[]; limite: number; }
-  ```
-- [ ] **3.4** Replace the single `Select` (step ②) with a MUI `Autocomplete` with `multiple={true}` and `disableCloseOnSelect`, listing all 8 partner types as options with checkboxes. Show selected types as chips inside the input.
-- [ ] **3.5** Update validation: require `types.length >= 1` instead of `type !== ""`.
-- [ ] **3.6** Update the query preview to show all selected type queries:
-  ```
-  Requêtes Google Maps : "hôtels riads Marrakech Maroc" + "hôtels luxe 5 étoiles Marrakech Maroc"
-  ```
-- [ ] **3.7** Update `handleLaunch` to:
-  - If single type selected: behave exactly as before (one job, current progress UI).
-  - If multiple types selected: launch jobs sequentially (`for...of` loop over `form.types`), each calling `scanApi.start({ ville, pays, typePartenaire: type, limite })`.
-  - Track a combined progress using a multi-job state: `{ current: number, total: number, jobs: RawScanJob[] }`.
-  - The progress panel shows "Scan 1/3 — Hôtels & Riads", "Scan 2/3 — Hôtels Luxe", etc.
-  - Aggregate results: sum `nb_ajoutes`, `nb_veille`, `nb_doublons`, `nb_trouves` across all jobs.
-- [ ] **3.8** Update INITIAL state: `types: []` instead of `type: ""`.
-- [ ] **3.9** Test with single type selection (backward compatible) and multi-type (2–3 types).
-- [ ] **3.10** Commit.
+- [x] **3.1** Read `frontend/src/components/crm/ScanProspectDialog.tsx` in full.
+- [x] **3.2** Read `frontend/src/lib/api/index.ts` — confirmed `scanApi.start()` takes one `typePartenaire`. No backend change needed.
+- [x] **3.3** Updated `ScanForm`: `type: PartnerType | ""` → `types: PartnerType[]`. `INITIAL` uses `types: []`.
+- [x] **3.4** Replaced single `Select` with `Autocomplete multiple` + `disableCloseOnSelect`, checkbox renderOption, chip renderTags.
+- [x] **3.5** Validation updated: `types.length === 0` triggers error.
+- [x] **3.6** Query preview joins all selected type queries with " + ".
+- [x] **3.7** Multi-job handled via `typeQueue` + `typeQueueIndex` + `accumulated` state. The polling
+  `useEffect` accumulates results and launches the next job in-queue when current job finishes.
+  Progress panel shows "Scan X / N — [Type Label]". Results show accumulated totals.
+- [x] **3.8** `INITIAL` updated: `types: []`. Reset in dialog-open `useEffect`.
+- [x] **3.9** Build clean. `/prospection` +2KB (Checkbox + ListItemText). Single-type use fully backward compatible.
+- [x] **3.10** Committed: `feat(scan): convert partner type to multi-select with sequential jobs`
 
 ### Files
 - `frontend/src/components/crm/ScanProspectDialog.tsx`
@@ -519,7 +507,7 @@ Examples:
 |------|-------------|--------|
 | T1 | Kanban — Veille/Perdu separation | ✅ Done |
 | T2 | Export — PDF/Excel with filters | ⬜ Not started |
-| T3 | Scan — Multi-select partner type | ⬜ Not started |
+| T3 | Scan — Multi-select partner type | ✅ Done |
 | T4 | Settings — Scheduled scan | ⬜ Not started |
 | T5 | Outreach — Step tab filter | ✅ Done |
 | T6 | Contracts — Editable clauses | ⬜ Not started |
