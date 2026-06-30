@@ -254,7 +254,7 @@ feat(auth): add AuthContext, token persistence, and authenticated apiFetch
 
 ## Section 6 — Frontend Route Protection
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Block unauthenticated access to the app (redirect to `/login`) and block Commercials from reaching `/settings`.
 
