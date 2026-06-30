@@ -38,3 +38,9 @@ class UserCreate(BaseModel):
 class UserCreateResponse(BaseModel):
     user: UserOut
     temporary_password: str
+
+
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+    email: str | None = None
+    is_active: bool | None = None

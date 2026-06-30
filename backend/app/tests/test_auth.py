@@ -131,3 +131,102 @@ async def test_list_users_admin_only(client):
     emails = {u["email"] for u in resp.json()}
     assert "admin5@babmorocco.com" in emails
     assert "commercial3@babmorocco.com" in emails
+
+
+@pytest.mark.anyio
+async def test_admin_can_deactivate_and_reactivate_commercial(client):
+    await _seed_user(client, "admin6@babmorocco.com", "supersecret", "admin")
+    commercial = await _seed_user(client, "commercial4@babmorocco.com", "secret123", "commercial")
+
+    login_resp = await client.post("/auth/login", json={"email": "admin6@babmorocco.com", "password": "supersecret"})
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.patch(f"/auth/users/{commercial.id}", json={"is_active": False}, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is False
+
+    blocked_login = await client.post(
+        "/auth/login", json={"email": "commercial4@babmorocco.com", "password": "secret123"}
+    )
+    assert blocked_login.status_code == 401
+
+    resp = await client.patch(f"/auth/users/{commercial.id}", json={"is_active": True}, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is True
+
+    restored_login = await client.post(
+        "/auth/login", json={"email": "commercial4@babmorocco.com", "password": "secret123"}
+    )
+    assert restored_login.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_admin_can_edit_commercial_full_name_and_email(client):
+    await _seed_user(client, "admin7@babmorocco.com", "supersecret", "admin")
+    commercial = await _seed_user(client, "commercial5@babmorocco.com", "secret123", "commercial")
+
+    login_resp = await client.post("/auth/login", json={"email": "admin7@babmorocco.com", "password": "supersecret"})
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.patch(
+        f"/auth/users/{commercial.id}",
+        json={"full_name": "Updated Name", "email": "updated5@babmorocco.com"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["full_name"] == "Updated Name"
+    assert resp.json()["email"] == "updated5@babmorocco.com"
+
+    list_resp = await client.get("/auth/users", headers=headers)
+    emails = {u["email"] for u in list_resp.json()}
+    assert "updated5@babmorocco.com" in emails
+
+
+@pytest.mark.anyio
+async def test_edit_user_to_duplicate_email_conflicts(client):
+    await _seed_user(client, "admin8@babmorocco.com", "supersecret", "admin")
+    await _seed_user(client, "taken@babmorocco.com", "secret123", "commercial")
+    target = await _seed_user(client, "commercial6@babmorocco.com", "secret123", "commercial")
+
+    login_resp = await client.post("/auth/login", json={"email": "admin8@babmorocco.com", "password": "supersecret"})
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.patch(
+        f"/auth/users/{target.id}", json={"email": "taken@babmorocco.com"}, headers=headers
+    )
+    assert resp.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_update_user_rejected_for_non_admin(client):
+    commercial = await _seed_user(client, "commercial7@babmorocco.com", "secret123", "commercial")
+
+    login_resp = await client.post(
+        "/auth/login", json={"email": "commercial7@babmorocco.com", "password": "secret123"}
+    )
+    token = login_resp.json()["access_token"]
+
+    resp = await client.patch(
+        f"/auth/users/{commercial.id}",
+        json={"full_name": "Hacked"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_admin_cannot_edit_own_account_via_endpoint(client):
+    admin = await _seed_user(client, "admin9@babmorocco.com", "supersecret", "admin")
+
+    login_resp = await client.post("/auth/login", json={"email": "admin9@babmorocco.com", "password": "supersecret"})
+    token = login_resp.json()["access_token"]
+
+    resp = await client.patch(
+        f"/auth/users/{admin.id}",
+        json={"full_name": "Self Edit"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403

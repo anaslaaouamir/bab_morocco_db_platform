@@ -1,4 +1,5 @@
 import secrets
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from app.schemas.auth import (
     UserCreate,
     UserCreateResponse,
     UserOut,
+    UserUpdate,
 )
 from app.services import auth_service
 
@@ -67,3 +69,30 @@ async def list_users(
 ):
     result = await db.execute(select(User).order_by(User.created_at))
     return result.scalars().all()
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: uuid.UUID,
+    data: UserUpdate,
+    db: AsyncSession = Depends(get_session),
+    admin: User = Depends(require_admin),
+):
+    if user_id == admin.id:
+        raise HTTPException(status_code=403, detail="Vous ne pouvez pas modifier votre propre compte via cet endpoint.")
+
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(user, field, value)
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Un utilisateur avec cet email existe déjà.")
+    await db.refresh(user)
+    return user
