@@ -1,8 +1,11 @@
 """
 SP4 scan pipeline — runs as a FastAPI BackgroundTask.
 Steps: MockGoogleMaps → MockEnrichment → Scoring → Dedup → Insert → Update job.
+Newly inserted prospects are then distributed randomly and equally among
+active Commercial users (CLAUDE.md prospect assignment logic).
 """
 import logging
+import random
 import uuid
 from datetime import datetime, date
 
@@ -11,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models.prospect import Prospect
 from app.models.scan_job import ScanJob
+from app.models.user import User
 from app.services.mock_providers import MockEnrichmentService, MockGoogleMapsProvider
 from app.services.scoring import scoring_engine
 from app.services.prospect_service import COMMISSION_DEFAULTS, detect_langue
@@ -19,6 +23,35 @@ logger = logging.getLogger(__name__)
 
 _maps_provider = MockGoogleMapsProvider()
 _enrichment_svc = MockEnrichmentService()
+
+
+async def _distribute_to_commercials(db, prospect_ids: list[uuid.UUID]) -> None:
+    """
+    Randomly and equally distributes the given prospects among all active
+    Commercial users (round-robin after shuffling). If there are no active
+    commercials, prospects are left unassigned (assigned_to stays NULL).
+    """
+    if not prospect_ids:
+        return
+
+    commercials = (
+        await db.execute(
+            select(User).where(User.role == "commercial", User.is_active == True)  # noqa: E712
+        )
+    ).scalars().all()
+    if not commercials:
+        return
+
+    shuffled = list(prospect_ids)
+    random.shuffle(shuffled)
+
+    for i, prospect_id in enumerate(shuffled):
+        commercial = commercials[i % len(commercials)]
+        prospect = await db.get(Prospect, prospect_id)
+        if prospect:
+            prospect.assigned_to = commercial.id
+
+    await db.commit()
 
 
 async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
@@ -48,6 +81,7 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
             await db.commit()
 
             total = len(raw_results)
+            new_prospect_ids: list[uuid.UUID] = []
 
             for i, raw in enumerate(raw_results):
                 # ── Step 2: Enrichment ──────────────────────────────────────
@@ -106,6 +140,7 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
                         db.add(prospect)
                         await db.flush()
                         job.nb_ajoutes += 1
+                        new_prospect_ids.append(prospect.id)
                         if stage == "veille":
                             job.nb_veille += 1
                     except IntegrityError:
@@ -115,6 +150,9 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
                 # ── Step 6: Update progression ──────────────────────────────
                 job.progression = int((i + 1) / total * 100)
                 await db.commit()
+
+            # ── Step 7: Distribute new prospects among active commercials ──
+            await _distribute_to_commercials(db, new_prospect_ids)
 
             job.statut = "done"
             job.progression = 100
