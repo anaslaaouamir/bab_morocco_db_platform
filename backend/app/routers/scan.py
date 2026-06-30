@@ -5,7 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session, get_session_factory
+from app.dependencies.auth import get_current_user, require_admin
 from app.models.scan_job import ScanJob
+from app.models.user import User
 from app.schemas.scan import ScanJobResponse, ScanStartRequest
 from app.services.scan_pipeline import run_scan_pipeline
 
@@ -32,7 +34,10 @@ def _job_to_response(job: ScanJob) -> ScanJobResponse:
 
 
 @router.get("/history", response_model=list[ScanJobResponse])
-async def scan_history(db: AsyncSession = Depends(get_session)):
+async def scan_history(
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
     rows = (await db.execute(select(ScanJob).order_by(ScanJob.created_at.desc()))).scalars().all()
     return [_job_to_response(j) for j in rows]
 
@@ -43,6 +48,7 @@ async def start_scan(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_session),
     session_factory=Depends(get_session_factory),
+    _admin: User = Depends(require_admin),
 ):
     job = ScanJob(
         ville=data.ville,
@@ -60,7 +66,11 @@ async def start_scan(
 
 
 @router.get("/{job_id}", response_model=ScanJobResponse)
-async def get_scan_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_session)):
+async def get_scan_job(
+    job_id: uuid.UUID,
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
     job = await db.get(ScanJob, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="ScanJob introuvable.")

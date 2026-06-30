@@ -1,13 +1,12 @@
 import secrets
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
+from app.dependencies.auth import get_current_user, require_admin
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
@@ -19,40 +18,6 @@ from app.schemas.auth import (
 from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-# NOTE: get_current_user / require_admin are defined here as a minimal
-# implementation for this section. Section 3 introduces
-# app.dependencies.auth with the full set of guards (including ownership
-# checks) and will replace these with imports from that module.
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
-
-
-async def get_current_user(
-    token: str | None = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_session),
-) -> User:
-    if not token:
-        raise HTTPException(status_code=401, detail="Non authentifié.")
-    try:
-        payload = auth_service.decode_token(token)
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Token invalide ou expiré.")
-
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Token invalide.")
-
-    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
-    user = result.scalar_one_or_none()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="Utilisateur introuvable ou inactif.")
-    return user
-
-
-async def require_admin(user: User = Depends(get_current_user)) -> User:
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Réservé aux administrateurs.")
-    return user
 
 
 @router.post("/login", response_model=TokenResponse)

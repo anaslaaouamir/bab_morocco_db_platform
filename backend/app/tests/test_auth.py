@@ -62,6 +62,9 @@ async def test_me_with_valid_token(client):
 
 @pytest.mark.anyio
 async def test_me_without_token(client):
+    # `client` carries a default Admin Authorization header (see conftest.py) —
+    # remove it to test the unauthenticated case.
+    del client.headers["Authorization"]
     resp = await client.get("/auth/me")
     assert resp.status_code == 401
 
@@ -107,6 +110,7 @@ async def test_create_user_rejected_for_non_admin(client):
 
 @pytest.mark.anyio
 async def test_create_user_rejected_without_token(client):
+    del client.headers["Authorization"]
     resp = await client.post(
         "/auth/users",
         json={"email": "noauth@babmorocco.com", "full_name": "No Auth"},

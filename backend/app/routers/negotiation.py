@@ -1,10 +1,10 @@
-import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
+from app.dependencies.auth import require_own_prospect
 from app.models.prospect import Prospect
 from app.schemas.negotiation import (
     MessageAnalysisResponse,
@@ -25,21 +25,13 @@ def get_negotiation_service(
     return NegotiationService(generator=generator)
 
 
-async def _get_prospect(prospect_id: uuid.UUID, db: AsyncSession) -> Prospect:
-    prospect = await db.get(Prospect, prospect_id)
-    if not prospect:
-        raise HTTPException(status_code=404, detail="Prospect not found")
-    return prospect
-
-
 @router.post("/{prospect_id}/message", response_model=MessageAnalysisResponse, status_code=status.HTTP_201_CREATED)
 async def submit_message(
-    prospect_id: uuid.UUID,
     body: MessageSubmitRequest,
     db: AsyncSession = Depends(get_session),
     svc: NegotiationService = Depends(get_negotiation_service),
+    prospect: Prospect = Depends(require_own_prospect),
 ):
-    prospect = await _get_prospect(prospect_id, db)
     try:
         result = await svc.submit_message(db, prospect, body.corps)
     except ValueError as e:
@@ -58,12 +50,11 @@ async def submit_message(
 
 @router.get("/{prospect_id}/analysis", response_model=MessageAnalysisResponse)
 async def get_analysis(
-    prospect_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: NegotiationService = Depends(get_negotiation_service),
+    prospect: Prospect = Depends(require_own_prospect),
 ):
-    await _get_prospect(prospect_id, db)
-    result = await svc.get_analysis(db, prospect_id)
+    result = await svc.get_analysis(db, prospect.id)
     if not result:
         raise HTTPException(status_code=404, detail="No analysis found for this prospect")
     return MessageAnalysisResponse(
@@ -80,26 +71,23 @@ async def get_analysis(
 
 @router.get("/{prospect_id}/history", response_model=list[NegotiationMessageResponse])
 async def get_history(
-    prospect_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: NegotiationService = Depends(get_negotiation_service),
+    prospect: Prospect = Depends(require_own_prospect),
 ):
-    await _get_prospect(prospect_id, db)
-    return await svc.get_history(db, prospect_id)
+    return await svc.get_history(db, prospect.id)
 
 
 @router.post("/{prospect_id}/simulate-reply", response_model=MessageAnalysisResponse, status_code=status.HTTP_201_CREATED)
 async def simulate_reply(
-    prospect_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: NegotiationService = Depends(get_negotiation_service),
+    prospect: Prospect = Depends(require_own_prospect),
 ):
     """Dev-only: simulate a partner inbound reply, move prospect to negociation, run analysis."""
     from app.config import settings as _settings
     if _settings.ENV == "production":
         raise HTTPException(status_code=403, detail="Not available in production")
-
-    prospect = await _get_prospect(prospect_id, db)
 
     mock_text = (
         f"Bonjour,\n\nMerci pour votre message concernant un partenariat avec Bab Morocco. "
@@ -135,13 +123,12 @@ async def simulate_reply(
 
 @router.post("/{prospect_id}/respond", response_model=NegotiationMessageResponse)
 async def respond(
-    prospect_id: uuid.UUID,
     body: RespondRequest,
     db: AsyncSession = Depends(get_session),
     svc: NegotiationService = Depends(get_negotiation_service),
+    prospect: Prospect = Depends(require_own_prospect),
 ):
-    prospect = await _get_prospect(prospect_id, db)
-    last_analysis = await svc.get_analysis(db, prospect_id)
+    last_analysis = await svc.get_analysis(db, prospect.id)
     if not last_analysis:
         raise HTTPException(status_code=404, detail="No analysis found — submit a message first")
     try:

@@ -1,4 +1,3 @@
-import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,6 +5,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
+from app.dependencies.auth import get_current_user, require_own_prospect
+from app.models.prospect import Prospect
+from app.models.user import User
 from app.schemas.prospect import (
     ProspectCreate,
     ProspectListResponse,
@@ -23,12 +25,16 @@ router = APIRouter(prefix="/prospects", tags=["prospects"])
 
 
 @router.get("/stats", response_model=ProspectStats)
-async def stats(db: AsyncSession = Depends(get_session)):
-    return await svc.get_stats(db)
+async def stats(
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    assigned_to = user.id if user.role == "commercial" else None
+    return await svc.get_stats(db, assigned_to=assigned_to)
 
 
 @router.post("/score-preview", response_model=ScorePreviewResponse)
-async def score_preview(data: ScorePreviewRequest):
+async def score_preview(data: ScorePreviewRequest, user: User = Depends(get_current_user)):
     """Compute score without persisting — used by frontend form for live preview."""
     payload = data.model_dump()
     breakdown = scoring_engine.compute_breakdown(payload)
@@ -55,40 +61,45 @@ async def list_prospects(
     pays: Optional[str] = None,
     langue: Optional[str] = None,
     db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
 ):
+    assigned_to = user.id if user.role == "commercial" else None
     return await svc.list_prospects(
         db, page=page, page_size=page_size,
         stage=stage, type=type, score_min=score_min, pays=pays, langue=langue,
+        assigned_to=assigned_to,
     )
 
 
 @router.post("", response_model=ProspectResponse, status_code=201)
-async def create_prospect(data: ProspectCreate, db: AsyncSession = Depends(get_session)):
+async def create_prospect(
+    data: ProspectCreate,
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
     try:
         prospect = await svc.create_prospect(db, data)
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Un prospect avec cette adresse web existe déjà.")
+    if user.role == "commercial":
+        prospect.assigned_to = user.id
+        await db.commit()
+        await db.refresh(prospect)
     return prospect
 
 
 @router.get("/{prospect_id}", response_model=ProspectResponse)
-async def get_prospect(prospect_id: uuid.UUID, db: AsyncSession = Depends(get_session)):
-    prospect = await svc.get_prospect(db, prospect_id)
-    if not prospect:
-        raise HTTPException(status_code=404, detail="Prospect introuvable.")
+async def get_prospect(prospect: Prospect = Depends(require_own_prospect)):
     return prospect
 
 
 @router.put("/{prospect_id}", response_model=ProspectResponse)
 async def update_prospect(
-    prospect_id: uuid.UUID,
     data: ProspectUpdate,
     db: AsyncSession = Depends(get_session),
+    prospect: Prospect = Depends(require_own_prospect),
 ):
-    prospect = await svc.get_prospect(db, prospect_id)
-    if not prospect:
-        raise HTTPException(status_code=404, detail="Prospect introuvable.")
     try:
         return await svc.update_prospect(db, prospect, data)
     except IntegrityError:
@@ -98,13 +109,10 @@ async def update_prospect(
 
 @router.patch("/{prospect_id}/stage", response_model=ProspectResponse)
 async def patch_stage(
-    prospect_id: uuid.UUID,
     data: StagePatch,
     db: AsyncSession = Depends(get_session),
+    prospect: Prospect = Depends(require_own_prospect),
 ):
-    prospect = await svc.get_prospect(db, prospect_id)
-    if not prospect:
-        raise HTTPException(status_code=404, detail="Prospect introuvable.")
     updated = await svc.patch_stage(db, prospect, data)
 
     # Auto-create a draft contract when prospect enters closing stage
@@ -116,8 +124,8 @@ async def patch_stage(
 
 
 @router.delete("/{prospect_id}", status_code=204)
-async def delete_prospect(prospect_id: uuid.UUID, db: AsyncSession = Depends(get_session)):
-    prospect = await svc.get_prospect(db, prospect_id)
-    if not prospect:
-        raise HTTPException(status_code=404, detail="Prospect introuvable.")
+async def delete_prospect(
+    db: AsyncSession = Depends(get_session),
+    prospect: Prospect = Depends(require_own_prospect),
+):
     await svc.delete_prospect(db, prospect)

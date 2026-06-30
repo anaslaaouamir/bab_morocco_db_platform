@@ -6,7 +6,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
+from app.dependencies.auth import get_current_user
 from app.models.prospect import Prospect
+from app.models.user import User
 from app.schemas.contract import ContractCreate, ContractListResponse, ContractResponse, PartnerReplySubmit
 from app.services.contract_generator import ContractGeneratorProtocol, get_contract_generator
 from app.services.contract_service import ContractService
@@ -40,14 +42,33 @@ async def _get_contract_or_404(contract_id: uuid.UUID, svc: ContractService, db:
     return contract
 
 
+async def _get_contract_with_access(
+    contract_id: uuid.UUID, svc: ContractService, db: AsyncSession, user: User
+):
+    """Resolves a contract and enforces that the requesting user owns its prospect."""
+    contract = await _get_contract_or_404(contract_id, svc, db)
+    prospect = await _get_prospect_or_404(contract.prospect_id, db)
+    if user.role == "commercial" and prospect.assigned_to != user.id:
+        raise HTTPException(status_code=403, detail="Vous n'avez pas accès à ce contrat.")
+    return contract, prospect
+
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 @router.get("", response_model=ContractListResponse)
 async def list_contracts(
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     items = await svc.list_contracts(db)
+    if user.role == "commercial":
+        owned = []
+        for c in items:
+            prospect = await db.get(Prospect, c.prospect_id)
+            if prospect and prospect.assigned_to == user.id:
+                owned.append(c)
+        items = owned
     return ContractListResponse(items=items, total=len(items))
 
 
@@ -56,9 +77,12 @@ async def create_contract(
     body: ContractCreate,
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     """Create a draft contract for a prospect. Idempotent — returns existing if already created."""
     prospect = await _get_prospect_or_404(body.prospect_id, db)
+    if user.role == "commercial" and prospect.assigned_to != user.id:
+        raise HTTPException(status_code=403, detail="Vous n'avez pas accès à ce prospect.")
     if prospect.stage not in ("closing", "activation_ota"):
         raise HTTPException(
             status_code=400,
@@ -73,8 +97,9 @@ async def get_contract(
     contract_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
-    contract = await _get_contract_or_404(contract_id, svc, db)
+    contract, _ = await _get_contract_with_access(contract_id, svc, db, user)
     return await svc.get_response(contract)
 
 
@@ -84,10 +109,10 @@ async def generate_pdf(
     body: GenerateRequest = GenerateRequest(),
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     """Generate AI clauses and render the PDF. Blocked if human_review_required."""
-    contract = await _get_contract_or_404(contract_id, svc, db)
-    prospect = await _get_prospect_or_404(contract.prospect_id, db)
+    contract, prospect = await _get_contract_with_access(contract_id, svc, db, user)
     try:
         contract = await svc.generate_pdf(db, contract, prospect, clause_overrides=body.clause_overrides)
     except PermissionError as exc:
@@ -102,9 +127,10 @@ async def download_pdf(
     contract_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     """Download the generated PDF as binary."""
-    contract = await _get_contract_or_404(contract_id, svc, db)
+    contract, _ = await _get_contract_with_access(contract_id, svc, db, user)
     if not contract.pdf_bytes:
         raise HTTPException(status_code=404, detail="PDF not yet generated.")
     return Response(
@@ -121,9 +147,10 @@ async def send_to_partner(
     contract_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     """Send the contract PDF to the partner by email (mock in dev, Mailgun in prod)."""
-    contract = await _get_contract_or_404(contract_id, svc, db)
+    contract, _ = await _get_contract_with_access(contract_id, svc, db, user)
     try:
         contract = await svc.send_to_partner(db, contract)
     except ValueError as exc:
@@ -137,13 +164,14 @@ async def submit_partner_reply(
     body: PartnerReplySubmit,
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     """
     Submit the partner's email reply into the platform.
     The user pastes the reply text after reading their inbox.
     Status stays sent_to_partner — user still decides signed/declined.
     """
-    contract = await _get_contract_or_404(contract_id, svc, db)
+    contract, _ = await _get_contract_with_access(contract_id, svc, db, user)
     try:
         contract = await svc.submit_reply(db, contract, body.reply_text)
     except ValueError as exc:
@@ -156,13 +184,13 @@ async def mark_signed(
     contract_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     """
     Human confirms the partner has signed.
     Sets status → signed, prospect stage → activation_ota.
     """
-    contract = await _get_contract_or_404(contract_id, svc, db)
-    prospect = await _get_prospect_or_404(contract.prospect_id, db)
+    contract, prospect = await _get_contract_with_access(contract_id, svc, db, user)
     try:
         contract = await svc.mark_signed(db, contract, prospect)
     except ValueError as exc:
@@ -175,13 +203,13 @@ async def mark_declined(
     contract_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     """
     Human marks the partner as declined.
     Sets status → declined, prospect stage → negociation.
     """
-    contract = await _get_contract_or_404(contract_id, svc, db)
-    prospect = await _get_prospect_or_404(contract.prospect_id, db)
+    contract, prospect = await _get_contract_with_access(contract_id, svc, db, user)
     try:
         contract = await svc.mark_declined(db, contract, prospect)
     except ValueError as exc:
@@ -194,13 +222,14 @@ async def simulate_partner_reply(
     contract_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     """DEV ONLY — inject a realistic mock partner reply mentioning a signed PDF."""
     from app.config import settings as _settings
     if _settings.ENV == "production":
         raise HTTPException(status_code=403, detail="Not available in production.")
 
-    contract = await _get_contract_or_404(contract_id, svc, db)
+    contract, _ = await _get_contract_with_access(contract_id, svc, db, user)
     try:
         contract = await svc.simulate_partner_reply(db, contract)
     except ValueError as exc:
@@ -213,6 +242,7 @@ async def simulate_signed(
     contract_id: uuid.UUID,
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
 ):
     """
     DEV ONLY — simulate partner signing the contract.
@@ -222,8 +252,7 @@ async def simulate_signed(
     if _settings.ENV == "production":
         raise HTTPException(status_code=403, detail="Not available in production.")
 
-    contract = await _get_contract_or_404(contract_id, svc, db)
-    prospect = await _get_prospect_or_404(contract.prospect_id, db)
+    contract, prospect = await _get_contract_with_access(contract_id, svc, db, user)
 
     if contract.status not in ("generated", "sent_to_partner"):
         raise HTTPException(

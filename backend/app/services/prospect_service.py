@@ -124,6 +124,7 @@ async def list_prospects(
     score_min: Optional[int] = None,
     pays: Optional[str] = None,
     langue: Optional[str] = None,
+    assigned_to: Optional[uuid.UUID] = None,
 ) -> ProspectListResponse:
     stmt = select(Prospect)
     if stage:
@@ -136,6 +137,8 @@ async def list_prospects(
         stmt = stmt.where(Prospect.pays == pays)
     if langue:
         stmt = stmt.where(Prospect.langue == langue)
+    if assigned_to is not None:
+        stmt = stmt.where(Prospect.assigned_to == assigned_to)
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = (await db.execute(count_stmt)).scalar_one()
@@ -210,23 +213,22 @@ async def delete_prospect(db: AsyncSession, prospect: Prospect) -> None:
     await db.commit()
 
 
-async def get_stats(db: AsyncSession) -> ProspectStats:
-    stage_rows = (
-        await db.execute(
-            select(Prospect.stage, func.count(Prospect.id)).group_by(Prospect.stage)
-        )
-    ).all()
+async def get_stats(db: AsyncSession, assigned_to: Optional[uuid.UUID] = None) -> ProspectStats:
+    stage_stmt = select(Prospect.stage, func.count(Prospect.id))
+    avg_stmt = select(func.avg(Prospect.score_total))
+    eligibles_stmt = select(func.count(Prospect.id)).where(Prospect.score_total >= 75)
+
+    if assigned_to is not None:
+        stage_stmt = stage_stmt.where(Prospect.assigned_to == assigned_to)
+        avg_stmt = avg_stmt.where(Prospect.assigned_to == assigned_to)
+        eligibles_stmt = eligibles_stmt.where(Prospect.assigned_to == assigned_to)
+
+    stage_rows = (await db.execute(stage_stmt.group_by(Prospect.stage))).all()
     nb_par_stage = {row[0]: row[1] for row in stage_rows}
 
-    score_avg = (
-        await db.execute(select(func.avg(Prospect.score_total)))
-    ).scalar_one_or_none() or 0.0
+    score_avg = (await db.execute(avg_stmt)).scalar_one_or_none() or 0.0
 
-    nb_eligibles = (
-        await db.execute(
-            select(func.count(Prospect.id)).where(Prospect.score_total >= 75)
-        )
-    ).scalar_one()
+    nb_eligibles = (await db.execute(eligibles_stmt)).scalar_one()
 
     return ProspectStats(
         nb_par_stage=nb_par_stage,
