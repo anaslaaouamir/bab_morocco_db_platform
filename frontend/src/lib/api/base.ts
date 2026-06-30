@@ -68,3 +68,37 @@ export async function apiFetch<T>(
 
   return res.json() as Promise<T>;
 }
+
+/**
+ * Fetches a binary resource (e.g. PDF) with the same auth header as apiFetch.
+ * Protected GET endpoints can't be hit via a plain <a href> or window.open —
+ * the browser navigation carries no Authorization header — so downloads must
+ * go through fetch() and be turned into an object URL on the client.
+ */
+export async function apiFetchBlob(path: string): Promise<Blob> {
+  const token =
+    typeof window !== "undefined" ? window.localStorage.getItem(AUTH_TOKEN_KEY) : null;
+
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) clearAuthAndRedirect();
+    throw await parseError(res);
+  }
+
+  return res.blob();
+}
+
+/** Triggers a browser download of a Blob without navigating away from the page. */
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}

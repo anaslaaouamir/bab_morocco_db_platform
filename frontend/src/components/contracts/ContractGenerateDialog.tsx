@@ -41,7 +41,7 @@ import ThumbDownRoundedIcon from "@mui/icons-material/ThumbDownRounded";
 import ThumbUpRoundedIcon from "@mui/icons-material/ThumbUpRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 
-import { contractsApi, ApiError } from "@/lib/api";
+import { contractsApi, ApiError, downloadBlob } from "@/lib/api";
 import type { RawContract, RawContractClauses } from "@/lib/api";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 import type { Prospect } from "@/types/prospect";
@@ -66,6 +66,23 @@ const CLAUSE_LABELS: Record<keyof RawContractClauses, string> = {
   juridiction: "9. Droit applicable",
   post_signature_note: "Activation post-signature",
 };
+
+// The endpoint is auth-protected, so a plain <a href> can't carry the bearer
+// token — fetch as a blob instead and trigger the download manually.
+async function downloadContractPdf(
+  contract: RawContract,
+  showSnackbar: ReturnType<typeof useSnackbar>["showSnackbar"],
+) {
+  try {
+    const blob = await contractsApi.downloadPdf(contract.id);
+    downloadBlob(blob, `contrat_${contract.partner_name.replace(/\s+/g, "_")}.pdf`);
+  } catch (err) {
+    showSnackbar({
+      message: err instanceof ApiError ? err.detail : "Erreur lors du téléchargement du PDF.",
+      severity: "error",
+    });
+  }
+}
 
 function statusToStep(status: RawContract["status"]): number {
   switch (status) {
@@ -245,6 +262,7 @@ function GeneratedPanel({
   regenerating: boolean;
 }) {
   const theme = useTheme();
+  const { showSnackbar } = useSnackbar();
   const clauses = contract.clauses;
 
   // Local editable copy of AI-generated clauses
@@ -298,10 +316,7 @@ function GeneratedPanel({
           variant="outlined"
           color="success"
           startIcon={<DownloadRoundedIcon />}
-          component="a"
-          href={contractsApi.pdfDownloadUrl(contract.id)}
-          target="_blank"
-          rel="noopener noreferrer"
+          onClick={() => downloadContractPdf(contract, showSnackbar)}
           sx={{ fontWeight: 700, textTransform: "none", flexShrink: 0 }}
         >
           Télécharger
@@ -442,6 +457,7 @@ function SentPanel({
   simulatingReply: boolean;
 }) {
   const theme = useTheme();
+  const { showSnackbar } = useSnackbar();
   const hasReply = !!contract.partner_reply;
   const hasPdfMention = hasReply && /pdf|pièce jointe|joint|attachm/i.test(contract.partner_reply!);
 
@@ -477,10 +493,7 @@ function SentPanel({
           size="small"
           variant="outlined"
           startIcon={<DownloadRoundedIcon />}
-          component="a"
-          href={contractsApi.pdfDownloadUrl(contract.id)}
-          target="_blank"
-          rel="noopener noreferrer"
+          onClick={() => downloadContractPdf(contract, showSnackbar)}
           sx={{ fontWeight: 600, textTransform: "none", flexShrink: 0, fontSize: "0.75rem" }}
         >
           PDF

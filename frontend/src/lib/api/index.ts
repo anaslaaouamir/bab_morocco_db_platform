@@ -1,4 +1,4 @@
-export { ApiError } from "./base";
+export { ApiError, downloadBlob } from "./base";
 export { authApi } from "./auth";
 export type { UserOut, UserRole, TokenResponse, UserCreateResponse } from "./auth";
 export { rawToProspect } from "./mappers";
@@ -18,7 +18,7 @@ export type {
   ContractStatus,
 } from "./types";
 
-import { apiFetch } from "./base";
+import { apiFetch, apiFetchBlob } from "./base";
 import { rawToProspect, prospectToCreate, prospectToUpdate } from "./mappers";
 import type {
   RawProspect,
@@ -212,8 +212,6 @@ export const outreachApi = {
 
 // ─── Contracts ────────────────────────────────────────────────────────────────
 
-const _API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 export const contractsApi = {
   list: (): Promise<RawContractListResponse> =>
     apiFetch<RawContractListResponse>("/contracts"),
@@ -235,9 +233,12 @@ export const contractsApi = {
         : {}),
     }),
 
-  /** Direct URL for PDF download — use as href or window.open target. */
-  pdfDownloadUrl: (contractId: string): string =>
-    `${_API_URL}/contracts/${contractId}/pdf`,
+  /**
+   * Downloads the PDF as a Blob (carries the auth header — the endpoint is
+   * protected, so a plain <a href>/window.open can't be used here).
+   */
+  downloadPdf: (contractId: string): Promise<Blob> =>
+    apiFetchBlob(`/contracts/${contractId}/pdf`),
 
   send: (contractId: string): Promise<RawContract> =>
     apiFetch<RawContract>(`/contracts/${contractId}/send`, { method: "POST" }),

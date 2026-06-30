@@ -31,7 +31,7 @@ import Link from "next/link";
 import type { Prospect } from "@/types/prospect";
 import { PARTNER_TYPE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
 import type { RawContract } from "@/lib/api";
-import { contractsApi, prospectsApi, ApiError } from "@/lib/api";
+import { contractsApi, prospectsApi, ApiError, downloadBlob } from "@/lib/api";
 import { rawToProspect } from "@/lib/api";
 import ProspectDrawer from "@/components/crm/ProspectDrawer";
 import ContractGenerateDialog from "@/components/contracts/ContractGenerateDialog";
@@ -106,6 +106,21 @@ function ContractCard({
 }) {
   const theme = useTheme();
   const info = useStatusInfo(contract);
+  const { showSnackbar } = useSnackbar();
+
+  // The endpoint is auth-protected, so a plain <a href> can't carry the
+  // bearer token — fetch as a blob instead and trigger the download manually.
+  async function handleDownloadPdf() {
+    try {
+      const blob = await contractsApi.downloadPdf(contract.id);
+      downloadBlob(blob, `contrat_${contract.partner_name.replace(/\s+/g, "_")}.pdf`);
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors du téléchargement du PDF.",
+        severity: "error",
+      });
+    }
+  }
 
   const sentDate = contract.sent_at
     ? new Date(contract.sent_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })
@@ -312,10 +327,7 @@ function ContractCard({
                 size="small"
                 variant="text"
                 startIcon={<PictureAsPdfRoundedIcon sx={{ fontSize: 14 }} />}
-                component="a"
-                href={contractsApi.pdfDownloadUrl(contract.id)}
-                target="_blank"
-                rel="noopener noreferrer"
+                onClick={handleDownloadPdf}
                 sx={{ fontWeight: 600, textTransform: "none", fontSize: "0.75rem" }}
               >
                 PDF
