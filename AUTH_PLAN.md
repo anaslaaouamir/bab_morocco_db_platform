@@ -119,7 +119,7 @@ feat(auth): add JWT login, /auth/me, and admin-only user creation
 
 ## Section 3 — Backend Auth Dependencies & Route Guards
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Enforce authentication on every existing router and add role/ownership checks so Commercials can only act on their own prospects and cannot start scans or reach Settings-protected endpoints.
 
