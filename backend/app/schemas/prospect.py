@@ -98,6 +98,10 @@ class StagePatch(BaseModel):
     stage: StageEnum
 
 
+class ProspectAssignRequest(BaseModel):
+    assigned_to: Optional[uuid.UUID] = None
+
+
 class ScorePreviewRequest(BaseModel):
     adresse_web: str = "https://example.com"
     pays: str = ""
@@ -158,6 +162,9 @@ class ProspectResponse(BaseModel):
 
     created_at: datetime
     updated_at: datetime
+
+    assigned_to: Optional[uuid.UUID] = None
+    assigned_to_name: Optional[str] = None
 
 
 class ProspectListResponse(BaseModel):

@@ -202,3 +202,118 @@ async def test_stats_endpoint(client):
     assert "score_moyen" in body
     assert "nb_eligibles_outreach" in body
     assert isinstance(body["nb_par_stage"], dict)
+
+
+async def _seed_commercial(client, email: str, password: str = "secret123", full_name: str = "Commercial"):
+    from app.database import get_session
+    from app.main import app as fastapi_app
+    from app.models.user import User
+    from app.services import auth_service
+
+    override = fastapi_app.dependency_overrides[get_session]
+    async for session in override():
+        user = User(
+            email=email,
+            hashed_password=auth_service.hash_password(password),
+            full_name=full_name,
+            role="commercial",
+            is_active=True,
+        )
+        session.add(user)
+        await session.flush()
+        await session.commit()
+        return user
+
+
+@pytest.mark.anyio
+async def test_admin_list_includes_assigned_to_name(client):
+    commercial = await _seed_commercial(client, "owner1@babmorocco.com")
+    create_resp = await client.post(BASE, json=prospect_payload(adresse_web="https://owned1.ma"))
+    prospect_id = create_resp.json()["id"]
+    await client.patch(f"{BASE}/{prospect_id}/assign", json={"assigned_to": str(commercial.id)})
+
+    resp = await client.get(BASE)
+    item = next(p for p in resp.json()["items"] if p["id"] == prospect_id)
+    assert item["assigned_to"] == str(commercial.id)
+    assert item["assigned_to_name"] == "Commercial"
+
+
+@pytest.mark.anyio
+async def test_commercial_list_omits_assigned_to_name(client):
+    commercial = await _seed_commercial(client, "owner2@babmorocco.com")
+    create_resp = await client.post(BASE, json=prospect_payload(adresse_web="https://owned2.ma"))
+    prospect_id = create_resp.json()["id"]
+    await client.patch(f"{BASE}/{prospect_id}/assign", json={"assigned_to": str(commercial.id)})
+
+    login_resp = await client.post("/auth/login", json={"email": "owner2@babmorocco.com", "password": "secret123"})
+    token = login_resp.json()["access_token"]
+
+    resp = await client.get(BASE, headers={"Authorization": f"Bearer {token}"})
+    item = next(p for p in resp.json()["items"] if p["id"] == prospect_id)
+    assert item.get("assigned_to_name") is None
+
+
+@pytest.mark.anyio
+async def test_reassign_to_active_commercial_succeeds(client):
+    commercial_a = await _seed_commercial(client, "reassign-a@babmorocco.com")
+    commercial_b = await _seed_commercial(client, "reassign-b@babmorocco.com")
+    create_resp = await client.post(BASE, json=prospect_payload(adresse_web="https://reassign.ma"))
+    prospect_id = create_resp.json()["id"]
+
+    await client.patch(f"{BASE}/{prospect_id}/assign", json={"assigned_to": str(commercial_a.id)})
+    resp = await client.patch(f"{BASE}/{prospect_id}/assign", json={"assigned_to": str(commercial_b.id)})
+    assert resp.status_code == 200
+    assert resp.json()["assigned_to"] == str(commercial_b.id)
+
+
+@pytest.mark.anyio
+async def test_assign_to_inactive_commercial_rejected(client):
+    commercial = await _seed_commercial(client, "inactive1@babmorocco.com")
+    create_resp = await client.post(BASE, json=prospect_payload(adresse_web="https://inactive1.ma"))
+    prospect_id = create_resp.json()["id"]
+    await client.patch(f"/auth/users/{commercial.id}", json={"is_active": False})
+
+    resp = await client.patch(f"{BASE}/{prospect_id}/assign", json={"assigned_to": str(commercial.id)})
+    assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_assign_to_nonexistent_user_rejected(client):
+    create_resp = await client.post(BASE, json=prospect_payload(adresse_web="https://ghost-assign.ma"))
+    prospect_id = create_resp.json()["id"]
+    fake_id = "00000000-0000-0000-0000-000000000000"
+
+    resp = await client.patch(f"{BASE}/{prospect_id}/assign", json={"assigned_to": fake_id})
+    assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_unassign_prospect_succeeds(client):
+    commercial = await _seed_commercial(client, "unassign1@babmorocco.com")
+    create_resp = await client.post(BASE, json=prospect_payload(adresse_web="https://unassign1.ma"))
+    prospect_id = create_resp.json()["id"]
+    await client.patch(f"{BASE}/{prospect_id}/assign", json={"assigned_to": str(commercial.id)})
+
+    resp = await client.patch(f"{BASE}/{prospect_id}/assign", json={"assigned_to": None})
+    assert resp.status_code == 200
+    assert resp.json()["assigned_to"] is None
+
+
+@pytest.mark.anyio
+async def test_assign_rejected_for_commercial(client):
+    commercial = await _seed_commercial(client, "noaccess1@babmorocco.com")
+    create_resp = await client.post(BASE, json=prospect_payload(adresse_web="https://noaccess1.ma"))
+    prospect_id = create_resp.json()["id"]
+    await client.patch(f"{BASE}/{prospect_id}/assign", json={"assigned_to": str(commercial.id)})
+
+    login_resp = await client.post(
+        "/auth/login", json={"email": "noaccess1@babmorocco.com", "password": "secret123"}
+    )
+    token = login_resp.json()["access_token"]
+
+    resp = await client.patch(
+        f"{BASE}/{prospect_id}/assign",
+        json={"assigned_to": None},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403

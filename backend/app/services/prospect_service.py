@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.prospect import Prospect
+from app.models.user import User
 from app.schemas.prospect import (
     LangueEnum,
     ProspectCreate,
@@ -125,6 +126,7 @@ async def list_prospects(
     pays: Optional[str] = None,
     langue: Optional[str] = None,
     assigned_to: Optional[uuid.UUID] = None,
+    populate_assignee_names: bool = False,
 ) -> ProspectListResponse:
     stmt = select(Prospect)
     if stage:
@@ -147,9 +149,25 @@ async def list_prospects(
     stmt = stmt.offset(offset).limit(page_size)
     rows = (await db.execute(stmt)).scalars().all()
 
+    name_map: dict[uuid.UUID, str] = {}
+    if populate_assignee_names:
+        assignee_ids = {r.assigned_to for r in rows if r.assigned_to is not None}
+        if assignee_ids:
+            user_rows = (
+                await db.execute(select(User.id, User.full_name).where(User.id.in_(assignee_ids)))
+            ).all()
+            name_map = {uid: full_name for uid, full_name in user_rows}
+
+    items = []
+    for r in rows:
+        item = ProspectResponse.model_validate(r)
+        if populate_assignee_names:
+            item.assigned_to_name = name_map.get(r.assigned_to)
+        items.append(item)
+
     pages = max(1, math.ceil(total / page_size))
     return ProspectListResponse(
-        items=[ProspectResponse.model_validate(r) for r in rows],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,

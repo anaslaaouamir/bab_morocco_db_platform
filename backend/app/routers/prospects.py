@@ -1,3 +1,4 @@
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -5,10 +6,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
-from app.dependencies.auth import get_current_user, require_own_prospect
+from app.dependencies.auth import get_current_user, require_admin, require_own_prospect
 from app.models.prospect import Prospect
 from app.models.user import User
 from app.schemas.prospect import (
+    ProspectAssignRequest,
     ProspectCreate,
     ProspectListResponse,
     ProspectResponse,
@@ -68,6 +70,7 @@ async def list_prospects(
         db, page=page, page_size=page_size,
         stage=stage, type=type, score_min=score_min, pays=pays, langue=langue,
         assigned_to=assigned_to,
+        populate_assignee_names=user.role == "admin",
     )
 
 
@@ -90,8 +93,17 @@ async def create_prospect(
 
 
 @router.get("/{prospect_id}", response_model=ProspectResponse)
-async def get_prospect(prospect: Prospect = Depends(require_own_prospect)):
-    return prospect
+async def get_prospect(
+    prospect: Prospect = Depends(require_own_prospect),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    response = ProspectResponse.model_validate(prospect)
+    if user.role == "admin" and prospect.assigned_to:
+        assignee = await db.get(User, prospect.assigned_to)
+        if assignee:
+            response.assigned_to_name = assignee.full_name
+    return response
 
 
 @router.put("/{prospect_id}", response_model=ProspectResponse)
@@ -129,3 +141,31 @@ async def delete_prospect(
     prospect: Prospect = Depends(require_own_prospect),
 ):
     await svc.delete_prospect(db, prospect)
+
+
+@router.patch("/{prospect_id}/assign", response_model=ProspectResponse)
+async def assign_prospect(
+    prospect_id: uuid.UUID,
+    data: ProspectAssignRequest,
+    db: AsyncSession = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
+    prospect = await db.get(Prospect, prospect_id)
+    if not prospect:
+        raise HTTPException(status_code=404, detail="Prospect introuvable.")
+
+    if data.assigned_to is not None:
+        target = await db.get(User, data.assigned_to)
+        if not target or target.role != "commercial" or not target.is_active:
+            raise HTTPException(status_code=400, detail="Utilisateur cible invalide.")
+
+    prospect.assigned_to = data.assigned_to
+    await db.commit()
+    await db.refresh(prospect)
+
+    response = ProspectResponse.model_validate(prospect)
+    if prospect.assigned_to:
+        assignee = await db.get(User, prospect.assigned_to)
+        if assignee:
+            response.assigned_to_name = assignee.full_name
+    return response
