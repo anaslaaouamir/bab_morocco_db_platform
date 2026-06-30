@@ -352,7 +352,7 @@ feat(ui): role-based rendering for nav, scan controls, and user management
 
 ## Section 8 — Backend: Commercial Account Lifecycle (Deactivate, Reactivate, Edit)
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Let Admin deactivate/reactivate a Commercial and edit their `full_name`/`email` after creation. No hard delete — deactivation is the only removal path, to preserve the ownership history on prospects/contracts tied to that account. No role field here — single-Admin model, no promotion/demotion in scope.
 
