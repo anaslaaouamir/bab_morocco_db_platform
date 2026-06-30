@@ -21,6 +21,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { useSettings } from "@/lib/settingsStore";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 import { useAuth } from "@/contexts/AuthContext";
+import UserManagementPanel from "@/components/settings/UserManagementPanel";
 
 // ─── Hour display helper ─────────────────────────────────────────────────────
 
@@ -224,6 +225,9 @@ export default function SettingsPage() {
           )}
         </Box>
       </Paper>
+
+      {/* ── Comptes Commercial ────────────────────────────────────── */}
+      <UserManagementPanel />
 
       {/* Save */}
       <Box sx={{ mt: 3, display: "flex", justifyContent: "flex-end" }}>

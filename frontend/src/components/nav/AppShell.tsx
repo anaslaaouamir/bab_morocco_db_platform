@@ -16,6 +16,7 @@ import { alpha } from "@mui/material/styles";
 import navItems, { isActive } from "./navItems";
 import { healthApi, scanApi } from "@/lib/api";
 import { loadSettings, loadScheduledJobs, saveScheduledJobs } from "@/lib/settingsStore";
+import { useAuth } from "@/contexts/AuthContext";
 
 // MD3 Navigation Rail dimensions
 const RAIL_WIDTH = 80;
@@ -25,7 +26,7 @@ const NAV_BAR_HEIGHT = 80;
 // ---------------------------------------------------------------------------
 // Desktop — Navigation Rail (Expanded ≥ 840px / md breakpoint in MUI)
 // ---------------------------------------------------------------------------
-function NavigationRail({ pathname }: { pathname: string }) {
+function NavigationRail({ pathname, items }: { pathname: string; items: typeof navItems }) {
   return (
     <Paper
       component="nav"
@@ -73,7 +74,7 @@ function NavigationRail({ pathname }: { pathname: string }) {
       </Box>
 
       {/* Navigation items */}
-      {navItems.map((item) => {
+      {items.map((item) => {
         const active = isActive(item.href, pathname);
         const Icon = active ? item.ActiveIcon : item.InactiveIcon;
 
@@ -154,9 +155,9 @@ function NavigationRail({ pathname }: { pathname: string }) {
 // ---------------------------------------------------------------------------
 // Mobile — Navigation Bar (Compact < 600px / xs breakpoint)
 // ---------------------------------------------------------------------------
-function NavigationBar({ pathname }: { pathname: string }) {
+function NavigationBar({ pathname, items }: { pathname: string; items: typeof navItems }) {
   const activeHref =
-    navItems.find((item) => isActive(item.href, pathname))?.href ?? "/";
+    items.find((item) => isActive(item.href, pathname))?.href ?? "/";
 
   return (
     <Paper
@@ -179,7 +180,7 @@ function NavigationBar({ pathname }: { pathname: string }) {
         showLabels
         sx={{ height: NAV_BAR_HEIGHT, bgcolor: "background.paper" }}
       >
-        {navItems.map((item) => {
+        {items.map((item) => {
           const active = isActive(item.href, pathname);
           const Icon = active ? item.ActiveIcon : item.InactiveIcon;
 
@@ -226,7 +227,10 @@ export default function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { isAdmin } = useAuth();
   const [backendDown, setBackendDown] = useState(false);
+
+  const visibleNavItems = navItems.filter((item) => !item.requiresAdmin || isAdmin);
 
   useEffect(() => {
     healthApi.check().catch(() => setBackendDown(true));
@@ -234,6 +238,8 @@ export default function AppShell({
 
   // ── Scheduled scan executor ────────────────────────────────────
   useEffect(() => {
+    if (!isAdmin) return;
+
     const POLL_INTERVAL_MS = 60_000; // check every minute
 
     async function runDueJobs() {
@@ -277,11 +283,11 @@ export default function AppShell({
     runDueJobs();
     const timer = setInterval(runDueJobs, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, []);
+  }, [isAdmin]);
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
-      <NavigationRail pathname={pathname} />
+      <NavigationRail pathname={pathname} items={visibleNavItems} />
 
       <Box
         component="main"
@@ -304,7 +310,7 @@ export default function AppShell({
         {children}
       </Box>
 
-      <NavigationBar pathname={pathname} />
+      <NavigationBar pathname={pathname} items={visibleNavItems} />
     </Box>
   );
 }

@@ -39,6 +39,7 @@ import { scanApi, ApiError, type RawScanJob } from "@/lib/api";
 import { COUNTRIES_BY_MARKET, CITIES_BY_COUNTRY } from "@/lib/constants/geography";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 import { useSettings, buildScheduledJobs, loadScheduledJobs, saveScheduledJobs } from "@/lib/settingsStore";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ─── Config maps ──────────────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { showSnackbar } = useSnackbar();
   const { settings } = useSettings();
+  const { isCommercial } = useAuth();
 
   const [form, setForm]           = useState<ScanForm>(INITIAL);
   const [errors, setErrors]       = useState<FormErrors>({});
@@ -307,6 +309,31 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
     form.types.length > 0 && form.ville && form.pays
       ? form.types.map((t) => `"${TYPE_QUERY[t]} ${form.ville} ${form.pays}"`).join(" + ")
       : null;
+
+  // Defense-in-depth: Commercials have zero scan access per spec. The
+  // ProspectionModeDialog already prevents opening this dialog for them,
+  // but guard here too in case it's ever reachable directly.
+  if (isCommercial) {
+    return (
+      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 3, py: 2, borderBottom: 1, borderColor: "divider" }}>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="titleLarge" sx={{ fontWeight: 700 }}>
+              Accès refusé
+            </Typography>
+          </Box>
+          <IconButton onClick={onClose} size="small">
+            <CloseRoundedIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ px: 3, py: 3 }}>
+          <Alert severity="error">
+            Le scan automatique est réservé aux comptes Admin.
+          </Alert>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog

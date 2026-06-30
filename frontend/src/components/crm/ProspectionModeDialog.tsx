@@ -18,6 +18,8 @@ import EditNoteRoundedIcon from "@mui/icons-material/EditNoteRounded";
 import TravelExploreRoundedIcon from "@mui/icons-material/TravelExploreRounded";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 
+import { useAuth } from "@/contexts/AuthContext";
+
 export type ProspectionMode = "manuel" | "scan";
 
 interface ProspectionModeDialogProps {
@@ -56,6 +58,8 @@ export default function ProspectionModeDialog({
 }: ProspectionModeDialogProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { isCommercial } = useAuth();
+  const modes = isCommercial ? MODES.filter((m) => m.id === "manuel") : MODES;
 
   return (
     <Dialog
@@ -91,7 +95,7 @@ export default function ProspectionModeDialog({
       </DialogTitle>
 
       <DialogContent sx={{ px: 3, py: 3, display: "flex", flexDirection: "column", gap: 2 }}>
-        {MODES.map((mode) => {
+        {modes.map((mode) => {
           const palette = theme.palette[mode.color];
           return (
             <Card

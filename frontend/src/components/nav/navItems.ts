@@ -6,6 +6,7 @@ export interface NavItem {
   href: string;
   ActiveIcon: ComponentType<SvgIconProps>;
   InactiveIcon: ComponentType<SvgIconProps>;
+  requiresAdmin?: boolean;
 }
 
 // Resolved at import time to avoid dynamic requires in RSC boundaries
@@ -58,6 +59,7 @@ const navItems: NavItem[] = [
     href: "/settings",
     ActiveIcon: SettingsIcon,
     InactiveIcon: SettingsOutlinedIcon,
+    requiresAdmin: true,
   },
 ];
 
