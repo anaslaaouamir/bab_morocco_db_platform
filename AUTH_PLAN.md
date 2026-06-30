@@ -292,7 +292,7 @@ feat(auth): add login page, route middleware, and settings admin guard
 
 ## Section 7 — UI Role-Based Rendering
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Surface the role restrictions visually — hide Settings nav and scan controls for Commercials, disable the scheduled-scan executor for non-Admins, and add an Admin-only user management panel for creating Commercial accounts.
 
