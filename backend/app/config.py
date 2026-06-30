@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "changeme"
     APP_VERSION: str = "1.0.0"
 
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 480
+    ADMIN_EMAIL: str = ""
+    ADMIN_PASSWORD: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"
