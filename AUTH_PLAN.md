@@ -430,7 +430,7 @@ feat(auth): forced password change, self-service updates, and admin reset
 
 ## Section 10 — Backend: Prospect Ownership Visibility & Reassignment
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Make `assigned_to` visible to Admin and give Admin a way to manually reassign a prospect — without this, deactivating a Commercial (Section 8) silently orphans their pipeline with no way to discover or fix it short of a raw DB query.
 
