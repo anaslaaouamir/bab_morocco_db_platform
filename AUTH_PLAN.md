@@ -214,7 +214,7 @@ feat(prospects): random equal distribution of scanned prospects to commercials
 
 ## Section 5 — Frontend Auth Context & Token Management
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Provide a React context holding the authenticated user and JWT, persist the token, and automatically attach it to every API call.
 
