@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import ThemeRegistry from "@/components/ThemeRegistry";
 import { SnackbarProvider } from "@/contexts/SnackbarContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 import AppShell from "@/components/nav/AppShell";
 
 export const metadata: Metadata = {
@@ -27,14 +28,17 @@ export default function RootLayout({
         {/*
          * Provider order (inner to outer):
          *   ThemeRegistry — Emotion SSR + MUI ThemeProvider
-         *     SnackbarProvider — global toast layer (needs MUI theme for Alert/Snackbar)
-         *       AppShell — navigation rail/bar shell
-         *         {page content}
+         *     AuthProvider — authenticated user/token state
+         *       SnackbarProvider — global toast layer (needs MUI theme for Alert/Snackbar)
+         *         AppShell — navigation rail/bar shell
+         *           {page content}
          */}
         <ThemeRegistry>
-          <SnackbarProvider>
-            <AppShell>{children}</AppShell>
-          </SnackbarProvider>
+          <AuthProvider>
+            <SnackbarProvider>
+              <AppShell>{children}</AppShell>
+            </SnackbarProvider>
+          </AuthProvider>
         </ThemeRegistry>
       </body>
     </html>

@@ -1,4 +1,6 @@
 export { ApiError } from "./base";
+export { authApi } from "./auth";
+export type { UserOut, UserRole, TokenResponse, UserCreateResponse } from "./auth";
 export { rawToProspect } from "./mappers";
 export type {
   RawScanJob,
