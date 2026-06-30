@@ -464,7 +464,7 @@ feat(prospects): expose ownership and allow admin reassignment
 
 ## Section 11 — Backend: Login Lockout & Account Activity Tracking
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Protect `/auth/login` against unlimited password-guessing attempts, and give Admin basic visibility into account staleness/changes (last login, last update) without building a full audit log.
 
