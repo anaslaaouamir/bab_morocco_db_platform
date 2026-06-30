@@ -346,3 +346,90 @@ async def test_patch_me_updates_full_name_only(client):
     assert body["full_name"] == "New Self Name"
     assert body["email"] == "commercial13@babmorocco.com"
     assert body["role"] == "commercial"
+
+
+@pytest.mark.anyio
+async def test_five_failed_logins_lock_account(client):
+    await _seed_user(client, "lockout1@babmorocco.com", "rightpass123", "commercial")
+
+    for _ in range(5):
+        resp = await client.post(
+            "/auth/login", json={"email": "lockout1@babmorocco.com", "password": "wrongpass"}
+        )
+        assert resp.status_code == 401
+
+    locked_resp = await client.post(
+        "/auth/login", json={"email": "lockout1@babmorocco.com", "password": "wrongpass"}
+    )
+    assert locked_resp.status_code == 401
+    assert "tentatives" in locked_resp.json()["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_correct_password_rejected_while_locked(client):
+    await _seed_user(client, "lockout2@babmorocco.com", "rightpass123", "commercial")
+
+    for _ in range(5):
+        await client.post("/auth/login", json={"email": "lockout2@babmorocco.com", "password": "wrongpass"})
+
+    # 6th attempt, with the *correct* password, is still rejected while locked
+    resp = await client.post(
+        "/auth/login", json={"email": "lockout2@babmorocco.com", "password": "rightpass123"}
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_successful_login_resets_failure_counter(client):
+    await _seed_user(client, "lockout3@babmorocco.com", "rightpass123", "commercial")
+
+    for _ in range(3):
+        await client.post("/auth/login", json={"email": "lockout3@babmorocco.com", "password": "wrongpass"})
+
+    success_resp = await client.post(
+        "/auth/login", json={"email": "lockout3@babmorocco.com", "password": "rightpass123"}
+    )
+    assert success_resp.status_code == 200
+
+    # Failure counter reset — 4 more wrong attempts should not lock the account
+    for _ in range(4):
+        resp = await client.post(
+            "/auth/login", json={"email": "lockout3@babmorocco.com", "password": "wrongpass"}
+        )
+        assert resp.status_code == 401
+
+    still_ok = await client.post(
+        "/auth/login", json={"email": "lockout3@babmorocco.com", "password": "rightpass123"}
+    )
+    assert still_ok.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_last_login_at_updates_on_successful_login(client):
+    await _seed_user(client, "activity1@babmorocco.com", "rightpass123", "commercial")
+
+    login_resp = await client.post(
+        "/auth/login", json={"email": "activity1@babmorocco.com", "password": "rightpass123"}
+    )
+    assert login_resp.status_code == 200
+    assert login_resp.json()["user"]["last_login_at"] is not None
+
+
+@pytest.mark.anyio
+async def test_updated_at_changes_after_admin_edit(client):
+    await _seed_user(client, "admin12@babmorocco.com", "supersecret", "admin")
+    commercial = await _seed_user(client, "activity2@babmorocco.com", "secret123", "commercial")
+
+    login_resp = await client.post("/auth/login", json={"email": "admin12@babmorocco.com", "password": "supersecret"})
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    before = (await client.get("/auth/users", headers=headers)).json()
+    before_updated_at = next(u for u in before if u["email"] == "activity2@babmorocco.com")["updated_at"]
+
+    await client.patch(f"/auth/users/{commercial.id}", json={"full_name": "Changed Name"}, headers=headers)
+
+    after = (await client.get("/auth/users", headers=headers)).json()
+    after_updated_at = next(u for u in after if u["email"] == "activity2@babmorocco.com")["updated_at"]
+
+    assert after_updated_at != before_updated_at

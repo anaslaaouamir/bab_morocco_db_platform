@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
@@ -23,6 +24,8 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     must_change_password: bool
+    last_login_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class TokenResponse(BaseModel):

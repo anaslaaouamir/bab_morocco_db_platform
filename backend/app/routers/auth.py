@@ -1,5 +1,6 @@
 import secrets
 import uuid
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -24,13 +25,33 @@ from app.services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+MAX_FAILED_LOGIN_ATTEMPTS = 5
+LOCKOUT_DURATION = timedelta(minutes=15)
+
 
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_session)):
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
+
+    if user and user.locked_until and user.locked_until > datetime.utcnow():
+        raise HTTPException(
+            status_code=401, detail="Trop de tentatives — réessayez dans quelques minutes."
+        )
+
     if not user or not user.is_active or not auth_service.verify_password(data.password, user.hashed_password):
+        if user and user.is_active:
+            user.failed_login_attempts += 1
+            if user.failed_login_attempts >= MAX_FAILED_LOGIN_ATTEMPTS:
+                user.locked_until = datetime.utcnow() + LOCKOUT_DURATION
+            await db.commit()
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect.")
+
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.last_login_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(user)
 
     token = auth_service.create_access_token(user)
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))
