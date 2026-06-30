@@ -8,10 +8,12 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import ButtonBase from "@mui/material/ButtonBase";
+import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import Tooltip from "@mui/material/Tooltip";
 import BottomNavigation from "@mui/material/BottomNavigation";
 import BottomNavigationAction from "@mui/material/BottomNavigationAction";
+import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import { alpha } from "@mui/material/styles";
 import navItems, { isActive } from "./navItems";
 import { healthApi, scanApi } from "@/lib/api";
@@ -26,7 +28,17 @@ const NAV_BAR_HEIGHT = 80;
 // ---------------------------------------------------------------------------
 // Desktop — Navigation Rail (Expanded ≥ 840px / md breakpoint in MUI)
 // ---------------------------------------------------------------------------
-function NavigationRail({ pathname, items }: { pathname: string; items: typeof navItems }) {
+function NavigationRail({
+  pathname,
+  items,
+  userLabel,
+  onLogout,
+}: {
+  pathname: string;
+  items: typeof navItems;
+  userLabel?: string;
+  onLogout: () => void;
+}) {
   return (
     <Paper
       component="nav"
@@ -148,6 +160,17 @@ function NavigationRail({ pathname, items }: { pathname: string; items: typeof n
           </Tooltip>
         );
       })}
+
+      {/* Logout — pinned to the bottom of the rail */}
+      <Tooltip title={userLabel ? `Déconnexion (${userLabel})` : "Déconnexion"} placement="right" arrow>
+        <IconButton
+          onClick={onLogout}
+          aria-label="Déconnexion"
+          sx={{ mt: "auto", color: "text.secondary" }}
+        >
+          <LogoutRoundedIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
     </Paper>
   );
 }
@@ -227,7 +250,7 @@ export default function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin, logout } = useAuth();
   const [backendDown, setBackendDown] = useState(false);
 
   const visibleNavItems = navItems.filter((item) => !item.requiresAdmin || isAdmin);
@@ -287,7 +310,12 @@ export default function AppShell({
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
-      <NavigationRail pathname={pathname} items={visibleNavItems} />
+      <NavigationRail
+        pathname={pathname}
+        items={visibleNavItems}
+        userLabel={user?.email}
+        onLogout={logout}
+      />
 
       <Box
         component="main"
@@ -296,8 +324,29 @@ export default function AppShell({
           minWidth: 0,
           pb: { xs: `${NAV_BAR_HEIGHT}px`, md: 0 },
           bgcolor: "background.default",
+          position: "relative",
         }}
       >
+        {/* Logout — floating button, mobile only (rail has its own on desktop) */}
+        <Tooltip title={user?.email ? `Déconnexion (${user.email})` : "Déconnexion"}>
+          <IconButton
+            onClick={logout}
+            aria-label="Déconnexion"
+            sx={{
+              display: { xs: "flex", md: "none" },
+              position: "fixed",
+              top: 12,
+              right: 12,
+              zIndex: (t) => t.zIndex.appBar + 1,
+              bgcolor: "background.paper",
+              boxShadow: 2,
+              "&:hover": { bgcolor: "background.paper" },
+            }}
+          >
+            <LogoutRoundedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
         {backendDown && (
           <Alert
             severity="error"
