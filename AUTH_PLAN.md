@@ -25,6 +25,12 @@
 | 5 | Auth context + token | Frontend | `contexts/AuthContext.tsx` | `lib/api/base.ts`, `app/layout.tsx` |
 | 6 | Route protection | Frontend | `middleware.ts`, `app/login/page.tsx` | `app/settings/page.tsx`, `app/layout.tsx` |
 | 7 | Role-based UI | Frontend | — | `AppShell.tsx`, `navItems.ts`, `ProspectionModeDialog.tsx`, `ScanProspectDialog.tsx`, `prospection/page.tsx`, `settings/page.tsx` |
+| 8 | Commercial lifecycle | Backend | — | `routers/auth.py`, `schemas/auth.py` |
+| 9 | Password lifecycle & self profile | Backend | 1 migration | `models/user.py`, `routers/auth.py`, `schemas/auth.py` |
+| 10 | Prospect ownership & reassignment | Backend | — | `schemas/prospect.py`, `routers/prospects.py` |
+| 11 | Login lockout & activity tracking | Backend | 1 migration | `models/user.py`, `routers/auth.py`, `schemas/auth.py` |
+| 12 | User management UI | Frontend | — | `UserManagementPanel.tsx`, `lib/api/auth.ts`, `lib/api/index.ts` |
+| 13 | Self profile & forced password change | Frontend | `app/change-password/page.tsx` | `AuthContext.tsx`, `app/(app)/layout.tsx`, `AppShell.tsx` |
 
 ---
 
@@ -334,4 +340,229 @@ feat(auth): add login page, route middleware, and settings admin guard
 **Commit message:**
 ```
 feat(ui): role-based rendering for nav, scan controls, and user management
+```
+
+---
+
+# Phase 1.5 — Account Management Hardening
+
+> Added 2026-06-30 after a real-world test pass surfaced that account management was implemented narrowly: Admin could create Commercials but never edit, deactivate, or recover access for them, and there was no path for a user to change their own password. Sections 8-13 close those gaps.
+
+---
+
+## Section 8 — Backend: Commercial Account Lifecycle (Deactivate, Reactivate, Edit)
+
+**Status:** Not started
+
+**Goal:** Let Admin deactivate/reactivate a Commercial and edit their `full_name`/`email` after creation. No hard delete — deactivation is the only removal path, to preserve the ownership history on prospects/contracts tied to that account. No role field here — single-Admin model, no promotion/demotion in scope.
+
+**Files to read first:**
+- `backend/app/routers/auth.py`
+- `backend/app/models/user.py`
+- `backend/app/schemas/auth.py`
+- `backend/app/dependencies/auth.py`
+
+**Files to create:**
+- None
+
+**Files to modify:**
+- `backend/app/routers/auth.py`
+- `backend/app/schemas/auth.py`
+
+**Implementation notes:**
+- New schema `UserUpdate` (admin-facing): optional `full_name`, `email`, `is_active`. Deliberately no `role` field — out of scope.
+- `PATCH /auth/users/{id}` (admin-only via `require_admin`). 404 if the target doesn't exist. Reject with 400/403 if `id == current_user.id` — this endpoint manages *other* accounts only; there is no admin self-edit path in this plan (single admin, no scenario where they'd need to deactivate themselves through here).
+- Apply only the fields actually present in the request body (partial update). On an email change, reuse the same uniqueness handling as `create_commercial_user` (catch `IntegrityError` → 409 "Un utilisateur avec cet email existe déjà.").
+- Deactivating doesn't touch `assigned_to` on any prospect — that's handled by Section 10's reassignment flow, triggered separately (e.g. from the UI before/after deactivating, per Section 12).
+- Returns the updated `UserOut`.
+
+**Tests to run before committing:**
+- `cd backend && pytest` (existing suite green).
+- Add tests: admin deactivates a commercial → `is_active` false, that account's subsequent `/auth/login` returns 401; admin reactivates → login works again; admin edits `full_name`/`email` → reflected in `GET /auth/users`; editing to an already-used email → 409; commercial calling `PATCH /auth/users/{id}` → 403; admin targeting their own id → rejected.
+
+**Commit message:**
+```
+feat(auth): admin can deactivate, reactivate, and edit commercial accounts
+```
+
+---
+
+## Section 9 — Backend: Password Lifecycle & Self-Service Profile
+
+**Status:** Not started
+
+**Goal:** Close the password gap end to end: force a password change after any admin-issued temp password, let every user change their own password and edit their own `full_name`, and give Admin a real "reset password" action instead of the manual DB edits used earlier in this project.
+
+**Files to read first:**
+- `backend/app/models/user.py`
+- `backend/app/routers/auth.py`
+- `backend/app/schemas/auth.py`
+- `backend/app/services/auth_service.py`
+- `backend/alembic/versions/` (for the current head + migration file style)
+
+**Files to create:**
+- `backend/alembic/versions/<rev>_add_must_change_password_to_users.py`
+
+**Files to modify:**
+- `backend/app/models/user.py`
+- `backend/app/routers/auth.py`
+- `backend/app/schemas/auth.py`
+
+**Implementation notes:**
+- `User.must_change_password: Mapped[bool] = mapped_column(Boolean, default=True)`.
+- Set `True` whenever a temp password is issued: on creation (`create_commercial_user`, already generates one) and on admin reset (new endpoint below).
+- `UserOut` gains `must_change_password` so the frontend can branch on it right after login or on `/auth/me`.
+- `PATCH /auth/me` (any authenticated user, self only): body `{ full_name? }` — the only field a user may self-edit. No `email`/`role`/`is_active` here by design (see plan discussion: email/role changes stay Admin-only to prevent identity/privilege changes from a possibly-hijacked session).
+- `POST /auth/me/change-password` (any authenticated user, self only): body `{ current_password, new_password }`. Verify `current_password` via `auth_service.verify_password` — 401 if wrong (defends an unattended-but-logged-in session). Enforce `len(new_password) >= 8` and reject if `new_password == current_password`. On success: hash and store the new password, set `must_change_password = False`.
+- `POST /auth/users/{id}/reset-password` (admin-only): same temp-password generator as creation (`secrets.token_urlsafe(10)`), sets `must_change_password = True`, returns `{ temporary_password }` once — identical one-time-display contract as account creation.
+- This single change-password endpoint serves both the *forced* first-login case and any *voluntary* later password change (Section 13's frontend) — no branching needed server-side, the difference is purely how the frontend decides when to show the form.
+
+**Tests to run before committing:**
+- `cd backend && pytest`.
+- Add tests: new commercial has `must_change_password = True`; `POST /auth/me/change-password` with correct current password + valid new password succeeds and clears the flag; wrong current password → 401; new password under 8 chars → 422; admin reset flips the flag back to `True`, invalidates the old password, and the new temp password works; `PATCH /auth/me` updates `full_name` only and silently ignores/rejects any other field sent.
+
+**Commit message:**
+```
+feat(auth): forced password change, self-service updates, and admin reset
+```
+
+---
+
+## Section 10 — Backend: Prospect Ownership Visibility & Reassignment
+
+**Status:** Not started
+
+**Goal:** Make `assigned_to` visible to Admin and give Admin a way to manually reassign a prospect — without this, deactivating a Commercial (Section 8) silently orphans their pipeline with no way to discover or fix it short of a raw DB query.
+
+**Files to read first:**
+- `backend/app/schemas/prospect.py`
+- `backend/app/routers/prospects.py`
+- `backend/app/models/prospect.py`
+- `backend/app/models/user.py`
+
+**Files to create:**
+- None
+
+**Files to modify:**
+- `backend/app/schemas/prospect.py`
+- `backend/app/routers/prospects.py`
+
+**Implementation notes:**
+- Add `assigned_to: uuid.UUID | None` and `assigned_to_name: str | None` to the prospect response schema. Populate `assigned_to_name` via a join/lookup only when `current_user.role == "admin"` — Commercials never need this (they only ever see their own prospects already).
+- `PATCH /prospects/{id}/assign` (admin-only): body `{ assigned_to: uuid.UUID | None }`. If not null, validate the target user exists, has `role == "commercial"`, and `is_active == True` (400 otherwise). Updates `prospect.assigned_to` directly — no other side effects, no change to `stage` or anything else on the prospect.
+
+**Tests to run before committing:**
+- `cd backend && pytest`.
+- Add tests: admin's `GET /prospects`/`GET /prospects/{id}` includes `assigned_to_name`; commercial's response omits it; reassigning to a different active commercial succeeds; reassigning to an inactive or non-existent commercial → 400; setting `assigned_to: null` unassigns successfully; commercial calling this endpoint → 403.
+
+**Commit message:**
+```
+feat(prospects): expose ownership and allow admin reassignment
+```
+
+---
+
+## Section 11 — Backend: Login Lockout & Account Activity Tracking
+
+**Status:** Not started
+
+**Goal:** Protect `/auth/login` against unlimited password-guessing attempts, and give Admin basic visibility into account staleness/changes (last login, last update) without building a full audit log.
+
+**Files to read first:**
+- `backend/app/models/user.py`
+- `backend/app/routers/auth.py`
+- `backend/app/schemas/auth.py`
+- `backend/alembic/versions/` (current head)
+
+**Files to create:**
+- `backend/alembic/versions/<rev>_add_login_tracking_to_users.py`
+
+**Files to modify:**
+- `backend/app/models/user.py`
+- `backend/app/routers/auth.py`
+- `backend/app/schemas/auth.py`
+
+**Implementation notes:**
+- New columns on `User`: `updated_at: Mapped[datetime]` (`onupdate=datetime.utcnow`, refreshed automatically by every Section 8/9 update path — no extra code needed at the call sites), `last_login_at: Mapped[datetime | None]`, `failed_login_attempts: Mapped[int] = mapped_column(default=0)`, `locked_until: Mapped[datetime | None]`.
+- `POST /auth/login` logic, in order: if `locked_until` is set and still in the future → 401 with a distinct message ("Trop de tentatives — réessayez dans quelques minutes.") rather than the generic credentials error, so a legitimate user understands why they're blocked. Otherwise, check credentials as today; on failure, increment `failed_login_attempts` and, if it reaches 5, set `locked_until = utcnow() + 15min`. On success, reset `failed_login_attempts = 0`, clear `locked_until`, and set `last_login_at = utcnow()`.
+- `UserOut` (admin-facing, via `GET /auth/users`) gains `last_login_at` and `updated_at` so Section 12's UI can display them.
+
+**Tests to run before committing:**
+- `cd backend && pytest`.
+- Add tests: 5 consecutive wrong passwords locks the account; a 6th attempt with the *correct* password is still rejected while locked; a successful login resets the failure counter; `last_login_at` updates on each successful login; `updated_at` changes after a Section 8/9 edit action.
+
+**Commit message:**
+```
+feat(auth): login lockout and account activity tracking
+```
+
+---
+
+## Section 12 — Frontend: User Management UI
+
+**Status:** Not started
+
+**Goal:** Surface Sections 8-10 in `UserManagementPanel.tsx` — Admin can edit, deactivate/reactivate, and reset a Commercial's password, and is prompted to reassign prospects when deactivating someone who still has active ones.
+
+**Files to read first:**
+- `frontend/src/components/settings/UserManagementPanel.tsx`
+- `frontend/src/lib/api/auth.ts`
+- `frontend/src/lib/api/index.ts`
+
+**Files to create:**
+- None
+
+**Files to modify:**
+- `frontend/src/components/settings/UserManagementPanel.tsx`
+- `frontend/src/lib/api/auth.ts` (add `updateUser`, `resetPassword`)
+- `frontend/src/lib/api/index.ts` (add `prospectsApi.assign`, extend prospect types with `assignedTo`/`assignedToName`)
+
+**Implementation notes:**
+- Each row in the Commercials table gets an actions menu: "Modifier" (dialog: full name, email — reuses the same form style as the existing create dialog), "Désactiver"/"Réactiver" (toggles `is_active` via Section 8's endpoint), "Réinitialiser le mot de passe" (calls Section 9's reset endpoint, shows the new temp password once — identical UI pattern to the existing one-time-password display on creation).
+- Before confirming a deactivation, check whether that commercial currently has active prospects (cheap count via existing stats/list endpoint filtered by `assigned_to`); if so, show a follow-up step offering "reassign to: [dropdown of other active commercials]" or "leave unassigned," calling Section 10's `PATCH /prospects/{id}/assign` for each affected prospect before finalizing the deactivation.
+- Table gains two extra columns/labels using Section 11's data: "Dernière connexion" (`last_login_at`, or "Jamais" if null) and a subtler "Modifié le" (`updated_at`) — helps Admin judge stale/unused accounts at a glance.
+
+**Tests to run before committing:**
+- `cd frontend && npm run build` succeeds.
+- Manual check (Admin account): edit a commercial's name/email; deactivate one with active prospects → reassignment prompt appears and works; deactivate one with none → no prompt; reactivate; reset password → new temp password displayed once, old password no longer works, new one does.
+
+**Commit message:**
+```
+feat(ui): admin controls for editing, deactivating, and resetting commercials
+```
+
+---
+
+## Section 13 — Frontend: Self-Service Profile & Forced Password Change
+
+**Status:** Not started
+
+**Goal:** Block app access until a forced password change is completed, and give every user a way to voluntarily edit their name and change their password afterward.
+
+**Files to read first:**
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/app/(app)/layout.tsx`
+- `frontend/src/components/nav/AppShell.tsx`
+- `frontend/src/app/login/page.tsx` (style reference)
+
+**Files to create:**
+- `frontend/src/app/change-password/page.tsx` — single screen, reused for both the forced case and the voluntary case.
+- `frontend/src/components/settings/ProfileDialog.tsx` — full name display/edit, entry point to the change-password screen.
+
+**Files to modify:**
+- `frontend/src/contexts/AuthContext.tsx` (surface `must_change_password` from `/auth/me`, add an `updateProfile(fullName)` action)
+- `frontend/src/app/(app)/layout.tsx` (forced redirect: if authenticated but `must_change_password === true`, redirect to `/change-password` and block other `(app)` routes until cleared — mirrors the existing unauthenticated-redirect pattern from `middleware.ts`, just the opposite condition, checked client-side post-auth since it depends on `/auth/me` data the Edge middleware doesn't have)
+- `frontend/src/components/nav/AppShell.tsx` (small entry point near the logout button added earlier — opens `ProfileDialog`)
+
+**Implementation notes:**
+- `/change-password` is the same form in both cases (current password, new password, confirm new password — client-side min-length check mirroring Section 9's server-side rule). The only difference is presentation: reached via forced redirect, there's no way to navigate elsewhere until it succeeds (no nav rail/close button); reached voluntarily from `ProfileDialog`, it's a normal dismissable dialog/page.
+- `ProfileDialog`: shows `full_name` (editable, calls `PATCH /auth/me`) and a button into the change-password flow. No email field, no role display beyond perhaps a read-only badge — matches the access rules decided in Section 9 (email/role are Admin-managed only).
+
+**Tests to run before committing:**
+- `cd frontend && npm run build` succeeds.
+- Manual check: log in with a freshly admin-reset account → immediately redirected to `/change-password`, no other route reachable until the change succeeds; after success, normal navigation resumes. Voluntary path: from a normal (non-forced) session, open the profile entry, change the password, confirm it works on next login. Edit `full_name` and confirm it persists.
+
+**Commit message:**
+```
+feat(ui): self-service profile and forced password change
 ```
