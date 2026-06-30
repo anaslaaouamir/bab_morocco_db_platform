@@ -3,7 +3,6 @@ import "./globals.css";
 import ThemeRegistry from "@/components/ThemeRegistry";
 import { SnackbarProvider } from "@/contexts/SnackbarContext";
 import { AuthProvider } from "@/contexts/AuthContext";
-import AppShell from "@/components/nav/AppShell";
 
 export const metadata: Metadata = {
   title: "Bab Morocco — BD Intelligence Platform",
@@ -30,14 +29,15 @@ export default function RootLayout({
          *   ThemeRegistry — Emotion SSR + MUI ThemeProvider
          *     AuthProvider — authenticated user/token state
          *       SnackbarProvider — global toast layer (needs MUI theme for Alert/Snackbar)
-         *         AppShell — navigation rail/bar shell
-         *           {page content}
+         *         {page content}
+         *
+         * AppShell (navigation rail/bar) is applied one level down, in
+         * app/(app)/layout.tsx — only authenticated app routes get it.
+         * /login renders directly under this root layout, without AppShell.
          */}
         <ThemeRegistry>
           <AuthProvider>
-            <SnackbarProvider>
-              <AppShell>{children}</AppShell>
-            </SnackbarProvider>
+            <SnackbarProvider>{children}</SnackbarProvider>
           </AuthProvider>
         </ThemeRegistry>
       </body>

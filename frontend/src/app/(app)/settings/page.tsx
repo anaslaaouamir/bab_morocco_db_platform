@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Switch from "@mui/material/Switch";
@@ -11,6 +12,7 @@ import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import Chip from "@mui/material/Chip";
 import Paper from "@mui/material/Paper";
+import CircularProgress from "@mui/material/CircularProgress";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
@@ -18,6 +20,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 import { useSettings } from "@/lib/settingsStore";
 import { useSnackbar } from "@/contexts/SnackbarContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ─── Hour display helper ─────────────────────────────────────────────────────
 
@@ -28,8 +31,19 @@ function fmtHour(h: number) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const { user, isLoading, isAdmin } = useAuth();
   const { settings, updateSettings } = useSettings();
   const { showSnackbar } = useSnackbar();
+
+  // Settings is Admin-only (Commercials cannot access the scheduler).
+  // Redirect as soon as the user is known; render nothing while loading or
+  // redirecting to avoid a flash of restricted content.
+  useEffect(() => {
+    if (!isLoading && user && !isAdmin) {
+      router.replace("/");
+    }
+  }, [isLoading, user, isAdmin, router]);
 
   // Local draft — only persisted on Save
   const [draft, setDraft] = useState(() => ({ ...settings.scheduledScan }));
@@ -53,6 +67,16 @@ export default function SettingsPage() {
   function save() {
     updateSettings({ scheduledScan: draft });
     showSnackbar({ message: "Paramètres enregistrés.", severity: "success", duration: 3000 });
+  }
+
+  // While auth is resolving, or while a non-Admin is being redirected away,
+  // render nothing to avoid a flash of restricted content.
+  if (isLoading || !user || !isAdmin) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+        <CircularProgress size={28} />
+      </Box>
+    );
   }
 
   return (

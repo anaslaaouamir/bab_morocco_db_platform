@@ -7,7 +7,8 @@ import SearchOffRoundedIcon from "@mui/icons-material/SearchOffRounded";
 
 /**
  * MD3-styled 404 page — rendered inside app/layout.tsx so it inherits
- * the ThemeRegistry, AppShell navigation, and Roboto font.
+ * the ThemeRegistry and Roboto font. Lives outside the (app) route group,
+ * so it does not include the AppShell navigation rail/bar.
  */
 export default function NotFound() {
   return (
