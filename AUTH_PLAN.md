@@ -389,7 +389,7 @@ feat(auth): admin can deactivate, reactivate, and edit commercial accounts
 
 ## Section 9 — Backend: Password Lifecycle & Self-Service Profile
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Close the password gap end to end: force a password change after any admin-issued temp password, let every user change their own password and edit their own `full_name`, and give Admin a real "reset password" action instead of the manual DB edits used earlier in this project.
 
