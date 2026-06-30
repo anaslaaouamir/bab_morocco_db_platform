@@ -230,3 +230,119 @@ async def test_admin_cannot_edit_own_account_via_endpoint(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_new_commercial_must_change_password(client):
+    await _seed_user(client, "admin10@babmorocco.com", "supersecret", "admin")
+    login_resp = await client.post("/auth/login", json={"email": "admin10@babmorocco.com", "password": "supersecret"})
+    token = login_resp.json()["access_token"]
+
+    resp = await client.post(
+        "/auth/users",
+        json={"email": "commercial8@babmorocco.com", "full_name": "Commercial Eight"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.json()["user"]["must_change_password"] is True
+
+
+@pytest.mark.anyio
+async def test_change_password_success_clears_flag(client):
+    commercial = await _seed_user(client, "commercial9@babmorocco.com", "secret123", "commercial")
+    login_resp = await client.post(
+        "/auth/login", json={"email": "commercial9@babmorocco.com", "password": "secret123"}
+    )
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.post(
+        "/auth/me/change-password",
+        json={"current_password": "secret123", "new_password": "newpassword123"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["must_change_password"] is False
+
+    relog = await client.post(
+        "/auth/login", json={"email": "commercial9@babmorocco.com", "password": "newpassword123"}
+    )
+    assert relog.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_change_password_wrong_current_password(client):
+    await _seed_user(client, "commercial10@babmorocco.com", "secret123", "commercial")
+    login_resp = await client.post(
+        "/auth/login", json={"email": "commercial10@babmorocco.com", "password": "secret123"}
+    )
+    token = login_resp.json()["access_token"]
+
+    resp = await client.post(
+        "/auth/me/change-password",
+        json={"current_password": "wrongpass", "new_password": "newpassword123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_change_password_too_short(client):
+    await _seed_user(client, "commercial11@babmorocco.com", "secret123", "commercial")
+    login_resp = await client.post(
+        "/auth/login", json={"email": "commercial11@babmorocco.com", "password": "secret123"}
+    )
+    token = login_resp.json()["access_token"]
+
+    resp = await client.post(
+        "/auth/me/change-password",
+        json={"current_password": "secret123", "new_password": "short"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_admin_reset_password_flips_flag_and_invalidates_old(client):
+    await _seed_user(client, "admin11@babmorocco.com", "supersecret", "admin")
+    commercial = await _seed_user(client, "commercial12@babmorocco.com", "secret123", "commercial")
+
+    login_resp = await client.post("/auth/login", json={"email": "admin11@babmorocco.com", "password": "supersecret"})
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.post(f"/auth/users/{commercial.id}/reset-password", headers=headers)
+    assert resp.status_code == 200
+    new_temp_password = resp.json()["temporary_password"]
+    assert len(new_temp_password) > 0
+
+    old_login = await client.post(
+        "/auth/login", json={"email": "commercial12@babmorocco.com", "password": "secret123"}
+    )
+    assert old_login.status_code == 401
+
+    new_login = await client.post(
+        "/auth/login", json={"email": "commercial12@babmorocco.com", "password": new_temp_password}
+    )
+    assert new_login.status_code == 200
+    assert new_login.json()["user"]["must_change_password"] is True
+
+
+@pytest.mark.anyio
+async def test_patch_me_updates_full_name_only(client):
+    await _seed_user(client, "commercial13@babmorocco.com", "secret123", "commercial")
+    login_resp = await client.post(
+        "/auth/login", json={"email": "commercial13@babmorocco.com", "password": "secret123"}
+    )
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.patch(
+        "/auth/me",
+        json={"full_name": "New Self Name", "email": "shouldnotchange@babmorocco.com", "role": "admin"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["full_name"] == "New Self Name"
+    assert body["email"] == "commercial13@babmorocco.com"
+    assert body["role"] == "commercial"

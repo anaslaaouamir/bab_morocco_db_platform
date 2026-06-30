@@ -22,6 +22,7 @@ class UserOut(BaseModel):
     full_name: str
     role: str
     is_active: bool
+    must_change_password: bool
 
 
 class TokenResponse(BaseModel):
@@ -44,3 +45,16 @@ class UserUpdate(BaseModel):
     full_name: str | None = None
     email: str | None = None
     is_active: bool | None = None
+
+
+class ProfileUpdate(BaseModel):
+    full_name: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ResetPasswordResponse(BaseModel):
+    temporary_password: str
