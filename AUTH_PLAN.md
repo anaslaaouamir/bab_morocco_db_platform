@@ -171,7 +171,7 @@ feat(auth): enforce JWT auth and prospect ownership guards on all routers
 
 ## Section 4 — Prospect Assignment Logic (Scan Distribution)
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** When a scan completes and inserts N prospects, distribute them randomly and equally among all active Commercial users; manually-added prospects are owned by their creator; Commercials only ever see their own prospects, Admins see everything.
 
