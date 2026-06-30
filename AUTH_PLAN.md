@@ -72,7 +72,7 @@ feat(db): add users table and prospect assigned_to column
 
 ## Section 2 — Backend Auth Core: JWT + password hashing + `/auth` router
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Implement JWT issuing/validation, password hashing, and the `/auth` endpoints (`login`, `me`, `users` create/list) so accounts can authenticate and Admins can create Commercial accounts.
 
