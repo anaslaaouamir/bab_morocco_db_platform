@@ -168,11 +168,13 @@ export interface ProspectTableProps {
   prospects: Prospect[];
   /** Called when a row is clicked to open the Fiche Partenaire drawer. */
   onProspectClick?: (prospect: Prospect) => void;
+  /** When true, shows the Responsable column (assigned commercial name). */
+  isAdmin?: boolean;
 }
 
 // ─── Main component ────────────────────────────────────────────────────────
 
-export default function ProspectTable({ prospects, onProspectClick }: ProspectTableProps) {
+export default function ProspectTable({ prospects, onProspectClick, isAdmin = false }: ProspectTableProps) {
   const [orderBy, setOrderBy] = useState<SortKey>("score");
   const [order,   setOrder]   = useState<SortOrder>("desc");
   const [page,    setPage]    = useState(0);
@@ -281,7 +283,7 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
                 </TableCell>
               ))}
               {/* Non-sortable columns */}
-              {["Type", "OTAs", "Langue"].map((h) => (
+              {(isAdmin ? ["Responsable", "Type", "OTAs", "Langue"] : ["Type", "OTAs", "Langue"]).map((h) => (
                 <TableCell key={h} sx={{ py: 1.5 }}>
                   <Typography variant="labelMedium" sx={{ fontWeight: 700 }}>
                     {h}
@@ -400,6 +402,22 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
                   )}
                 </TableCell>
 
+                {/* Responsable (admin only) */}
+                {isAdmin && (
+                  <TableCell sx={{ py: 1.25, whiteSpace: "nowrap" }}>
+                    {prospect.assignedToName ? (
+                      <Chip
+                        label={prospect.assignedToName}
+                        size="small"
+                        variant="outlined"
+                        sx={{ fontSize: "0.6875rem", fontWeight: 600 }}
+                      />
+                    ) : (
+                      <Typography variant="bodySmall" color="text.disabled">—</Typography>
+                    )}
+                  </TableCell>
+                )}
+
                 {/* Type */}
                 <TableCell sx={{ py: 1.25 }}>
                   <Chip
@@ -448,7 +466,7 @@ export default function ProspectTable({ prospects, onProspectClick }: ProspectTa
 
             {paginated.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
                   <Typography variant="bodyMedium" color="text.secondary">
                     Aucun partenaire ne correspond aux filtres actifs.
                   </Typography>

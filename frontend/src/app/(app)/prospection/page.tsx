@@ -21,6 +21,7 @@ import { scoreTotal, STAGE_LABELS } from "@/types/prospect";
 import { EMPTY_FILTERS, applyFilters, type FilterState } from "@/lib/filters";
 import { prospectsApi, ApiError } from "@/lib/api";
 import { useSnackbar } from "@/contexts/SnackbarContext";
+import { useAuth } from "@/contexts/AuthContext";
 import FilterBar from "@/components/shared/FilterBar";
 import ProspectTable from "@/components/crm/ProspectTable";
 import KanbanBoard from "@/components/kanban/KanbanBoard";
@@ -47,6 +48,7 @@ function ProspectionSkeleton() {
 
 export default function ProspectionPage() {
   const { showSnackbar } = useSnackbar();
+  const { isAdmin } = useAuth();
 
   // ── Remote state ─────────────────────────────────────────────────────────
   const [allProspects, setAllProspects] = useState<Prospect[]>([]);
@@ -381,6 +383,7 @@ export default function ProspectionPage() {
             <ProspectTable
               prospects={filteredProspects}
               onProspectClick={handleProspectClick}
+              isAdmin={isAdmin}
             />
           )}
         </Box>
