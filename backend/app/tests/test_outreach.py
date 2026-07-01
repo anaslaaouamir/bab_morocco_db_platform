@@ -155,7 +155,7 @@ async def test_mock_sender_logs_email(client: AsyncClient, caplog):
     email_id = gen.json()[0]["id"]
     await client.post(f"/outreach/{email_id}/validate")
 
-    with caplog.at_level(logging.INFO, logger="app.services.outreach_service"):
+    with caplog.at_level(logging.INFO, logger="app.services.email_transport"):
         r = await client.post(f"/outreach/{email_id}/send")
     assert r.status_code == 200
     assert any("[MOCK EMAIL SENT]" in m for m in caplog.messages)

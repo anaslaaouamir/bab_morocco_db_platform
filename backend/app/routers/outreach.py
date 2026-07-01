@@ -11,6 +11,7 @@ from app.models.prospect import Prospect
 from app.models.user import User
 from app.schemas.outreach import NextStepResponse, OutreachEmailResponse, TriggerFollowupsResponse
 from app.services.email_generator import EmailGeneratorProtocol, get_email_generator
+from app.services.email_transport import EmailTransportProtocol, get_email_transport
 from app.services.outreach_service import OutreachService
 
 router = APIRouter(prefix="/outreach", tags=["outreach"])
@@ -18,8 +19,9 @@ router = APIRouter(prefix="/outreach", tags=["outreach"])
 
 def get_outreach_service(
     generator: Annotated[EmailGeneratorProtocol, Depends(get_email_generator)],
+    sender: Annotated[EmailTransportProtocol, Depends(get_email_transport)],
 ) -> OutreachService:
-    return OutreachService(generator=generator)
+    return OutreachService(generator=generator, sender=sender)
 
 
 async def _get_prospect_for_email(email_id: uuid.UUID, user: User, db: AsyncSession) -> Prospect:

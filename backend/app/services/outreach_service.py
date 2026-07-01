@@ -6,9 +6,11 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.outreach import OutreachEmail
 from app.models.prospect import Prospect
 from app.services.email_generator import EmailGeneratorProtocol, MockEmailGenerator
+from app.services.email_transport import EmailTransportProtocol, MockEmailTransport
 
 logger = logging.getLogger(__name__)
 
@@ -18,25 +20,14 @@ _STEP_OFFSETS = {"j0": 0, "j3": 3, "j7": 7, "j30": 30}
 _FOLLOWUP_DELAY_DAYS = {"j3": 3, "j7": 4, "j30": 0}
 
 
-class MockEmailSender:
-    async def send(self, email: OutreachEmail) -> bool:
-        logger.info(
-            "[MOCK EMAIL SENT] → %s | %s | Variant %s",
-            email.prospect.email_contact,
-            email.sujet,
-            email.variant,
-        )
-        return True
-
-
 class OutreachService:
     def __init__(
         self,
         generator: Optional[EmailGeneratorProtocol] = None,
-        sender: Optional[MockEmailSender] = None,
+        sender: Optional[EmailTransportProtocol] = None,
     ):
         self._generator = generator or MockEmailGenerator()
-        self._sender = sender or MockEmailSender()
+        self._sender = sender or MockEmailTransport()
 
     # ── Core generation ──────────────────────────────────────────────────────
 
@@ -204,7 +195,12 @@ class OutreachService:
         if not prospect:
             raise ValueError("Prospect not found for email")
         email.prospect = prospect  # type: ignore[assignment]
-        await self._sender.send(email)
+        await self._sender.send(
+            to=prospect.email_contact,
+            subject=email.sujet,
+            html=email.corps.replace("\n", "<br>"),
+            reply_to=f"outreach-{prospect.id}@{settings.RESEND_INBOUND_DOMAIN}",
+        )
         email.statut = "sent"
         email.date_envoi_reel = datetime.utcnow()
         await db.commit()
