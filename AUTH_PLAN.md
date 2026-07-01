@@ -500,7 +500,7 @@ feat(auth): login lockout and account activity tracking
 
 ## Section 12 — Frontend: User Management UI
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Surface Sections 8-10 in `UserManagementPanel.tsx` — Admin can edit, deactivate/reactivate, and reset a Commercial's password, and is prompted to reassign prospects when deactivating someone who still has active ones.
 
