@@ -269,7 +269,7 @@ feat(negotiation): send responses via Resend, negotiation's first real send path
 
 ### Section 2.2 — Receive Negotiation Reply & Update Message History
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Extend the webhook from Section 1.2 with a negotiation branch — an inbound reply during an active negotiation is appended to history and triggers a fresh AI analysis/scenario set, exactly like clicking `[DEV] Simuler réponse suivante du partenaire` does today.
 

@@ -102,6 +102,8 @@ async def resend_inbound(
 
     if prefix == "outreach":
         await _handle_outreach_reply(db, negotiation_svc, entity_id, body_text, email_message_id, email_subject)
+    elif prefix == "negotiation":
+        await _handle_negotiation_reply(db, negotiation_svc, entity_id, body_text, email_message_id, email_subject)
     else:
         logger.info("Resend inbound webhook: no handler yet for prefix '%s'", prefix)
 
@@ -139,6 +141,40 @@ async def _handle_outreach_reply(
     prospect.stage = "negociation"
     await db.commit()
     await db.refresh(prospect)
+
+    await negotiation_svc.submit_message(
+        db, prospect, body_text, email_message_id=email_message_id, email_subject=email_subject
+    )
+
+
+async def _handle_negotiation_reply(
+    db: AsyncSession,
+    negotiation_svc: NegotiationService,
+    prospect_id_str: str,
+    body_text: str,
+    email_message_id: str | None = None,
+    email_subject: str | None = None,
+) -> None:
+    """A reply during an active negotiation: append to history + fresh AI analysis.
+    No stage change — the prospect is already in 'negociation'."""
+    try:
+        prospect_id = uuid.UUID(prospect_id_str)
+    except ValueError:
+        logger.warning("Resend inbound webhook: invalid prospect UUID '%s'", prospect_id_str)
+        return
+
+    prospect = await db.get(Prospect, prospect_id)
+    if not prospect:
+        logger.warning("Resend inbound webhook: prospect %s not found", prospect_id)
+        return
+
+    if prospect.stage != "negociation":
+        logger.info(
+            "Resend inbound webhook: prospect %s not in 'negociation' stage (current: %s) — skipping",
+            prospect_id,
+            prospect.stage,
+        )
+        return
 
     await negotiation_svc.submit_message(
         db, prospect, body_text, email_message_id=email_message_id, email_subject=email_subject

@@ -209,3 +209,120 @@ async def test_respond_without_prior_real_inbound_sends_no_threading_headers(cli
     mock_log_lines = [rec.message for rec in caplog.records if "[MOCK EMAIL SENT]" in rec.message]
     assert len(mock_log_lines) == 1
     assert "headers=" not in mock_log_lines[0]
+
+
+# ── Section 2.2 — receive negotiation reply via webhook ──────────────────────
+
+async def test_negotiation_webhook_appends_message_and_reanalyzes(client: AsyncClient, monkeypatch):
+    """A reply to the negotiation- address, while the prospect is already in
+    'negociation', must append a new inbound message with fresh scenarios and
+    NOT change the prospect's stage."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+    prospect = await _create_prospect(client)
+    await client.patch(f"/prospects/{prospect['id']}/stage", json={"stage": "outreach"})
+
+    class FakeReceiving:
+        @staticmethod
+        def get(email_id):
+            return {"text": "i dont accept unless having 15%", "html": None, "message_id": "CAFIRST@mail.gmail.com"}
+
+    monkeypatch.setattr(webhooks_module.resend.Emails, "Receiving", FakeReceiving)
+
+    svix_id = "msg_first"
+    timestamp = str(int(time.time()))
+    payload = json.dumps({
+        "type": "email.received",
+        "data": {
+            "email_id": "fake-email-id-1",
+            "from": "contact@riad-atlas.ma",
+            "to": [f"outreach-{prospect['id']}@eodiirii.resend.app"],
+            "subject": "Re: [J0-A] Partnership opportunity for Riad Atlas",
+        },
+    })
+    r = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r.status_code == 200
+
+    updated = await client.get(f"/prospects/{prospect['id']}")
+    assert updated.json()["stage"] == "negociation"
+
+    class FakeReceiving2:
+        @staticmethod
+        def get(email_id):
+            return {"text": "ok deal at 12%, send the contract", "html": None, "message_id": "CASECOND@mail.gmail.com"}
+
+    monkeypatch.setattr(webhooks_module.resend.Emails, "Receiving", FakeReceiving2)
+
+    svix_id2 = "msg_second"
+    timestamp2 = str(int(time.time()))
+    payload2 = json.dumps({
+        "type": "email.received",
+        "data": {
+            "email_id": "fake-email-id-2",
+            "from": "contact@riad-atlas.ma",
+            "to": [f"negotiation-{prospect['id']}@eodiirii.resend.app"],
+            "subject": "Re: [J0-A] Partnership opportunity for Riad Atlas",
+        },
+    })
+    r2 = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload2,
+        headers={"svix-id": svix_id2, "svix-timestamp": timestamp2, "svix-signature": _sign(svix_id2, timestamp2, payload2)},
+    )
+    assert r2.status_code == 200
+
+    # Stage unchanged — a negotiation reply never re-triggers the outreach transition.
+    still_negociation = await client.get(f"/prospects/{prospect['id']}")
+    assert still_negociation.json()["stage"] == "negociation"
+
+    history = await client.get(f"/negotiation/{prospect['id']}/history")
+    messages = history.json()
+    inbound = [m for m in messages if m["direction"] == "inbound"]
+    assert len(inbound) == 2
+    assert inbound[-1]["corps"] == "ok deal at 12%, send the contract"
+
+    analysis = await client.get(f"/negotiation/{prospect['id']}/analysis")
+    assert analysis.status_code == 200
+    assert analysis.json()["taux_demande"] == 12.0
+
+
+async def test_negotiation_webhook_ignored_when_not_in_negociation_stage(client: AsyncClient, monkeypatch):
+    """A negotiation- reply for a prospect still in 'outreach' (never moved to
+    negociation) must be ignored — no message written, no stage change."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+    prospect = await _create_prospect(client)
+    await client.patch(f"/prospects/{prospect['id']}/stage", json={"stage": "outreach"})
+
+    class FakeReceiving:
+        @staticmethod
+        def get(email_id):
+            return {"text": "some early reply", "html": None, "message_id": "CASTRAY@mail.gmail.com"}
+
+    monkeypatch.setattr(webhooks_module.resend.Emails, "Receiving", FakeReceiving)
+
+    svix_id = "msg_stray"
+    timestamp = str(int(time.time()))
+    payload = json.dumps({
+        "type": "email.received",
+        "data": {
+            "email_id": "fake-email-id",
+            "from": "contact@riad-atlas.ma",
+            "to": [f"negotiation-{prospect['id']}@eodiirii.resend.app"],
+            "subject": "Re: test",
+        },
+    })
+    r = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r.status_code == 200
+
+    unchanged = await client.get(f"/prospects/{prospect['id']}")
+    assert unchanged.json()["stage"] == "outreach"
+
+    history = await client.get(f"/negotiation/{prospect['id']}/history")
+    assert history.json() == []
