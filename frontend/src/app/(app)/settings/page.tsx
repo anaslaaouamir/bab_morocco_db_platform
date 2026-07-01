@@ -81,7 +81,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <Box sx={{ px: { xs: 2, sm: 3, md: 4 }, pt: { xs: 2, md: 3 }, pb: 6, maxWidth: 640 }}>
+    <Box sx={{ px: { xs: 2, sm: 3, md: 4 }, pt: { xs: 2, md: 3 }, pb: 6, maxWidth: 960 }}>
       {/* Header */}
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 3 }}>
         <SettingsRoundedIcon sx={{ color: "text.secondary", fontSize: 28 }} />

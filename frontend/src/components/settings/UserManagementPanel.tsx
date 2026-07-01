@@ -302,7 +302,7 @@ export default function UserManagementPanel() {
 
       <Divider />
 
-      <Box sx={{ px: 2.5, py: 2 }}>
+      <Box sx={{ px: 2.5, py: 2, overflowX: "auto" }}>
         {fetchError && (
           <Alert severity="error" action={<Button color="inherit" size="small" onClick={fetchUsers}>Réessayer</Button>}>
             {fetchError}
