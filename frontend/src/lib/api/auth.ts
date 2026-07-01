@@ -51,6 +51,18 @@ export const authApi = {
 
   listUsers: (): Promise<UserOut[]> => apiFetch<UserOut[]>("/auth/users"),
 
+  updateProfile: (fullName: string): Promise<UserOut> =>
+    apiFetch<UserOut>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ full_name: fullName }),
+    }),
+
+  changePassword: (currentPassword: string, newPassword: string): Promise<UserOut> =>
+    apiFetch<UserOut>("/auth/me/change-password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
+
   updateUser: (id: string, data: UserUpdatePayload): Promise<UserOut> =>
     apiFetch<UserOut>(`/auth/users/${id}`, {
       method: "PATCH",

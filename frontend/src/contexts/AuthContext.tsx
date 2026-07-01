@@ -19,6 +19,7 @@ interface AuthContextValue {
   isCommercial: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  updateProfile: (fullName: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -72,6 +73,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = "/login";
   }, []);
 
+  const updateProfile = useCallback(async (fullName: string) => {
+    const updated = await authApi.updateProfile(fullName);
+    setUser(updated);
+  }, []);
+
   const value: AuthContextValue = {
     user,
     token,
@@ -80,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isCommercial: user?.role === "commercial",
     login,
     logout,
+    updateProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

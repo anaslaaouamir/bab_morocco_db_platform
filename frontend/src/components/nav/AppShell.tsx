@@ -14,8 +14,10 @@ import Tooltip from "@mui/material/Tooltip";
 import BottomNavigation from "@mui/material/BottomNavigation";
 import BottomNavigationAction from "@mui/material/BottomNavigationAction";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import AccountCircleRoundedIcon from "@mui/icons-material/AccountCircleRounded";
 import { alpha } from "@mui/material/styles";
 import navItems, { isActive } from "./navItems";
+import ProfileDialog from "@/components/settings/ProfileDialog";
 import { healthApi, scanApi } from "@/lib/api";
 import { loadSettings, loadScheduledJobs, saveScheduledJobs } from "@/lib/settingsStore";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,11 +35,13 @@ function NavigationRail({
   items,
   userLabel,
   onLogout,
+  onProfile,
 }: {
   pathname: string;
   items: typeof navItems;
   userLabel?: string;
   onLogout: () => void;
+  onProfile: () => void;
 }) {
   return (
     <Paper
@@ -161,12 +165,21 @@ function NavigationRail({
         );
       })}
 
-      {/* Logout — pinned to the bottom of the rail */}
+      {/* Profile + Logout — pinned to the bottom of the rail */}
+      <Tooltip title="Mon profil" placement="right" arrow>
+        <IconButton
+          onClick={onProfile}
+          aria-label="Mon profil"
+          sx={{ mt: "auto", color: "text.secondary" }}
+        >
+          <AccountCircleRoundedIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
       <Tooltip title={userLabel ? `Déconnexion (${userLabel})` : "Déconnexion"} placement="right" arrow>
         <IconButton
           onClick={onLogout}
           aria-label="Déconnexion"
-          sx={{ mt: "auto", color: "text.secondary" }}
+          sx={{ color: "text.secondary" }}
         >
           <LogoutRoundedIcon fontSize="small" />
         </IconButton>
@@ -252,6 +265,7 @@ export default function AppShell({
   const pathname = usePathname();
   const { user, isAdmin, logout } = useAuth();
   const [backendDown, setBackendDown] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const visibleNavItems = navItems.filter((item) => !item.requiresAdmin || isAdmin);
 
@@ -315,6 +329,7 @@ export default function AppShell({
         items={visibleNavItems}
         userLabel={user?.email}
         onLogout={logout}
+        onProfile={() => setProfileOpen(true)}
       />
 
       <Box
@@ -327,7 +342,25 @@ export default function AppShell({
           position: "relative",
         }}
       >
-        {/* Logout — floating button, mobile only (rail has its own on desktop) */}
+        {/* Profile + Logout — floating buttons, mobile only */}
+        <Tooltip title="Mon profil">
+          <IconButton
+            onClick={() => setProfileOpen(true)}
+            aria-label="Mon profil"
+            sx={{
+              display: { xs: "flex", md: "none" },
+              position: "fixed",
+              top: 12,
+              right: 56,
+              zIndex: (t) => t.zIndex.appBar + 1,
+              bgcolor: "background.paper",
+              boxShadow: 2,
+              "&:hover": { bgcolor: "background.paper" },
+            }}
+          >
+            <AccountCircleRoundedIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
         <Tooltip title={user?.email ? `Déconnexion (${user.email})` : "Déconnexion"}>
           <IconButton
             onClick={logout}
@@ -360,6 +393,8 @@ export default function AppShell({
       </Box>
 
       <NavigationBar pathname={pathname} items={visibleNavItems} />
+
+      <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />
     </Box>
   );
 }

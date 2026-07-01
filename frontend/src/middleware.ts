@@ -28,6 +28,6 @@ export const config = {
      * - favicon.png, logo.webp and other public assets
      * - /api (none currently, reserved for future use)
      */
-    "/((?!login|_next/static|_next/image|favicon.png|favicon.ico|logo.webp|api).*)",
+    "/((?!login|change-password|_next/static|_next/image|favicon.png|favicon.ico|logo.webp|api).*)",
   ],
 };
