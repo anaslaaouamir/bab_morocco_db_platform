@@ -350,7 +350,7 @@ feat(contracts): send contract PDF as real Resend attachment, mock fallback pres
 
 ### Section 3.2 — Receive Contract Response (Signed / Rejected)
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Extend the webhook with a contract branch — an inbound reply to the contract email is recorded via `submit_reply()`, exactly like `[DEV] Simuler réponse du partenaire` does today. The human still makes the signed/declined decision manually (this rule is unchanged — see notes).
 

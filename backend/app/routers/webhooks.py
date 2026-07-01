@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_session
+from app.models.contract import Contract
 from app.models.prospect import Prospect
+from app.services.contract_service import ContractService
 from app.services.negotiation_generator import NegotiationGeneratorProtocol, get_negotiation_generator
 from app.services.negotiation_service import NegotiationService
 
@@ -47,11 +49,18 @@ def _get_negotiation_service(
     return NegotiationService(generator=generator)
 
 
+def _get_contract_service() -> ContractService:
+    # submit_reply() (the only method this webhook calls) touches neither the
+    # clause generator nor the email sender, so no DI wiring is needed here.
+    return ContractService()
+
+
 @router.post("/resend/inbound", status_code=status.HTTP_200_OK)
 async def resend_inbound(
     request: Request,
     db: AsyncSession = Depends(get_session),
     negotiation_svc: NegotiationService = Depends(_get_negotiation_service),
+    contract_svc: ContractService = Depends(_get_contract_service),
 ):
     """
     Single entry point for all inbound Resend email events. Verifies the Svix
@@ -104,6 +113,8 @@ async def resend_inbound(
         await _handle_outreach_reply(db, negotiation_svc, entity_id, body_text, email_message_id, email_subject)
     elif prefix == "negotiation":
         await _handle_negotiation_reply(db, negotiation_svc, entity_id, body_text, email_message_id, email_subject)
+    elif prefix == "contract":
+        await _handle_contract_reply(db, contract_svc, entity_id, body_text)
     else:
         logger.info("Resend inbound webhook: no handler yet for prefix '%s'", prefix)
 
@@ -145,6 +156,37 @@ async def _handle_outreach_reply(
     await negotiation_svc.submit_message(
         db, prospect, body_text, email_message_id=email_message_id, email_subject=email_subject
     )
+
+
+async def _handle_contract_reply(
+    db: AsyncSession,
+    contract_svc: ContractService,
+    contract_id_str: str,
+    body_text: str,
+) -> None:
+    """A reply to a sent contract: record the partner's reply text only.
+    Never auto-decides signed/declined — that stays a human decision made
+    via the 'Marquer comme signé/refusé' buttons (CLAUDE.md §9)."""
+    try:
+        contract_id = uuid.UUID(contract_id_str)
+    except ValueError:
+        logger.warning("Resend inbound webhook: invalid contract UUID '%s'", contract_id_str)
+        return
+
+    contract = await db.get(Contract, contract_id)
+    if not contract:
+        logger.warning("Resend inbound webhook: contract %s not found", contract_id)
+        return
+
+    if contract.status != "sent_to_partner":
+        logger.info(
+            "Resend inbound webhook: contract %s not in 'sent_to_partner' status (current: %s) — skipping",
+            contract_id,
+            contract.status,
+        )
+        return
+
+    await contract_svc.submit_reply(db, contract, body_text)
 
 
 async def _handle_negotiation_reply(

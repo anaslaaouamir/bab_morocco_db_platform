@@ -326,3 +326,106 @@ async def test_negotiation_webhook_ignored_when_not_in_negociation_stage(client:
 
     history = await client.get(f"/negotiation/{prospect['id']}/history")
     assert history.json() == []
+
+
+# ── Section 3.2 — receive contract reply via webhook ─────────────────────────
+
+async def _create_contract_sent_to_partner(client: AsyncClient) -> dict:
+    prospect = await _create_prospect(client)
+    await client.patch(f"/prospects/{prospect['id']}/stage", json={"stage": "closing"})
+    r_create = await client.post("/contracts", json={"prospect_id": prospect["id"]})
+    assert r_create.status_code == 201, r_create.text
+    contract_id = r_create.json()["id"]
+    r_gen = await client.post(f"/contracts/{contract_id}/generate")
+    assert r_gen.status_code == 200, r_gen.text
+    r_send = await client.post(f"/contracts/{contract_id}/send")
+    assert r_send.status_code == 200, r_send.text
+    return r_send.json()
+
+
+async def test_contract_webhook_records_reply_without_changing_status(client: AsyncClient, monkeypatch):
+    """A reply to the contract- address must record partner_reply/partner_replied_at
+    but must NOT change contract.status — signed/declined stays a human decision."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+    contract = await _create_contract_sent_to_partner(client)
+
+    class FakeReceiving:
+        @staticmethod
+        def get(email_id):
+            return {
+                "text": "Nous acceptons les conditions, veuillez trouver le contrat signé en pièce jointe.",
+                "html": None,
+                "message_id": "CACONTRACT@mail.gmail.com",
+            }
+
+    monkeypatch.setattr(webhooks_module.resend.Emails, "Receiving", FakeReceiving)
+
+    svix_id = "msg_contract"
+    timestamp = str(int(time.time()))
+    payload = json.dumps({
+        "type": "email.received",
+        "data": {
+            "email_id": "fake-email-id",
+            "from": "contact@riad-atlas.ma",
+            "to": [f"contract-{contract['id']}@eodiirii.resend.app"],
+            "subject": "Re: Contrat de partenariat Bab Morocco",
+        },
+    })
+    r = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r.status_code == 200
+
+    updated = await client.get(f"/contracts/{contract['id']}")
+    body = updated.json()
+    assert body["status"] == "sent_to_partner"
+    assert body["partner_reply"] == "Nous acceptons les conditions, veuillez trouver le contrat signé en pièce jointe."
+    assert body["partner_replied_at"] is not None
+
+    # The human decision still works exactly as before, untouched by the webhook.
+    signed = await client.post(f"/contracts/{contract['id']}/mark-signed")
+    assert signed.status_code == 200
+    assert signed.json()["status"] == "signed"
+
+
+async def test_contract_webhook_ignored_when_not_sent_to_partner(client: AsyncClient, monkeypatch):
+    """A contract- reply for a contract still in 'draft'/'generated' (never sent)
+    must be ignored — no reply recorded."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+    prospect = await _create_prospect(client)
+    await client.patch(f"/prospects/{prospect['id']}/stage", json={"stage": "closing"})
+    r_create = await client.post("/contracts", json={"prospect_id": prospect["id"]})
+    contract_id = r_create.json()["id"]
+    await client.post(f"/contracts/{contract_id}/generate")  # status: generated, not sent
+
+    class FakeReceiving:
+        @staticmethod
+        def get(email_id):
+            return {"text": "too early reply", "html": None, "message_id": "CAEARLY@mail.gmail.com"}
+
+    monkeypatch.setattr(webhooks_module.resend.Emails, "Receiving", FakeReceiving)
+
+    svix_id = "msg_early"
+    timestamp = str(int(time.time()))
+    payload = json.dumps({
+        "type": "email.received",
+        "data": {
+            "email_id": "fake-email-id",
+            "from": "contact@riad-atlas.ma",
+            "to": [f"contract-{contract_id}@eodiirii.resend.app"],
+            "subject": "Re: test",
+        },
+    })
+    r = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r.status_code == 200
+
+    unchanged = await client.get(f"/contracts/{contract_id}")
+    body = unchanged.json()
+    assert body["status"] == "generated"
+    assert body["partner_reply"] is None
