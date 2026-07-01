@@ -535,7 +535,7 @@ feat(ui): admin controls for editing, deactivating, and resetting commercials
 
 ## Section 13 — Frontend: Self-Service Profile & Forced Password Change
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Block app access until a forced password change is completed, and give every user a way to voluntarily edit their name and change their password afterward.
 
