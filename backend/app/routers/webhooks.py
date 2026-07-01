@@ -97,9 +97,10 @@ async def resend_inbound(
     received = resend.Emails.Receiving.get(email_id)
     raw_body_text = received.get("text") or received.get("html") or ""
     body_text = strip_quoted_reply(raw_body_text)
+    email_message_id = received.get("message_id")
 
     if prefix == "outreach":
-        await _handle_outreach_reply(db, negotiation_svc, entity_id, body_text)
+        await _handle_outreach_reply(db, negotiation_svc, entity_id, body_text, email_message_id)
     else:
         logger.info("Resend inbound webhook: no handler yet for prefix '%s'", prefix)
 
@@ -107,7 +108,11 @@ async def resend_inbound(
 
 
 async def _handle_outreach_reply(
-    db: AsyncSession, negotiation_svc: NegotiationService, prospect_id_str: str, body_text: str
+    db: AsyncSession,
+    negotiation_svc: NegotiationService,
+    prospect_id_str: str,
+    body_text: str,
+    email_message_id: str | None = None,
 ) -> None:
     """Mirrors negotiation.py's simulate_reply: move prospect to negociation, run first analysis."""
     try:
@@ -133,4 +138,4 @@ async def _handle_outreach_reply(
     await db.commit()
     await db.refresh(prospect)
 
-    await negotiation_svc.submit_message(db, prospect, body_text)
+    await negotiation_svc.submit_message(db, prospect, body_text, email_message_id=email_message_id)

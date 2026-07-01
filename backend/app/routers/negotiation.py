@@ -13,6 +13,7 @@ from app.schemas.negotiation import (
     RespondRequest,
     ScenarioSchema,
 )
+from app.services.email_transport import EmailTransportProtocol, get_email_transport
 from app.services.negotiation_generator import NegotiationGeneratorProtocol, get_negotiation_generator
 from app.services.negotiation_service import NegotiationService
 
@@ -21,8 +22,9 @@ router = APIRouter(prefix="/negotiation", tags=["negotiation"])
 
 def get_negotiation_service(
     generator: Annotated[NegotiationGeneratorProtocol, Depends(get_negotiation_generator)],
+    sender: Annotated[EmailTransportProtocol, Depends(get_email_transport)],
 ) -> NegotiationService:
-    return NegotiationService(generator=generator)
+    return NegotiationService(generator=generator, sender=sender)
 
 
 @router.post("/{prospect_id}/message", response_model=MessageAnalysisResponse, status_code=status.HTTP_201_CREATED)

@@ -18,6 +18,7 @@ class EmailTransportProtocol(Protocol):
         html: str,
         reply_to: str,
         attachments: Optional[list[dict]] = None,
+        headers: Optional[dict[str, str]] = None,
     ) -> str:
         """Send an email, return a provider message id (mock or real)."""
         ...
@@ -32,13 +33,15 @@ class MockEmailTransport:
         html: str,
         reply_to: str,
         attachments: Optional[list[dict]] = None,
+        headers: Optional[dict[str, str]] = None,
     ) -> str:
         logger.info(
-            "[MOCK EMAIL SENT] → %s | %s | reply_to=%s%s",
+            "[MOCK EMAIL SENT] → %s | %s | reply_to=%s%s%s",
             to,
             subject,
             reply_to,
             f" | {len(attachments)} attachment(s)" if attachments else "",
+            f" | headers={headers}" if headers else "",
         )
         return f"mock-{uuid.uuid4()}"
 
@@ -52,6 +55,7 @@ class ResendEmailTransport:
         html: str,
         reply_to: str,
         attachments: Optional[list[dict]] = None,
+        headers: Optional[dict[str, str]] = None,
     ) -> str:
         params: dict = {
             "from": settings.RESEND_FROM_EMAIL,
@@ -62,6 +66,8 @@ class ResendEmailTransport:
         }
         if attachments:
             params["attachments"] = attachments
+        if headers:
+            params["headers"] = headers
         result = resend.Emails.send(params)
         return result["id"]
 

@@ -8,8 +8,10 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.negotiation import NegotiationMessage
 from app.models.prospect import Prospect
+from app.services.email_transport import EmailTransportProtocol, MockEmailTransport
 from app.services.negotiation_generator import MockNegotiationGenerator, NegotiationGeneratorProtocol
 
 logger = logging.getLogger(__name__)
@@ -48,11 +50,20 @@ def _apply_hard_escalation_rules(
 
 
 class NegotiationService:
-    def __init__(self, generator: Optional[NegotiationGeneratorProtocol] = None):
+    def __init__(
+        self,
+        generator: Optional[NegotiationGeneratorProtocol] = None,
+        sender: Optional[EmailTransportProtocol] = None,
+    ):
         self._generator = generator or MockNegotiationGenerator()
+        self._sender = sender or MockEmailTransport()
 
     async def submit_message(
-        self, db: AsyncSession, prospect: Prospect, corps: str
+        self,
+        db: AsyncSession,
+        prospect: Prospect,
+        corps: str,
+        email_message_id: Optional[str] = None,
     ) -> dict:
         """Analyze an inbound message, apply escalation rules, persist, return full analysis."""
         # 1. AI semantic analysis
@@ -86,6 +97,7 @@ class NegotiationService:
             taux_demande=taux_demande,
             requires_human=requires_human,
             scenarios_json=json.dumps(scenarios),
+            email_message_id=email_message_id,
             created_at=datetime.utcnow(),
         )
         db.add(msg)
@@ -163,6 +175,30 @@ class NegotiationService:
             response_text = match["message_propose"] if match else await self._generator.generate_response(
                 prospect, scenario_letter, last_analysis
             )
+
+        # Thread this reply under the partner's last real inbound email, if any
+        # (mock/manually-pasted messages have no email_message_id — plain send).
+        last_inbound = await db.execute(
+            select(NegotiationMessage)
+            .where(NegotiationMessage.prospect_id == prospect.id, NegotiationMessage.direction == "inbound")
+            .order_by(NegotiationMessage.date_message.desc())
+            .limit(1)
+        )
+        last_inbound_msg = last_inbound.scalars().first()
+        headers = None
+        if last_inbound_msg and last_inbound_msg.email_message_id:
+            ref = last_inbound_msg.email_message_id
+            if not ref.startswith("<"):
+                ref = f"<{ref}>"
+            headers = {"In-Reply-To": ref, "References": ref}
+
+        await self._sender.send(
+            to=prospect.email_contact,
+            subject=f"Re: Partenariat Bab Morocco — {prospect.nom}",
+            html=response_text.replace("\n", "<br>"),
+            reply_to=f"negotiation-{prospect.id}@{settings.RESEND_INBOUND_DOMAIN}",
+            headers=headers,
+        )
 
         msg = NegotiationMessage(
             id=uuid.uuid4(),

@@ -223,9 +223,13 @@ feat(outreach): receive real inbound replies via Resend webhook, mirror simulate
 
 ### Section 2.1 — Send Negotiation Message
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** `NegotiationService.respond()` currently only writes a DB row and sends nothing — add the first real (or mock) email send negotiation has ever had, using the same transport abstraction as outreach.
+
+**Addendum — email threading (In-Reply-To / References):** implemented beyond the original scope below, at the user's explicit request after live-testing Section 1.2: the outbound response must land in the *same email thread* as the partner's reply, not arrive as a disconnected new email. Mechanism (confirmed feasible by inspecting the installed `resend` SDK directly): `resend.Emails.Receiving.get()` already returns a `message_id` field (the real RFC `Message-ID` of the inbound email) — Section 1.2's webhook was fetching it and discarding it. `resend.Emails.send()` accepts an optional `headers: Dict[str, str]` field where custom `In-Reply-To`/`References` headers can be set.
+
+Implementation: added `NegotiationMessage.email_message_id` (nullable, migration `a9c4d6e1f3b2`) to persist the inbound message's real Message-ID; `submit_message()` gained an `email_message_id: Optional[str] = None` parameter, populated by the webhook (`_handle_outreach_reply` in `webhooks.py`) and left `None` for the manual-paste `/message` endpoint and the `[DEV]` simulate buttons — matching those paths' existing "no real email backing this" nature. `EmailTransportProtocol.send()` (both `MockEmailTransport` and `ResendEmailTransport`) gained an optional `headers` parameter, passed straight through to `resend.Emails.send()`. `respond()` now looks up the prospect's most recent inbound `NegotiationMessage`; if it has an `email_message_id`, `In-Reply-To`/`References` are both set to it (wrapped in `<>` if not already); otherwise the send proceeds with no threading headers, exactly as before. This is single-hop threading (references only the immediate parent, not the full prior chain) — sufficient for Gmail in live testing; a full multi-message `References` chain was flagged as a possible future refinement, not implemented here (would require also capturing and storing each outbound send's own Message-ID for chaining forward).
 
 **Files to read first:**
 - `backend/app/services/negotiation_service.py` (`respond()` at lines 142-179 — confirm there is genuinely no send call today, only the `NegotiationMessage(direction="outbound", ...)` DB write)

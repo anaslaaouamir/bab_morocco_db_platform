@@ -27,6 +27,11 @@ class NegotiationMessage(Base):
     # 3 scenarios stored as JSON text
     scenarios_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # RFC Message-ID of the real inbound email this row came from (Resend inbound
+    # payloads only — null for mock/manually-pasted messages). Used to thread our
+    # reply as In-Reply-To/References so it lands in the same email thread.
+    email_message_id: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     prospect: Mapped["Prospect"] = relationship("Prospect", lazy="select")  # type: ignore[name-defined]

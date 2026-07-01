@@ -145,3 +145,66 @@ async def test_valid_webhook_strips_quote_and_moves_to_negociation(client: Async
     assert messages[0]["direction"] == "inbound"
     assert messages[0]["corps"] == "do you agree on 12%?"
     assert "wrote:" not in messages[0]["corps"]
+
+
+# ── Section 2.1 — outbound reply threading (In-Reply-To / References) ────────
+
+async def test_respond_threads_reply_under_real_inbound_message(client: AsyncClient, monkeypatch, caplog):
+    """A response to a real (webhook-originated) inbound reply must carry
+    In-Reply-To/References pointing at that email's real Message-ID, so it
+    lands in the same Gmail/Outlook thread instead of a fresh email."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+    prospect = await _create_prospect(client)
+    await client.patch(f"/prospects/{prospect['id']}/stage", json={"stage": "outreach"})
+
+    class FakeReceiving:
+        @staticmethod
+        def get(email_id):
+            return {"text": "Nous acceptons 10% de commission.", "html": None, "message_id": "CAB1234@mail.gmail.com"}
+
+    monkeypatch.setattr(webhooks_module.resend.Emails, "Receiving", FakeReceiving)
+
+    svix_id = "msg_thread"
+    timestamp = str(int(time.time()))
+    payload = json.dumps({
+        "type": "email.received",
+        "data": {
+            "email_id": "fake-email-id",
+            "from": "contact@riad-atlas.ma",
+            "to": [f"outreach-{prospect['id']}@eodiirii.resend.app"],
+            "subject": "Re: test",
+        },
+    })
+    r = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r.status_code == 200
+
+    with caplog.at_level("INFO", logger="app.services.email_transport"):
+        r2 = await client.post(f"/negotiation/{prospect['id']}/respond", json={"scenario": "B"})
+    assert r2.status_code == 200, r2.text
+
+    mock_log_lines = [rec.message for rec in caplog.records if "[MOCK EMAIL SENT]" in rec.message]
+    assert len(mock_log_lines) == 1
+    assert "reply_to=negotiation-" in mock_log_lines[0]
+    assert "In-Reply-To" in mock_log_lines[0]
+    assert "<CAB1234@mail.gmail.com>" in mock_log_lines[0]
+
+
+async def test_respond_without_prior_real_inbound_sends_no_threading_headers(client: AsyncClient, caplog):
+    """A response to a mock/manually-pasted message (no email_message_id) must
+    still send normally, just without In-Reply-To/References — matches how
+    `submit_message()` behaves when called from the manual /message endpoint."""
+    prospect = await _create_prospect(client)
+    submit = await client.post(f"/negotiation/{prospect['id']}/message", json={"corps": "Nous acceptons 10% de commission."})
+    assert submit.status_code == 201
+
+    with caplog.at_level("INFO", logger="app.services.email_transport"):
+        r = await client.post(f"/negotiation/{prospect['id']}/respond", json={"scenario": "B"})
+    assert r.status_code == 200, r.text
+
+    mock_log_lines = [rec.message for rec in caplog.records if "[MOCK EMAIL SENT]" in rec.message]
+    assert len(mock_log_lines) == 1
+    assert "headers=" not in mock_log_lines[0]
