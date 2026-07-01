@@ -62,10 +62,16 @@ async def list_prospects(
     score_min: Optional[int] = None,
     pays: Optional[str] = None,
     langue: Optional[str] = None,
+    assigned_to_filter: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
-    assigned_to = user.id if user.role == "commercial" else None
+    if user.role == "commercial":
+        assigned_to = user.id
+    elif assigned_to_filter is not None:
+        assigned_to = assigned_to_filter
+    else:
+        assigned_to = None
     return await svc.list_prospects(
         db, page=page, page_size=page_size,
         stage=stage, type=type, score_min=score_min, pays=pays, langue=langue,

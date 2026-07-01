@@ -69,6 +69,8 @@ export interface Prospect {
   dateAjout: string;            // ISO YYYY-MM-DD
   dateProchainContact?: string; // ISO YYYY-MM-DD
   notes?: string;
+  assignedTo?: string | null;
+  assignedToName?: string | null;
 }
 
 // ─── Display helpers ───────────────────────────────────────────────────────

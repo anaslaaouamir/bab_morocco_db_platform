@@ -1,6 +1,6 @@
 export { ApiError, downloadBlob } from "./base";
 export { authApi } from "./auth";
-export type { UserOut, UserRole, TokenResponse, UserCreateResponse } from "./auth";
+export type { UserOut, UserRole, TokenResponse, UserCreateResponse, UserUpdatePayload, ResetPasswordResponse } from "./auth";
 export { rawToProspect } from "./mappers";
 export type {
   RawScanJob,
@@ -53,6 +53,7 @@ export interface ProspectListParams {
   scoreMin?: number;
   pays?: string;
   langue?: OutreachLanguage;
+  assignedToFilter?: string;
 }
 
 export interface ProspectListResult {
@@ -84,7 +85,8 @@ export const prospectsApi = {
     if (params.type)      qs.set("type",         params.type);
     if (params.scoreMin)  qs.set("score_min",    String(params.scoreMin));
     if (params.pays)      qs.set("pays",         params.pays);
-    if (params.langue)    qs.set("langue",       params.langue);
+    if (params.langue)              qs.set("langue",              params.langue);
+    if (params.assignedToFilter)   qs.set("assigned_to_filter",  params.assignedToFilter);
     const query = qs.toString();
     const raw = await apiFetch<RawProspectListResponse>(`/prospects${query ? `?${query}` : ""}`);
     return {
@@ -127,6 +129,13 @@ export const prospectsApi = {
 
   delete: async (id: string): Promise<void> => {
     await apiFetch<void>(`/prospects/${id}`, { method: "DELETE" });
+  },
+
+  assign: async (prospectId: string, assignedTo: string | null): Promise<void> => {
+    await apiFetch<void>(`/prospects/${prospectId}/assign`, {
+      method: "PATCH",
+      body: JSON.stringify({ assigned_to: assignedTo }),
+    });
   },
 
   stats: (): Promise<RawProspectStats> =>

@@ -35,6 +35,8 @@ export function rawToProspect(r: RawProspect): Prospect {
     dateAjout: r.date_ajout,
     dateProchainContact: r.date_prochain_contact ?? undefined,
     notes: r.notes ?? undefined,
+    assignedTo: r.assigned_to,
+    assignedToName: r.assigned_to_name,
   };
 }
 

@@ -8,6 +8,9 @@ export interface UserOut {
   full_name: string;
   role: UserRole;
   is_active: boolean;
+  must_change_password: boolean;
+  last_login_at: string | null;
+  updated_at: string | null;
 }
 
 export interface TokenResponse {
@@ -18,6 +21,16 @@ export interface TokenResponse {
 
 export interface UserCreateResponse {
   user: UserOut;
+  temporary_password: string;
+}
+
+export interface UserUpdatePayload {
+  full_name?: string;
+  email?: string;
+  is_active?: boolean;
+}
+
+export interface ResetPasswordResponse {
   temporary_password: string;
 }
 
@@ -37,4 +50,15 @@ export const authApi = {
     }),
 
   listUsers: (): Promise<UserOut[]> => apiFetch<UserOut[]>("/auth/users"),
+
+  updateUser: (id: string, data: UserUpdatePayload): Promise<UserOut> =>
+    apiFetch<UserOut>(`/auth/users/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  resetPassword: (id: string): Promise<ResetPasswordResponse> =>
+    apiFetch<ResetPasswordResponse>(`/auth/users/${id}/reset-password`, {
+      method: "POST",
+    }),
 };
