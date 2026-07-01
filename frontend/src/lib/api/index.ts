@@ -249,6 +249,10 @@ export const contractsApi = {
   downloadPdf: (contractId: string): Promise<Blob> =>
     apiFetchBlob(`/contracts/${contractId}/pdf`),
 
+  /** Downloads the PDF the partner attached to their reply, if any (see downloadPdf note). */
+  downloadReplyPdf: (contractId: string): Promise<Blob> =>
+    apiFetchBlob(`/contracts/${contractId}/reply-pdf`),
+
   send: (contractId: string): Promise<RawContract> =>
     apiFetch<RawContract>(`/contracts/${contractId}/send`, { method: "POST" }),
 

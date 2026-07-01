@@ -82,6 +82,8 @@ def _contract_to_response(contract: Contract) -> ContractResponse:
         human_review_reason=contract.human_review_reason,
         partner_reply=contract.partner_reply,
         partner_replied_at=contract.partner_replied_at,
+        has_reply_pdf=contract.partner_reply_pdf is not None,
+        partner_reply_pdf_filename=contract.partner_reply_pdf_filename,
         sent_at=contract.sent_at,
         signed_at=contract.signed_at,
         declined_at=contract.declined_at,
@@ -307,23 +309,43 @@ class ContractService:
         logger.info("[CONTRACT] Declined — prospect=%s returned to negociation", prospect.id)
         return contract
 
-    async def submit_reply(self, db: AsyncSession, contract: Contract, reply_text: str) -> Contract:
+    async def submit_reply(
+        self,
+        db: AsyncSession,
+        contract: Contract,
+        reply_text: str,
+        reply_pdf_bytes: Optional[bytes] = None,
+        reply_pdf_filename: Optional[str] = None,
+    ) -> Contract:
         """
         Record the partner's email reply in the platform.
         Must be in sent_to_partner status. Does not change status — user still
         decides whether to mark signed or declined after reading the reply.
+
+        reply_pdf_bytes/reply_pdf_filename are only ever passed by the real
+        Resend inbound webhook (when the partner's reply had a PDF attached) —
+        the manual "paste reply text" path and the dev simulate-reply path
+        never set them. Storing the file is purely so a human can view it
+        in-app; it never influences signed/declined (CLAUDE.md §9).
         """
         if contract.status != "sent_to_partner":
             raise ValueError(f"Cannot submit reply for contract in status '{contract.status}'")
 
         contract.partner_reply = reply_text.strip()
         contract.partner_replied_at = datetime.utcnow()
+        if reply_pdf_bytes is not None:
+            contract.partner_reply_pdf = reply_pdf_bytes
+            contract.partner_reply_pdf_filename = reply_pdf_filename
         contract.updated_at = datetime.utcnow()
 
         await db.commit()
         await db.refresh(contract)
 
-        logger.info("[CONTRACT] Partner reply recorded — contract=%s", contract.id)
+        logger.info(
+            "[CONTRACT] Partner reply recorded — contract=%s%s",
+            contract.id,
+            f" | pdf={reply_pdf_filename} ({len(reply_pdf_bytes)} bytes)" if reply_pdf_bytes else "",
+        )
         return contract
 
     async def simulate_partner_reply(self, db: AsyncSession, contract: Contract) -> Contract:

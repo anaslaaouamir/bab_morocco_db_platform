@@ -1,9 +1,11 @@
+import asyncio
 import json
 import logging
 import re
 import uuid
-from typing import Annotated
+from typing import Annotated, Optional
 
+import httpx
 import resend
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -114,7 +116,8 @@ async def resend_inbound(
     elif prefix == "negotiation":
         await _handle_negotiation_reply(db, negotiation_svc, entity_id, body_text, email_message_id, email_subject)
     elif prefix == "contract":
-        await _handle_contract_reply(db, contract_svc, entity_id, body_text)
+        attachments = received.get("attachments") or []
+        await _handle_contract_reply(db, contract_svc, entity_id, body_text, email_id, attachments)
     else:
         logger.info("Resend inbound webhook: no handler yet for prefix '%s'", prefix)
 
@@ -158,15 +161,54 @@ async def _handle_outreach_reply(
     )
 
 
+async def _fetch_first_pdf_attachment(
+    email_id: str, attachments: list[dict]
+) -> tuple[Optional[bytes], Optional[str]]:
+    """
+    Download the first application/pdf attachment on an inbound email, if any.
+
+    Resend's inbound payload only carries attachment *metadata* (id, filename,
+    content_type, size) — the actual bytes require a second call to get a
+    short-lived signed download_url, then a plain HTTP GET on that URL. Both
+    hops are wrapped so a slow/failing download never breaks reply capture —
+    the reply text is always saved regardless of what happens here.
+    """
+    pdf_meta = next((a for a in attachments if a.get("content_type") == "application/pdf"), None)
+    if not pdf_meta:
+        return None, None
+    if len([a for a in attachments if a.get("content_type") == "application/pdf"]) > 1:
+        logger.warning(
+            "Resend inbound webhook: email %s has multiple PDF attachments — keeping only '%s'",
+            email_id,
+            pdf_meta.get("filename"),
+        )
+
+    details = await asyncio.to_thread(
+        resend.Emails.Receiving.Attachments.get, email_id, pdf_meta["id"]
+    )
+    download_url = details.get("download_url")
+    if not download_url:
+        logger.warning("Resend inbound webhook: no download_url for attachment %s", pdf_meta["id"])
+        return None, None
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(download_url)
+        resp.raise_for_status()
+        return resp.content, pdf_meta.get("filename") or "reponse_partenaire.pdf"
+
+
 async def _handle_contract_reply(
     db: AsyncSession,
     contract_svc: ContractService,
     contract_id_str: str,
     body_text: str,
+    email_id: str,
+    attachments: list[dict],
 ) -> None:
-    """A reply to a sent contract: record the partner's reply text only.
-    Never auto-decides signed/declined — that stays a human decision made
-    via the 'Marquer comme signé/refusé' buttons (CLAUDE.md §9)."""
+    """A reply to a sent contract: record the partner's reply text, and — if a
+    PDF was attached (e.g. a signed copy) — store it too so it's viewable
+    in-app. Never auto-decides signed/declined from this: that stays a human
+    decision made via the 'Marquer comme signé/refusé' buttons (CLAUDE.md §9)."""
     try:
         contract_id = uuid.UUID(contract_id_str)
     except ValueError:
@@ -186,7 +228,21 @@ async def _handle_contract_reply(
         )
         return
 
-    await contract_svc.submit_reply(db, contract, body_text)
+    pdf_bytes: Optional[bytes] = None
+    pdf_filename: Optional[str] = None
+    if attachments:
+        try:
+            pdf_bytes, pdf_filename = await _fetch_first_pdf_attachment(email_id, attachments)
+        except Exception:
+            logger.exception(
+                "Resend inbound webhook: failed to fetch PDF attachment for contract %s — "
+                "reply text will still be recorded",
+                contract_id,
+            )
+
+    await contract_svc.submit_reply(
+        db, contract, body_text, reply_pdf_bytes=pdf_bytes, reply_pdf_filename=pdf_filename
+    )
 
 
 async def _handle_negotiation_reply(

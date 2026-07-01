@@ -144,6 +144,26 @@ async def download_pdf(
     )
 
 
+@router.get("/{contract_id}/reply-pdf")
+async def download_reply_pdf(
+    contract_id: uuid.UUID,
+    db: AsyncSession = Depends(get_session),
+    svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
+):
+    """Download the PDF the partner attached to their reply (e.g. a signed copy), if any."""
+    contract, _ = await _get_contract_with_access(contract_id, svc, db, user)
+    if not contract.partner_reply_pdf:
+        raise HTTPException(status_code=404, detail="Aucun PDF reçu du partenaire.")
+    return Response(
+        content=contract.partner_reply_pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{contract.partner_reply_pdf_filename or "reponse_partenaire.pdf"}"'
+        },
+    )
+
+
 @router.post("/{contract_id}/send", response_model=ContractResponse)
 async def send_to_partner(
     contract_id: uuid.UUID,

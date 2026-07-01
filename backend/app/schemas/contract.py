@@ -44,6 +44,8 @@ class ContractResponse(BaseModel):
     human_review_reason: Optional[str]
     partner_reply: Optional[str]
     partner_replied_at: Optional[datetime]
+    has_reply_pdf: bool
+    partner_reply_pdf_filename: Optional[str]
     sent_at: Optional[datetime]
     signed_at: Optional[datetime]
     declined_at: Optional[datetime]

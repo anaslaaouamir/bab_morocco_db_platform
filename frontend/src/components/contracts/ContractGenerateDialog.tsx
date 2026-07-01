@@ -84,6 +84,21 @@ async function downloadContractPdf(
   }
 }
 
+async function downloadContractReplyPdf(
+  contract: RawContract,
+  showSnackbar: ReturnType<typeof useSnackbar>["showSnackbar"],
+) {
+  try {
+    const blob = await contractsApi.downloadReplyPdf(contract.id);
+    downloadBlob(blob, contract.partner_reply_pdf_filename ?? "reponse_partenaire.pdf");
+  } catch (err) {
+    showSnackbar({
+      message: err instanceof ApiError ? err.detail : "Erreur lors du téléchargement du PDF.",
+      severity: "error",
+    });
+  }
+}
+
 function statusToStep(status: RawContract["status"]): number {
   switch (status) {
     case "draft":           return 0;
@@ -529,7 +544,28 @@ function SentPanel({
             ))}
           </Box>
 
-          {hasPdfMention && (
+          {contract.has_reply_pdf ? (
+            <Box sx={{
+              display: "flex", alignItems: "center", gap: 1.5, px: 1.5, py: 1, borderRadius: 2,
+              bgcolor: alpha(theme.palette.success.main, 0.07),
+              border: `1px solid ${alpha(theme.palette.success.main, 0.25)}`,
+            }}>
+              <PictureAsPdfRoundedIcon sx={{ color: "success.main", fontSize: 20, flexShrink: 0 }} />
+              <Typography variant="bodySmall" sx={{ fontWeight: 600, color: "success.dark", flex: 1 }}>
+                {contract.partner_reply_pdf_filename ?? "reponse_partenaire.pdf"}
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                color="success"
+                startIcon={<DownloadRoundedIcon />}
+                onClick={() => downloadContractReplyPdf(contract, showSnackbar)}
+                sx={{ fontWeight: 600, textTransform: "none", flexShrink: 0, fontSize: "0.75rem" }}
+              >
+                Ouvrir
+              </Button>
+            </Box>
+          ) : hasPdfMention && (
             <Box sx={{
               display: "flex", alignItems: "center", gap: 1, px: 1.5, py: 1, borderRadius: 2,
               bgcolor: alpha(theme.palette.success.main, 0.07),

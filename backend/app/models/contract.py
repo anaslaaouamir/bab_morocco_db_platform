@@ -45,6 +45,12 @@ class Contract(Base):
     partner_reply: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     partner_replied_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # PDF attached to the partner's reply (e.g. a signed copy), captured from the
+    # real Resend inbound webhook only — never auto-inspected for a signature,
+    # just stored so a human can open it without leaving the app (CLAUDE.md §9).
+    partner_reply_pdf: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    partner_reply_pdf_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     # Timestamps
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

@@ -178,6 +178,8 @@ export interface RawContract {
   human_review_reason: string | null;
   partner_reply: string | null;
   partner_replied_at: string | null;
+  has_reply_pdf: boolean;
+  partner_reply_pdf_filename: string | null;
   sent_at: string | null;
   signed_at: string | null;
   declined_at: string | null;

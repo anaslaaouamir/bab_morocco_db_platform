@@ -429,3 +429,141 @@ async def test_contract_webhook_ignored_when_not_sent_to_partner(client: AsyncCl
     body = unchanged.json()
     assert body["status"] == "generated"
     assert body["partner_reply"] is None
+
+
+async def test_contract_webhook_stores_reply_pdf_attachment(client: AsyncClient, monkeypatch):
+    """When the partner's reply has a PDF attached (e.g. a signed copy), the
+    webhook must download and store it — the two-hop Resend attachment fetch
+    (metadata → signed download_url → HTTP GET) — without ever deciding
+    signed/declined from its presence."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+    contract = await _create_contract_sent_to_partner(client)
+
+    fake_pdf_bytes = b"%PDF-1.4 fake signed contract bytes"
+
+    class FakeAttachments:
+        @staticmethod
+        def get(email_id, attachment_id):
+            assert email_id == "fake-email-id"
+            assert attachment_id == "att_1"
+            return {"download_url": "https://fake-resend-cdn.example/att_1"}
+
+    class FakeReceiving:
+        Attachments = FakeAttachments
+
+        @staticmethod
+        def get(email_id):
+            return {
+                "text": "Contrat accepté, voir pièce jointe.",
+                "html": None,
+                "message_id": "CACONTRACTPDF@mail.gmail.com",
+                "attachments": [
+                    {"id": "att_1", "filename": "contrat_signe.pdf", "content_type": "application/pdf", "size": 1234},
+                ],
+            }
+
+    monkeypatch.setattr(webhooks_module.resend.Emails, "Receiving", FakeReceiving)
+
+    class FakeResponse:
+        content = fake_pdf_bytes
+
+        def raise_for_status(self):
+            pass
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url):
+            assert url == "https://fake-resend-cdn.example/att_1"
+            return FakeResponse()
+
+    monkeypatch.setattr(webhooks_module.httpx, "AsyncClient", FakeAsyncClient)
+
+    svix_id = "msg_contract_pdf"
+    timestamp = str(int(time.time()))
+    payload = json.dumps({
+        "type": "email.received",
+        "data": {
+            "email_id": "fake-email-id",
+            "from": "contact@riad-atlas.ma",
+            "to": [f"contract-{contract['id']}@eodiirii.resend.app"],
+            "subject": "Re: Contrat de partenariat Bab Morocco",
+        },
+    })
+    r = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r.status_code == 200
+
+    updated = await client.get(f"/contracts/{contract['id']}")
+    body = updated.json()
+    assert body["partner_reply"] == "Contrat accepté, voir pièce jointe."
+    assert body["has_reply_pdf"] is True
+    assert body["partner_reply_pdf_filename"] == "contrat_signe.pdf"
+
+    pdf_resp = await client.get(f"/contracts/{contract['id']}/reply-pdf")
+    assert pdf_resp.status_code == 200
+    assert pdf_resp.content == fake_pdf_bytes
+    assert pdf_resp.headers["content-type"] == "application/pdf"
+
+
+async def test_contract_webhook_pdf_fetch_failure_still_records_reply_text(client: AsyncClient, monkeypatch):
+    """If fetching the PDF attachment fails (network error, bad download_url,
+    etc.), the reply text must still be recorded — a flaky download must
+    never lose the partner's reply (this is the resilience fix for the crash
+    seen when a real reply arrived with a PDF attached)."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+    contract = await _create_contract_sent_to_partner(client)
+
+    class FakeAttachments:
+        @staticmethod
+        def get(email_id, attachment_id):
+            raise RuntimeError("simulated network failure")
+
+    class FakeReceiving:
+        Attachments = FakeAttachments
+
+        @staticmethod
+        def get(email_id):
+            return {
+                "text": "Accord, contrat signé joint.",
+                "html": None,
+                "message_id": "CAFAIL@mail.gmail.com",
+                "attachments": [
+                    {"id": "att_1", "filename": "contrat_signe.pdf", "content_type": "application/pdf", "size": 1234},
+                ],
+            }
+
+    monkeypatch.setattr(webhooks_module.resend.Emails, "Receiving", FakeReceiving)
+
+    svix_id = "msg_contract_pdf_fail"
+    timestamp = str(int(time.time()))
+    payload = json.dumps({
+        "type": "email.received",
+        "data": {
+            "email_id": "fake-email-id",
+            "from": "contact@riad-atlas.ma",
+            "to": [f"contract-{contract['id']}@eodiirii.resend.app"],
+            "subject": "Re: Contrat de partenariat Bab Morocco",
+        },
+    })
+    r = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r.status_code == 200
+
+    updated = await client.get(f"/contracts/{contract['id']}")
+    body = updated.json()
+    assert body["partner_reply"] == "Accord, contrat signé joint."
+    assert body["has_reply_pdf"] is False
