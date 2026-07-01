@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import uuid
 from typing import Annotated
 
@@ -16,6 +17,28 @@ from app.services.negotiation_service import NegotiationService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+# Matches the "On <date>, <name> wrote:" header line email clients prepend to a
+# quoted thread (plus the common FR/ES/DE/AR equivalents). Everything from this
+# line onward — or from the first ">"-quoted line, whichever comes first — is
+# the quoted history and is dropped so only the partner's new text is analyzed,
+# matching what the mock reply flow (simulate-reply) always produced.
+_QUOTE_HEADER_RE = re.compile(
+    r"^(On .+ wrote:|Le .+ a écrit\s*:|El .+ escribió:|Am .+ schrieb.*:|في .+ كتب:)\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_quoted_reply(text: str) -> str:
+    """Cut off the quoted-history tail of a plain-text email reply."""
+    lines = text.splitlines()
+    cutoff = len(lines)
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(">") or _QUOTE_HEADER_RE.match(stripped):
+            cutoff = i
+            break
+    return "\n".join(lines[:cutoff]).strip()
 
 
 def _get_negotiation_service(
@@ -72,7 +95,8 @@ async def resend_inbound(
     prefix, entity_id = to_local_part.split("-", 1)
 
     received = resend.Emails.Receiving.get(email_id)
-    body_text = received.get("text") or received.get("html") or ""
+    raw_body_text = received.get("text") or received.get("html") or ""
+    body_text = strip_quoted_reply(raw_body_text)
 
     if prefix == "outreach":
         await _handle_outreach_reply(db, negotiation_svc, entity_id, body_text)
