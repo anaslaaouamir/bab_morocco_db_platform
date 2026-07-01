@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.user import User
-from app.routers import auth, health, prospects, scan, outreach, negotiation, contracts
+from app.routers import auth, health, prospects, scan, outreach, negotiation, contracts, webhooks
 from app.services import auth_service
 
 app = FastAPI(title="Bab Morocco BD Intelligence Platform", version="1.0.0")
@@ -26,6 +26,7 @@ app.include_router(scan.router)
 app.include_router(outreach.router)
 app.include_router(negotiation.router)
 app.include_router(contracts.router)
+app.include_router(webhooks.router)
 
 
 @app.on_event("startup")

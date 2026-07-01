@@ -8,6 +8,7 @@ from app.main import app as fastapi_app
 from app.models.user import User
 from app.services import auth_service
 from app.services.email_generator import MockEmailGenerator, get_email_generator
+from app.services.email_transport import MockEmailTransport, get_email_transport
 from app.services.negotiation_generator import MockNegotiationGenerator, get_negotiation_generator
 from app.services.contract_generator import MockContractGenerator, get_contract_generator
 
@@ -35,6 +36,9 @@ async def client():
     def override_get_email_generator():
         return MockEmailGenerator()
 
+    def override_get_email_transport():
+        return MockEmailTransport()
+
     def override_get_negotiation_generator():
         return MockNegotiationGenerator()
 
@@ -44,6 +48,7 @@ async def client():
     fastapi_app.dependency_overrides[get_session] = override_get_session
     fastapi_app.dependency_overrides[get_session_factory] = override_get_session_factory
     fastapi_app.dependency_overrides[get_email_generator] = override_get_email_generator
+    fastapi_app.dependency_overrides[get_email_transport] = override_get_email_transport
     fastapi_app.dependency_overrides[get_negotiation_generator] = override_get_negotiation_generator
     fastapi_app.dependency_overrides[get_contract_generator] = override_get_contract_generator
 

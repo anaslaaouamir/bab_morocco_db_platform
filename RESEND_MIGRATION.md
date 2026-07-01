@@ -175,7 +175,7 @@ feat(outreach): send via Resend with mock fallback through shared email transpor
 
 ### Section 1.2 — Receive Outreach Reply & Move Prospect to Negotiation
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** A real inbound webhook triggers the exact same transition the `[DEV] Simuler réponse partenaire` button triggers today — moving the prospect to `negociation` and running the first negotiation analysis on the real reply text.
 
@@ -196,7 +196,7 @@ feat(outreach): send via Resend with mock fallback through shared email transpor
 - `backend/app/main.py` — `app.include_router(webhooks.router)`, registered unconditionally alongside the other routers.
 
 **Implementation notes:**
-- **Inbound flow, end to end:** Resend receives mail at `outreach-<prospect_id>@<RESEND_INBOUND_DOMAIN>` → POSTs an `email.received` event to `/webhooks/resend/inbound` with `{type: "email.received", data: {email_id, from, to, subject, ...}}` (metadata only, no body) → handler verifies the Svix signature via `resend.Webhook.verify(payload, headers, RESEND_WEBHOOK_SECRET)` → handler calls the Resend Receiving API (`resend.Emails.receiving.get(email_id)` per the current SDK — **re-check the exact method name/casing against whatever `resend` package version lands in `requirements.txt`, since inbound receiving is a newer SDK surface and naming may have shifted between versions**) to fetch the full `text`/`html` body → handler parses the `to` address local-part (`outreach-<uuid>`), extracts the UUID, loads the `Prospect` by id.
+- **Inbound flow, end to end:** Resend receives mail at `outreach-<prospect_id>@<RESEND_INBOUND_DOMAIN>` → POSTs an `email.received` event to `/webhooks/resend/inbound` with `{type: "email.received", data: {email_id, from, to: [...], subject, ...}}` (metadata only, no body) → handler verifies the Svix signature via `resend.Webhooks.verify({"payload": raw_body_str, "headers": {"id":..., "timestamp":..., "signature":...}, "webhook_secret": RESEND_WEBHOOK_SECRET})` (confirmed against `resend==2.32.2`: the class is `Webhooks` **plural**, not `Webhook`; header keys are `id`/`timestamp`/`signature`, not the raw `svix-*` names — map them explicitly) → handler calls `resend.Emails.Receiving.get(email_id)` (confirmed: `Receiving` is a nested class on `Emails`, capital R; returns a dict-like `ReceivedEmail` — use `.get("text")` falling back to `.get("html")`) → handler parses the `to[0]` address local-part (`outreach-<uuid>`), extracts the UUID, loads the `Prospect` by id.
 - **Guard:** only proceed if `prospect.stage == "outreach"` (a defensive check the mock button doesn't need, because the button is only ever rendered when `hasSentEmail` is true and the prospect is already in the outreach list — a real webhook has no such UI guarantee and could in theory fire for a prospect that already moved on).
 - **Mirror the mock exactly from here:** `prospect.stage = "negociation"`, `await db.commit()`, `await db.refresh(prospect)`, then `await negotiation_service.submit_message(db, prospect, <real reply body>)` — this is verbatim what `simulate_reply` does in `negotiation.py:102-108`, just with the real extracted email text instead of the hardcoded French template.
 - **Storage:** identical to mock — `submit_message()` persists the reply as a `NegotiationMessage` row with `direction="inbound"` (`negotiation_service.py:78-93`). No new table, no new column.
