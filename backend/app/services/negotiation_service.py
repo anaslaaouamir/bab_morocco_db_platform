@@ -64,6 +64,7 @@ class NegotiationService:
         prospect: Prospect,
         corps: str,
         email_message_id: Optional[str] = None,
+        email_subject: Optional[str] = None,
     ) -> dict:
         """Analyze an inbound message, apply escalation rules, persist, return full analysis."""
         # 1. AI semantic analysis
@@ -98,6 +99,7 @@ class NegotiationService:
             requires_human=requires_human,
             scenarios_json=json.dumps(scenarios),
             email_message_id=email_message_id,
+            email_subject=email_subject,
             created_at=datetime.utcnow(),
         )
         db.add(msg)
@@ -186,15 +188,23 @@ class NegotiationService:
         )
         last_inbound_msg = last_inbound.scalars().first()
         headers = None
+        # Reuse the real thread's subject so Gmail/Outlook group this reply into
+        # the same conversation — a mismatched subject breaks visual threading
+        # even when In-Reply-To/References are correct.
+        subject = f"Re: Partenariat Bab Morocco — {prospect.nom}"
         if last_inbound_msg and last_inbound_msg.email_message_id:
             ref = last_inbound_msg.email_message_id
             if not ref.startswith("<"):
                 ref = f"<{ref}>"
             headers = {"In-Reply-To": ref, "References": ref}
+        if last_inbound_msg and last_inbound_msg.email_subject:
+            subject = last_inbound_msg.email_subject
+            if not subject.strip().lower().startswith("re:"):
+                subject = f"Re: {subject}"
 
         await self._sender.send(
             to=prospect.email_contact,
-            subject=f"Re: Partenariat Bab Morocco — {prospect.nom}",
+            subject=subject,
             html=response_text.replace("\n", "<br>"),
             reply_to=f"negotiation-{prospect.id}@{settings.RESEND_INBOUND_DOMAIN}",
             headers=headers,

@@ -32,6 +32,12 @@ class NegotiationMessage(Base):
     # reply as In-Reply-To/References so it lands in the same email thread.
     email_message_id: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
+    # Subject line of the real inbound email this row came from (Resend inbound
+    # payloads only). Gmail/Outlook conversation grouping relies on subject
+    # matching in addition to In-Reply-To/References, so our reply must reuse
+    # this subject (as "Re: <subject>") rather than a generic one.
+    email_subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     prospect: Mapped["Prospect"] = relationship("Prospect", lazy="select")  # type: ignore[name-defined]

@@ -172,7 +172,7 @@ async def test_respond_threads_reply_under_real_inbound_message(client: AsyncCli
             "email_id": "fake-email-id",
             "from": "contact@riad-atlas.ma",
             "to": [f"outreach-{prospect['id']}@eodiirii.resend.app"],
-            "subject": "Re: test",
+            "subject": "Re: [J0-A] Partnership opportunity for Riad Atlas",
         },
     })
     r = await client.post(
@@ -191,6 +191,7 @@ async def test_respond_threads_reply_under_real_inbound_message(client: AsyncCli
     assert "reply_to=negotiation-" in mock_log_lines[0]
     assert "In-Reply-To" in mock_log_lines[0]
     assert "<CAB1234@mail.gmail.com>" in mock_log_lines[0]
+    assert "Re: [J0-A] Partnership opportunity for Riad Atlas" in mock_log_lines[0]
 
 
 async def test_respond_without_prior_real_inbound_sends_no_threading_headers(client: AsyncClient, caplog):
