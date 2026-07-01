@@ -277,6 +277,29 @@ async def test_send_before_generate_returns_400(client: AsyncClient):
     assert r.status_code == 400
 
 
+async def test_send_contract_attaches_real_pdf(client: AsyncClient, caplog):
+    """POST /send must send via the shared email transport with the generated
+    PDF as an attachment — not a bare log line with no attachment at all."""
+    p = await _create_prospect(client)
+    await _move_to_closing(client, p["id"])
+    r_create = await client.post("/contracts", json={"prospect_id": p["id"]})
+    contract_id = r_create.json()["id"]
+    await client.post(f"/contracts/{contract_id}/generate")
+
+    pdf_r = await client.get(f"/contracts/{contract_id}/pdf")
+    assert pdf_r.status_code == 200
+    assert len(pdf_r.content) > 0
+
+    with caplog.at_level("INFO", logger="app.services.email_transport"):
+        r = await client.post(f"/contracts/{contract_id}/send")
+    assert r.status_code == 200, r.text
+
+    mock_log_lines = [rec.message for rec in caplog.records if "[MOCK EMAIL SENT]" in rec.message]
+    assert len(mock_log_lines) == 1
+    assert "1 attachment(s)" in mock_log_lines[0]
+    assert "reply_to=contract-" in mock_log_lines[0]
+
+
 # ── 6. Mark signed ───────────────────────────────────────────────────────────
 
 async def test_mark_signed_sets_status_and_activates_prospect(client: AsyncClient):

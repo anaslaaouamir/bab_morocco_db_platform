@@ -12,6 +12,7 @@ from app.models.user import User
 from app.schemas.contract import ContractCreate, ContractListResponse, ContractResponse, PartnerReplySubmit
 from app.services.contract_generator import ContractGeneratorProtocol, get_contract_generator
 from app.services.contract_service import ContractService
+from app.services.email_transport import EmailTransportProtocol, get_email_transport
 
 
 class GenerateRequest(BaseModel):
@@ -24,8 +25,9 @@ router = APIRouter(prefix="/contracts", tags=["contracts"])
 
 def get_contract_service(
     generator: Annotated[ContractGeneratorProtocol, Depends(get_contract_generator)],
+    sender: Annotated[EmailTransportProtocol, Depends(get_email_transport)],
 ) -> ContractService:
-    return ContractService(generator=generator)
+    return ContractService(generator=generator, sender=sender)
 
 
 async def _get_prospect_or_404(prospect_id: uuid.UUID, db: AsyncSession) -> Prospect:

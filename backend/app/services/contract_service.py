@@ -8,6 +8,7 @@ Business rules enforced (CLAUDE.md §9 / system_prompt_v2.md):
   - Exclusivity detected → must be flagged by negotiation service (not handled here)
 """
 
+import base64
 import json
 import logging
 import uuid
@@ -17,6 +18,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.contract import Contract
 from app.models.prospect import Prospect
 from app.schemas.contract import ContractClauses, ContractResponse, PartnerReplySubmit
@@ -25,6 +27,7 @@ from app.services.contract_generator import (
     ContractGeneratorProtocol,
     MockContractGenerator,
 )
+from app.services.email_transport import EmailTransportProtocol, MockEmailTransport
 from app.services.pdf_generator import generate_contract_pdf
 
 logger = logging.getLogger(__name__)
@@ -90,8 +93,13 @@ def _contract_to_response(contract: Contract) -> ContractResponse:
 # ─── Service ─────────────────────────────────────────────────────────────────
 
 class ContractService:
-    def __init__(self, generator: Optional[ContractGeneratorProtocol] = None) -> None:
+    def __init__(
+        self,
+        generator: Optional[ContractGeneratorProtocol] = None,
+        sender: Optional[EmailTransportProtocol] = None,
+    ) -> None:
         self._generator = generator or MockContractGenerator()
+        self._sender = sender or MockEmailTransport()
 
     # ── Create ────────────────────────────────────────────────────────────────
 
@@ -218,20 +226,29 @@ class ContractService:
 
     async def send_to_partner(self, db: AsyncSession, contract: Contract) -> Contract:
         """
-        Send the contract PDF to the partner via email.
-        Dev: logs the send action (mock). Prod: use Mailgun with PDF attachment.
+        Send the contract PDF to the partner via email (real Resend send, mock
+        fallback when RESEND_API_KEY is unset — see get_email_transport()).
         """
         if contract.status != "generated":
             raise ValueError(f"Contract must be in 'generated' status to send (current: {contract.status})")
         if contract.pdf_bytes is None:
             raise ValueError("PDF must be generated before sending")
 
-        # Mock send — log only. In prod, replace with Mailgun API call.
-        logger.info(
-            "[MOCK EMAIL SENT] Contract PDF → %s | %s | commission=%.1f%%",
-            contract.partner_email,
-            contract.partner_name,
-            contract.commission,
+        filename = f"contrat_{contract.partner_name.replace(' ', '_')}.pdf"
+        body_html = (
+            f"Bonjour,<br><br>"
+            f"Veuillez trouver ci-joint le contrat de partenariat Bab Morocco pour "
+            f"{contract.partner_name}, avec une commission de {contract.commission:.1f}%.<br><br>"
+            f"Merci de nous répondre par retour d'email avec votre décision (accord et signature, "
+            f"ou questions complémentaires).<br><br>"
+            f"Cordialement,<br>L'équipe Bab Morocco"
+        )
+        await self._sender.send(
+            to=contract.partner_email,
+            subject=f"Contrat de partenariat Bab Morocco — {contract.partner_name}",
+            html=body_html,
+            reply_to=f"contract-{contract.id}@{settings.RESEND_INBOUND_DOMAIN}",
+            attachments=[{"filename": filename, "content": base64.b64encode(contract.pdf_bytes).decode()}],
         )
 
         contract.status = "sent_to_partner"

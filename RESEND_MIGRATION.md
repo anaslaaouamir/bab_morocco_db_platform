@@ -310,7 +310,7 @@ feat(negotiation): receive real inbound replies via Resend webhook, extend inbou
 
 ### Section 3.1 — Send Contract PDF via Email
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Replace `ContractService.send_to_partner()`'s bare `logger.info(...)` with a real Resend send carrying the actual generated PDF as an attachment — today's mock doesn't even reference `contract.pdf_bytes`, so this section also fixes that (the mock's own gap, not new scope).
 
