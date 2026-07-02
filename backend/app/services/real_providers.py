@@ -6,6 +6,7 @@ requires no changes beyond awaiting these calls.
 """
 import asyncio
 import logging
+import re
 
 import httpx
 
@@ -15,6 +16,15 @@ logger = logging.getLogger(__name__)
 
 _PLACES_TEXTSEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 _PLACES_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+
+_APIFY_BASE_URL = "https://api.apify.com/v2"
+_APIFY_MAPS_ACTOR = "compass~crawler-google-places"
+_APIFY_CRAWLER_ACTOR = "apify~website-content-crawler"
+_APIFY_POLL_INTERVAL_S = 3
+_APIFY_RUN_TIMEOUT_S = 60
+
+_EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+_EMAIL_BLOCKLIST = ("noreply", "no-reply", "example.com", "test@", "sentry")
 
 _QUERY_TEMPLATES: dict[str, str] = {
     "hotel_riad": "riad hotel {ville} {pays}",
@@ -143,3 +153,145 @@ class RealGoogleMapsProvider:
         except httpx.HTTPError as exc:
             logger.error("Google Places API network error | error=%s", exc)
             raise RuntimeError(f"Google Places API network error: {exc}") from exc
+
+
+class RealEnrichmentService:
+    """
+    Enriches a raw place dict (from RealGoogleMapsProvider) with real data:
+      Stage 1 — Apify Google Maps Scraper (email, website, categories, rating)
+      Stage 2 — website /contact page crawl for an email (only if Stage 1 found none)
+      Stage 3 — Booking.com / Expedia presence heuristic (HEAD request)
+    Any stage failure degrades gracefully — the pipeline never crashes on
+    enrichment errors, it just falls back to the raw/default values, matching
+    MockEnrichmentService's guaranteed-output-shape contract.
+    """
+
+    async def enrich(self, raw: dict) -> dict:
+        idx = raw.get("_index", 0)
+        enriched = dict(raw)
+        enriched.pop("_index", None)
+        enriched.pop("place_id", None)
+        enriched.pop("note_google", None)
+        enriched.pop("nb_avis_google", None)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            maps_data = await self._run_maps_scraper(client, raw["nom"], raw["ville"])
+
+            website = maps_data.get("website") or raw.get("adresse_web") or ""
+            email = maps_data.get("email") or ""
+
+            if not email and website:
+                email = await self._scrape_email_from_website(client, website)
+
+            presence_booking = await self._check_ota_presence(client, "booking.com", raw["nom"])
+            presence_expedia = await self._check_ota_presence(client, "expedia.com", raw["nom"])
+
+            note = maps_data.get("totalScore") or raw.get("note_google")
+            reviews_count = maps_data.get("reviewsCount") or raw.get("nb_avis_google") or 0
+
+        enriched.update({
+            "adresse_web": website,
+            "email_contact": email,
+            "presence_booking": presence_booking,
+            "note_booking": note,
+            "presence_expedia": presence_expedia,
+            "nb_chambres": None,
+            "linkedin_contact": None,
+            "nom_contact": "Responsable",
+            "poste_contact": "DG",
+            "capacite_description": (
+                f"{reviews_count} avis Google" if reviews_count else None
+            ),
+        })
+        return enriched
+
+    async def _run_maps_scraper(
+        self, client: httpx.AsyncClient, nom: str, ville: str
+    ) -> dict:
+        try:
+            run = await self._run_apify_actor(
+                client,
+                _APIFY_MAPS_ACTOR,
+                {
+                    "searchStringsArray": [f"{nom} {ville}"],
+                    "maxCrawledPlacesPerSearch": 1,
+                    "language": "fr",
+                },
+            )
+            items = await self._get_dataset_items(client, run)
+            return items[0] if items else {}
+        except Exception as exc:
+            logger.warning("Apify maps scraper failed for %r | error=%s", nom, exc)
+            return {}
+
+    async def _scrape_email_from_website(self, client: httpx.AsyncClient, website: str) -> str:
+        try:
+            contact_url = website.rstrip("/") + "/contact"
+            run = await self._run_apify_actor(
+                client,
+                _APIFY_CRAWLER_ACTOR,
+                {"startUrls": [{"url": contact_url}, {"url": website}], "maxCrawlPages": 2},
+            )
+            items = await self._get_dataset_items(client, run)
+            for item in items:
+                text = item.get("text", "")
+                for match in _EMAIL_REGEX.findall(text):
+                    if not any(bad in match.lower() for bad in _EMAIL_BLOCKLIST):
+                        return match
+            return ""
+        except Exception as exc:
+            logger.warning("Website email scrape failed for %r | error=%s", website, exc)
+            return ""
+
+    async def _check_ota_presence(
+        self, client: httpx.AsyncClient, domain: str, nom: str
+    ) -> bool:
+        try:
+            response = await client.head(
+                f"https://www.{domain}/search.html",
+                params={"ss": nom},
+                follow_redirects=True,
+            )
+            path = str(response.url.path).lower()
+            marker = "/hotel/" if "booking" in domain else "/h"
+            return marker in path
+        except httpx.HTTPError:
+            return False
+
+    async def _run_apify_actor(
+        self, client: httpx.AsyncClient, actor: str, run_input: dict
+    ) -> dict:
+        start = await client.post(
+            f"{_APIFY_BASE_URL}/acts/{actor}/runs",
+            params={"token": settings.APIFY_API_TOKEN},
+            json=run_input,
+        )
+        start.raise_for_status()
+        run = start.json()["data"]
+
+        elapsed = 0
+        while run.get("status") not in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
+            if elapsed >= _APIFY_RUN_TIMEOUT_S:
+                raise TimeoutError(f"Apify actor {actor} timed out after {elapsed}s")
+            await asyncio.sleep(_APIFY_POLL_INTERVAL_S)
+            elapsed += _APIFY_POLL_INTERVAL_S
+            poll = await client.get(
+                f"{_APIFY_BASE_URL}/actor-runs/{run['id']}",
+                params={"token": settings.APIFY_API_TOKEN},
+            )
+            poll.raise_for_status()
+            run = poll.json()["data"]
+
+        if run.get("status") != "SUCCEEDED":
+            raise RuntimeError(f"Apify actor {actor} finished with status {run.get('status')}")
+
+        return run
+
+    async def _get_dataset_items(self, client: httpx.AsyncClient, run: dict) -> list[dict]:
+        dataset_id = run["defaultDatasetId"]
+        response = await client.get(
+            f"{_APIFY_BASE_URL}/datasets/{dataset_id}/items",
+            params={"token": settings.APIFY_API_TOKEN},
+        )
+        response.raise_for_status()
+        return response.json()

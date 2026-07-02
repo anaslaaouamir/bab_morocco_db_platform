@@ -121,7 +121,24 @@ feat(scan): add RealGoogleMapsProvider (Places API Text Search)
 
 ## Section 3 — `RealEnrichmentService`
 
-**Status:** Not started
+**Status:** Done
+
+**Deviation from original plan:** The actual Apify actor name is `compass/crawler-google-places`,
+not `compass/google-maps-scraper` as originally assumed — verified against the Apify API before
+writing code. `apify/website-content-crawler` was confirmed correct as planned.
+
+**Manual verification results:**
+- Stage 1 (Apify Maps scraper) confirmed returning real `website`, `totalScore`, `reviewsCount`
+  for "Riad Fleur de Sable" (Marrakech) — no `email` for this particular business (legitimate,
+  not all businesses list one).
+- Stage 2 (website email scrape) confirmed working — extracted `ohlala@woyago.com` from a real
+  tour operator site (woyago.com); returned empty string (not an error) when a site has no
+  visible email, matching the required graceful-fallback behavior.
+- Full `enrich()` output verified to contain all 14 required keys matching
+  `MockEnrichmentService.enrich()`'s exact shape.
+- Booking/Expedia presence heuristic returns `False` safely when no confident match — not yet
+  verified against a business with a true Booking.com listing (acceptable per plan's documented
+  fallback strategy).
 
 **Goal:** Implement real enrichment (Apify Google Maps Scraper + website email scraping + Booking/Expedia presence heuristic) matching `MockEnrichmentService.enrich()`'s exact output shape.
 
