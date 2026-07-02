@@ -450,7 +450,22 @@ change was needed). Revisit only if a future paid/structured data source becomes
 
 ## Section 10 — Remove Apify dependency from the default path
 
-**Status:** Not started
+**Status:** Done
+
+**Manual verification:**
+- `get_scan_providers()` gate relaxed to `ENV == "production" and GOOGLE_MAPS_API_KEY` — verified
+  directly that it returns `RealGoogleMapsProvider`/`RealEnrichmentService` even with
+  `APIFY_API_TOKEN` empty.
+- Full end-to-end real scan (Fes/hotel_riad, `limite=3`) with Apify token genuinely unused in the
+  run: 3 real riads returned (`Riad Fes - Relais & Châteaux`, `Riad Hayat Fes`, `Riad Fes Iline`),
+  one real email found (`contact@riadfes.com`), `note_booking`/`presence_booking` correctly
+  `None`/`False` — zero Apify calls made anywhere in the pipeline.
+- `_run_apify_actor`, `_get_dataset_items`, `_APIFY_BASE_URL`, `_APIFY_CRAWLER_ACTOR`,
+  `_APIFY_POLL_INTERVAL_S`, `_APIFY_RUN_TIMEOUT_S` all removed from `real_providers.py` —
+  confirmed no remaining references except the explanatory docstring.
+- `config.py` — `APIFY_API_TOKEN` field kept (dormant, no removal, per plan).
+- `.env.example` — updated to document Apify as optional/unused by default.
+- Full backend suite: 161 passed, ~115s.
 
 **Goal:** After Sections 6-9 replace every Apify-dependent stage with free scraping, remove the
 now-unused Apify plumbing so the scan pipeline no longer makes any paid calls by default, and

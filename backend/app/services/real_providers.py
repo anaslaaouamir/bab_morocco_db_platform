@@ -17,11 +17,6 @@ logger = logging.getLogger(__name__)
 _PLACES_TEXTSEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 _PLACES_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 
-_APIFY_BASE_URL = "https://api.apify.com/v2"
-_APIFY_CRAWLER_ACTOR = "apify~website-content-crawler"
-_APIFY_POLL_INTERVAL_S = 3
-_APIFY_RUN_TIMEOUT_S = 60
-
 _EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 _EMAIL_BLOCKLIST = ("noreply", "no-reply", "example.com", "test@", "sentry")
 _EMAIL_CANDIDATE_PATHS = ("", "/contact", "/contact-us", "/about", "/a-propos")
@@ -269,53 +264,19 @@ class RealEnrichmentService:
         """
         return False
 
-    async def _run_apify_actor(
-        self, client: httpx.AsyncClient, actor: str, run_input: dict
-    ) -> dict:
-        start = await client.post(
-            f"{_APIFY_BASE_URL}/acts/{actor}/runs",
-            params={"token": settings.APIFY_API_TOKEN},
-            json=run_input,
-        )
-        start.raise_for_status()
-        run = start.json()["data"]
-
-        elapsed = 0
-        while run.get("status") not in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
-            if elapsed >= _APIFY_RUN_TIMEOUT_S:
-                raise TimeoutError(f"Apify actor {actor} timed out after {elapsed}s")
-            await asyncio.sleep(_APIFY_POLL_INTERVAL_S)
-            elapsed += _APIFY_POLL_INTERVAL_S
-            poll = await client.get(
-                f"{_APIFY_BASE_URL}/actor-runs/{run['id']}",
-                params={"token": settings.APIFY_API_TOKEN},
-            )
-            poll.raise_for_status()
-            run = poll.json()["data"]
-
-        if run.get("status") != "SUCCEEDED":
-            raise RuntimeError(f"Apify actor {actor} finished with status {run.get('status')}")
-
-        return run
-
-    async def _get_dataset_items(self, client: httpx.AsyncClient, run: dict) -> list[dict]:
-        dataset_id = run["defaultDatasetId"]
-        response = await client.get(
-            f"{_APIFY_BASE_URL}/datasets/{dataset_id}/items",
-            params={"token": settings.APIFY_API_TOKEN},
-        )
-        response.raise_for_status()
-        return response.json()
-
 
 def get_scan_providers():
     """
-    Same activation gate as the Claude generators: real providers only when
-    ENV=production and both required keys are set. Otherwise mocks — used
-    automatically in development and in the test suite.
+    Real providers activate when ENV=production and GOOGLE_MAPS_API_KEY is set.
+    APIFY_API_TOKEN is no longer required — every enrichment stage is free
+    (httpx scraping / hardcoded stubs, see RealEnrichmentService) as of the
+    Section 6-9 revision in BACKEND_PHASE2_SCAN_PLAN.md. The setting is kept
+    dormant in config for a possible future paid re-introduction (e.g. a
+    dedicated Booking.com actor) rather than removed outright.
+    Otherwise mocks — used automatically in development and in the test suite.
     """
     from app.services.mock_providers import MockEnrichmentService, MockGoogleMapsProvider
 
-    if settings.ENV == "production" and settings.GOOGLE_MAPS_API_KEY and settings.APIFY_API_TOKEN:
+    if settings.ENV == "production" and settings.GOOGLE_MAPS_API_KEY:
         return RealGoogleMapsProvider(), RealEnrichmentService()
     return MockGoogleMapsProvider(), MockEnrichmentService()
