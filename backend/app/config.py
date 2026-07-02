@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./bab_morocco.db"
     ANTHROPIC_API_KEY: str = ""
     GOOGLE_MAPS_API_KEY: str = ""
+    APIFY_API_TOKEN: str = ""
     MAILGUN_API_KEY: str = ""
     MAILGUN_DOMAIN: str = ""
     RESEND_API_KEY: str = ""
