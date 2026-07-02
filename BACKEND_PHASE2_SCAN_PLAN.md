@@ -77,7 +77,17 @@ chore(scan): add Apify token setting and httpx dependency
 
 ## Section 2 — `RealGoogleMapsProvider`
 
-**Status:** Not started
+**Status:** Done
+
+**Deviation from original plan:** Uses the **legacy** Google Places Text Search + Place Details
+endpoints (`maps.googleapis.com/maps/api/place/...`), not "Places API (New)" — the user's
+existing API key is restricted to the legacy API only. Website is fetched via a Place Details
+call per result since legacy Text Search doesn't return it.
+
+**Known external quirk:** Google's legacy Text Search endpoint is non-deterministic under this
+key — the identical request intermittently returns a truncated result set (e.g. 1 result instead
+of 20) even with a fresh connection, seen in ~30-40% of calls. Mitigated with a retry loop
+(`_search_page_with_retry`, up to 6 attempts) that keeps the best (longest) response.
 
 **Goal:** Implement a real Google Maps Places API (Text Search, New) provider matching `MockGoogleMapsProvider.search()`'s exact output shape.
 
