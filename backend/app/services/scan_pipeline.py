@@ -15,14 +15,13 @@ from sqlalchemy.exc import IntegrityError
 from app.models.prospect import Prospect
 from app.models.scan_job import ScanJob
 from app.models.user import User
-from app.services.mock_providers import MockEnrichmentService, MockGoogleMapsProvider
+from app.services.real_providers import get_scan_providers
 from app.services.scoring import scoring_engine
 from app.services.prospect_service import COMMISSION_DEFAULTS, detect_langue
 
 logger = logging.getLogger(__name__)
 
-_maps_provider = MockGoogleMapsProvider()
-_enrichment_svc = MockEnrichmentService()
+_maps_provider, _enrichment_svc = get_scan_providers()
 
 
 async def _distribute_to_commercials(db, prospect_ids: list[uuid.UUID]) -> None:
@@ -71,7 +70,7 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
             job.statut = "running"
             await db.commit()
 
-            raw_results = _maps_provider.search(
+            raw_results = await _maps_provider.search(
                 ville=job.ville,
                 pays=job.pays,
                 type_partenaire=job.type_partenaire,
@@ -85,7 +84,7 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
 
             for i, raw in enumerate(raw_results):
                 # ── Step 2: Enrichment ──────────────────────────────────────
-                enriched = _enrichment_svc.enrich(raw)
+                enriched = await _enrichment_svc.enrich(raw)
 
                 # ── Step 3: Scoring ─────────────────────────────────────────
                 breakdown = scoring_engine.compute_breakdown(enriched)

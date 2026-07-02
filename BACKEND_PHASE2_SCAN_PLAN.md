@@ -172,7 +172,19 @@ feat(scan): add RealEnrichmentService (Apify scraper + email + OTA presence)
 
 ## Section 4 — Provider factory + pipeline wiring
 
-**Status:** Not started
+**Status:** Done
+
+**Manual verification results:**
+- Dev regression (`ENV=development`): scan job for Marrakech/hotel_riad/limite=3 completed
+  instantly (`statut=done` in milliseconds), inserted mock-pattern prospects (`Riad Dar Nadia`,
+  deterministic seeded names) — confirms mocks still activate correctly by default.
+- Production (`ENV=production`, both keys set): scan job for Marrakech/hotel_riad/limite=3 took
+  ~3 minutes (real Apify enrichment), completed with `statut=done`, `nb_trouves=3`,
+  `nb_ajoutes=3`. Inserted prospects were the exact real riads found in Section 2/3 manual
+  tests — **Riad Fleur de Sable** (real website, rating 4.1, empty email — correct, none found),
+  **Riad Mazaj** (rating 4.7), **Hotel Sherazade** (rating 4.4) — all correctly scored and staged
+  (`veille`, score 58, below the 75 outreach threshold).
+- `.env` reverted to `ENV=development` after verification.
 
 **Goal:** Wire the real providers behind the same activation gate used for Claude generators, and switch `scan_pipeline.py` to use it — with zero changes to scoring/dedup/insert logic.
 

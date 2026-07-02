@@ -83,7 +83,7 @@ class MockGoogleMapsProvider:
     (ville, type_partenaire) combination.
     """
 
-    def search(
+    async def search(
         self, ville: str, pays: str, type_partenaire: str, limite: int
     ) -> list[dict]:
         key = (ville.lower(), type_partenaire.lower())
@@ -137,7 +137,7 @@ class MockEnrichmentService:
       odd  index → poor attributes (veille territory)
     """
 
-    def enrich(self, raw: dict) -> dict:
+    async def enrich(self, raw: dict) -> dict:
         idx = raw.get("_index", 0)
         enriched = dict(raw)
 

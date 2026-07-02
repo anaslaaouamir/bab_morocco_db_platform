@@ -295,3 +295,16 @@ class RealEnrichmentService:
         )
         response.raise_for_status()
         return response.json()
+
+
+def get_scan_providers():
+    """
+    Same activation gate as the Claude generators: real providers only when
+    ENV=production and both required keys are set. Otherwise mocks — used
+    automatically in development and in the test suite.
+    """
+    from app.services.mock_providers import MockEnrichmentService, MockGoogleMapsProvider
+
+    if settings.ENV == "production" and settings.GOOGLE_MAPS_API_KEY and settings.APIFY_API_TOKEN:
+        return RealGoogleMapsProvider(), RealEnrichmentService()
+    return MockGoogleMapsProvider(), MockEnrichmentService()
