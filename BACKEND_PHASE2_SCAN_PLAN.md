@@ -247,9 +247,217 @@ _None — verification only, no commit unless a fix is needed (in which case it 
 
 ---
 
+# Revision — Switch to Free Self-Scraping (post Section 5 findings)
+
+> Added: 2026-07-02, after manual QA on real data (Rabat/hotel_riad) showed scores capped
+> around 58-66 and revealed two problems: (1) `note_booking` was populated from the Google
+> rating instead of a real Booking.com rating — a 0-5 vs 0-10 scale mismatch that made the
+> 5-point bonus in `_score_activite` structurally unreachable; (2) the paid Apify Maps actor
+> (`compass/crawler-google-places`) was mostly re-fetching data (`website`, rating, reviews)
+> already available for free via Google Places API (Section 2), so its cost bought little beyond
+> an occasional email.
+>
+> Decision: drop `linkedin_contact` entirely (LinkedIn scraping is effectively free-infeasible
+> and expensive/fragile even paid — see cost/success analysis in conversation). Replace the
+> Apify-dependent enrichment stages with free self-scraping (`httpx` + regex/HTML parsing) for
+> the remaining fields. No Apify actor calls remain in the default path after this revision.
+
+## Section 6 — Drop the redundant Apify Maps actor call
+
+**Status:** Not started
+
+**Goal:** Remove `_run_maps_scraper()` (the `compass/crawler-google-places` call) since it mostly
+duplicates data already fetched for free by `RealGoogleMapsProvider` (Section 2). Keep only its
+one unique value — an occasional `email`/`phone` on the Google listing itself — by checking the
+Google Places Details response for those fields instead (still free, same API already in use).
+
+**Files to read first:**
+- `backend/app/services/real_providers.py` (`RealGoogleMapsProvider._fetch_website`,
+  `RealEnrichmentService._run_maps_scraper`, `RealEnrichmentService.enrich`)
+
+**Files to modify:**
+- `backend/app/services/real_providers.py`:
+  - `RealGoogleMapsProvider._fetch_website` (or a new `_fetch_details` helper) — extend the
+    Place Details `fields` param to also request `international_phone_number` (Google Places
+    Details does not expose a business email field — confirm this during implementation and
+    document the finding here).
+  - `RealEnrichmentService.enrich` — remove the `_run_maps_scraper` call and the Apify run
+    entirely; `website`, `note` (from Google rating, correctly labeled — see Section 8), and
+    `reviews_count` now come straight from the raw dict already produced by
+    `RealGoogleMapsProvider`.
+  - Remove `_run_maps_scraper`, `_run_apify_actor`, `_get_dataset_items`, `_APIFY_MAPS_ACTOR`
+    if nothing else in the file still uses them after Section 7 also moves off Apify.
+
+**Tests to run before committing:**
+- `cd backend && pytest` — full suite green.
+- Manual: re-run `enrich()` on a couple of raw dicts from a live `RealGoogleMapsProvider.search()`
+  call, confirm output shape unchanged and no Apify calls are made (check Apify dashboard usage
+  stays flat).
+
+**Commit message:**
+```
+refactor(scan): drop redundant Apify Maps actor, reuse free Google data
+```
+
+---
+
+## Section 7 — Free email scraping (replace Apify website-content-crawler)
+
+**Status:** Not started
+
+**Goal:** Replace `_scrape_email_from_website` (currently an Apify `website-content-crawler` run)
+with a plain `httpx` GET + regex scraper — no Apify cost.
+
+**Files to read first:**
+- `backend/app/services/real_providers.py` (`RealEnrichmentService._scrape_email_from_website`)
+
+**Files to modify:**
+- `backend/app/services/real_providers.py`:
+  - Rewrite `_scrape_email_from_website` to `httpx.AsyncClient.get()` a short list of candidate
+    pages (homepage, `/contact`, `/contact-us`, `/about`, `/a-propos`) with a short timeout and
+    a normal browser `User-Agent` header, and regex-match `_EMAIL_REGEX` against the raw HTML
+    text of each. Stop at the first valid match (still excluding `_EMAIL_BLOCKLIST` entries).
+  - Any request failure (timeout, 403, DNS error) for one candidate page must not abort the
+    others — try each page independently, return `""` only if all fail or none contain an email.
+  - Remove `_APIFY_CRAWLER_ACTOR` usage from this method.
+
+**Tests to run before committing:**
+- `cd backend && pytest` — full suite green.
+- Manual: re-run against the known-good case from Section 3 (`woyago.com` → expect
+  `ohlala@woyago.com`) and confirm it still resolves without Apify. Test 3-5 more real sites from
+  a fresh scan and record the free-scrape hit rate for comparison against the ~40-55% estimate.
+
+**Commit message:**
+```
+refactor(scan): replace Apify email crawler with free httpx scraping
+```
+
+---
+
+## Section 8 — Free Booking.com / Expedia presence + real rating
+
+**Status:** Not started
+
+**Goal:** Replace the current HEAD-request heuristic (`_check_ota_presence`) with a real GET +
+HTML-parse against Booking.com and Expedia search result pages, and — for Booking.com — extract
+the actual listing rating (0-10 scale) instead of mislabeling the Google rating as `note_booking`.
+
+**Files to read first:**
+- `backend/app/services/real_providers.py` (`RealEnrichmentService._check_ota_presence`,
+  `RealEnrichmentService.enrich`)
+
+**Files to modify:**
+- `backend/app/services/real_providers.py`:
+  - Rewrite `_check_ota_presence` (or split into `_check_booking` / `_check_expedia`) to
+    `GET` the OTA's search results page for the business name + city, and parse the HTML
+    for a matching listing (fuzzy name match against the prospect's `nom`) rather than relying
+    on a redirect URL pattern.
+  - For Booking.com specifically: when a matching listing is found, also extract its real rating
+    (0-10 scale) from the search result HTML and return it alongside the boolean — this becomes
+    the correctly-scaled `note_booking`.
+  - `enrich()`: set `note_booking` from this real Booking rating (or `None` if no match), not
+    from the Google rating. Google's rating can still be kept internally on the raw dict for
+    reference/logging but must not be written to `note_booking`.
+  - Document in code that OTA search-page HTML structure changes periodically — this scraper
+    should fail soft (return `False`/`None`) on any parse error, never raise.
+
+**Tests to run before committing:**
+- `cd backend && pytest` — full suite green.
+- Manual: run against 5-10 real prospects, spot-check at least one known-listed hotel/riad
+  manually on Booking.com/Expedia to confirm the presence detection and rating extraction are
+  actually correct (not just non-crashing).
+
+**Commit message:**
+```
+fix(scan): scrape real Booking/Expedia presence and correct note_booking scale
+```
+
+---
+
+## Section 9 — Best-effort `nb_chambres` extraction
+
+**Status:** Not started
+
+**Goal:** Attempt to extract a room count from crawled page text (the same pages fetched in
+Section 7) via keyword/regex patterns (e.g. "12 chambres", "20 rooms", "suites: 8"). Low
+expected yield (~10-20%, per the earlier estimate) — this is a best-effort pass, not a
+guaranteed field.
+
+**Files to read first:**
+- `backend/app/services/real_providers.py` (as modified by Section 7)
+
+**Files to modify:**
+- `backend/app/services/real_providers.py`:
+  - Add a small regex set (French + English patterns: `(\d+)\s*(chambres|rooms|suites)`) run
+    against the same page text already fetched during email scraping (Section 7) — no extra
+    HTTP requests needed, reuse the fetched text.
+  - `enrich()`: set `nb_chambres` from the first confident match, else keep `None` (current
+    behavior — this is strictly additive, never a regression).
+
+**Tests to run before committing:**
+- `cd backend && pytest` — full suite green.
+- Manual: check whether any of the previously-tested real sites (Section 2/3/7 examples) yield
+  a room count; record the actual hit rate against the ~10-20% estimate.
+
+**Commit message:**
+```
+feat(scan): best-effort nb_chambres extraction from scraped page text
+```
+
+---
+
+## Section 10 — Remove Apify dependency from the default path
+
+**Status:** Not started
+
+**Goal:** After Sections 6-9 replace every Apify-dependent stage with free scraping, remove the
+now-unused Apify plumbing so the scan pipeline no longer makes any paid calls by default, and
+keep `APIFY_API_TOKEN` as a dormant/optional setting for future reintroduction (e.g. a future
+Booking.com-specific paid actor per the earlier cost analysis) rather than deleting it outright.
+
+**Files to read first:**
+- `backend/app/services/real_providers.py` (full file, post Sections 6-9)
+- `backend/.env`, `backend/.env.example`
+
+**Files to modify:**
+- `backend/app/services/real_providers.py` — remove `_run_apify_actor`, `_get_dataset_items`,
+  `_APIFY_BASE_URL`, `_APIFY_MAPS_ACTOR`, `_APIFY_CRAWLER_ACTOR`, `_APIFY_POLL_INTERVAL_S`,
+  `_APIFY_RUN_TIMEOUT_S` if nothing references them anymore.
+- `backend/app/config.py` — keep `APIFY_API_TOKEN` field (no removal; dormant for future use).
+- `backend/.env.example` — update the scraping comment block to reflect that Apify is optional/
+  unused by default post-revision.
+
+**Tests to run before committing:**
+- `cd backend && pytest` — full suite green.
+- Manual: run a real scan end-to-end (`ENV=production`, `GOOGLE_MAPS_API_KEY` set,
+  `APIFY_API_TOKEN` empty or unset) and confirm it completes successfully with zero Apify usage,
+  producing better-populated scores than the Section 5 baseline (58-66 ceiling).
+
+**Commit message:**
+```
+chore(scan): remove unused Apify actor plumbing from default scan path
+```
+
+---
+
+## Updated field coverage after this revision
+
+| Field | Source after revision | Cost |
+|---|---|---|
+| `adresse_web` | Google Places API (unchanged) | Free |
+| `email_contact` | Free httpx scrape (Section 7) | Free |
+| `presence_booking` | Free Booking.com scrape (Section 8) | Free |
+| `note_booking` | Free Booking.com scrape, correct 0-10 scale (Section 8) | Free |
+| `presence_expedia` | Free Expedia scrape (Section 8) | Free |
+| `nb_chambres` | Free best-effort text extraction (Section 9) | Free, low yield |
+| `linkedin_contact` | **Dismissed — stays `None` permanently** | N/A |
+
+---
+
 ## Out of scope for this plan
 
-- LinkedIn scraping (`linkedin_contact`, real `nom_contact`/`poste_contact`) — Phase 2.2
+- LinkedIn scraping (`linkedin_contact`, real `nom_contact`/`poste_contact`) — dismissed
+  permanently per the cost/success analysis (see Revision above), not deferred to a later phase
 - Email sending / n8n (already handled separately)
 - YouSign / contract signature (deferred, own plan later)
 - OTA webhook, S3 migration — unrelated to scan
