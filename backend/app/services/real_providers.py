@@ -18,7 +18,6 @@ _PLACES_TEXTSEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/
 _PLACES_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 
 _APIFY_BASE_URL = "https://api.apify.com/v2"
-_APIFY_MAPS_ACTOR = "compass~crawler-google-places"
 _APIFY_CRAWLER_ACTOR = "apify~website-content-crawler"
 _APIFY_POLL_INTERVAL_S = 3
 _APIFY_RUN_TIMEOUT_S = 60
@@ -83,15 +82,16 @@ class RealGoogleMapsProvider:
 
             results: list[dict] = []
             for i, place in enumerate(raw_places):
-                website = await self._fetch_website(client, place.get("place_id", ""))
+                details = await self._fetch_details(client, place.get("place_id", ""))
                 results.append({
                     "nom": place.get("name", ""),
-                    "adresse_web": website,
+                    "adresse_web": details.get("website", ""),
                     "email_contact": "",
                     "ville": ville,
                     "pays": pays,
                     "type": type_partenaire,
                     "place_id": place.get("place_id", ""),
+                    "phone": details.get("phone", ""),
                     "note_google": place.get("rating"),
                     "nb_avis_google": place.get("user_ratings_total", 0),
                     "_index": i,
@@ -125,17 +125,31 @@ class RealGoogleMapsProvider:
 
         return best
 
-    async def _fetch_website(self, client: httpx.AsyncClient, place_id: str) -> str:
+    async def _fetch_details(self, client: httpx.AsyncClient, place_id: str) -> dict:
+        """
+        Place Details does not expose a business email field (confirmed against the
+        API — only website and phone are available beyond what Text Search already
+        returns), so email is sourced entirely via website scraping in
+        RealEnrichmentService instead.
+        """
         if not place_id:
-            return ""
+            return {}
         data = await self._get_json(
             client,
             _PLACES_DETAILS_URL,
-            {"place_id": place_id, "fields": "website", "key": settings.GOOGLE_MAPS_API_KEY},
+            {
+                "place_id": place_id,
+                "fields": "website,international_phone_number",
+                "key": settings.GOOGLE_MAPS_API_KEY,
+            },
         )
         if data.get("status") != "OK":
-            return ""
-        return data.get("result", {}).get("website", "")
+            return {}
+        result = data.get("result", {})
+        return {
+            "website": result.get("website", ""),
+            "phone": result.get("international_phone_number", ""),
+        }
 
     async def _get_json(self, client: httpx.AsyncClient, url: str, params: dict) -> dict:
         try:
@@ -158,9 +172,10 @@ class RealGoogleMapsProvider:
 class RealEnrichmentService:
     """
     Enriches a raw place dict (from RealGoogleMapsProvider) with real data:
-      Stage 1 — Apify Google Maps Scraper (email, website, categories, rating)
-      Stage 2 — website /contact page crawl for an email (only if Stage 1 found none)
-      Stage 3 — Booking.com / Expedia presence heuristic (HEAD request)
+      Stage 1 — website /contact page crawl for an email (Apify website-content-crawler;
+                website/rating/reviews already come from RealGoogleMapsProvider — Google
+                Places Details has no business-email field, confirmed against the API)
+      Stage 2 — Booking.com / Expedia presence heuristic (HEAD request)
     Any stage failure degrades gracefully — the pipeline never crashes on
     enrichment errors, it just falls back to the raw/default values, matching
     MockEnrichmentService's guaranteed-output-shape contract.
@@ -171,23 +186,21 @@ class RealEnrichmentService:
         enriched = dict(raw)
         enriched.pop("_index", None)
         enriched.pop("place_id", None)
+        enriched.pop("phone", None)
         enriched.pop("note_google", None)
         enriched.pop("nb_avis_google", None)
 
+        website = raw.get("adresse_web") or ""
+        note = raw.get("note_google")
+        reviews_count = raw.get("nb_avis_google") or 0
+
         async with httpx.AsyncClient(timeout=30.0) as client:
-            maps_data = await self._run_maps_scraper(client, raw["nom"], raw["ville"])
-
-            website = maps_data.get("website") or raw.get("adresse_web") or ""
-            email = maps_data.get("email") or ""
-
-            if not email and website:
+            email = ""
+            if website:
                 email = await self._scrape_email_from_website(client, website)
 
             presence_booking = await self._check_ota_presence(client, "booking.com", raw["nom"])
             presence_expedia = await self._check_ota_presence(client, "expedia.com", raw["nom"])
-
-            note = maps_data.get("totalScore") or raw.get("note_google")
-            reviews_count = maps_data.get("reviewsCount") or raw.get("nb_avis_google") or 0
 
         enriched.update({
             "adresse_web": website,
@@ -204,25 +217,6 @@ class RealEnrichmentService:
             ),
         })
         return enriched
-
-    async def _run_maps_scraper(
-        self, client: httpx.AsyncClient, nom: str, ville: str
-    ) -> dict:
-        try:
-            run = await self._run_apify_actor(
-                client,
-                _APIFY_MAPS_ACTOR,
-                {
-                    "searchStringsArray": [f"{nom} {ville}"],
-                    "maxCrawledPlacesPerSearch": 1,
-                    "language": "fr",
-                },
-            )
-            items = await self._get_dataset_items(client, run)
-            return items[0] if items else {}
-        except Exception as exc:
-            logger.warning("Apify maps scraper failed for %r | error=%s", nom, exc)
-            return {}
 
     async def _scrape_email_from_website(self, client: httpx.AsyncClient, website: str) -> str:
         try:

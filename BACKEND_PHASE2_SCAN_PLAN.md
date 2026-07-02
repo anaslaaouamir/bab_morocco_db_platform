@@ -264,7 +264,21 @@ _None — verification only, no commit unless a fix is needed (in which case it 
 
 ## Section 6 — Drop the redundant Apify Maps actor call
 
-**Status:** Not started
+**Status:** Done
+
+**Finding confirmed:** Google Places Details does not expose a business email field — only
+`website` and `international_phone_number` beyond what Text Search already returns. Extended
+`_fetch_details` (renamed from `_fetch_website`) to also fetch phone, stored transiently on the
+raw dict and stripped in `enrich()` (not yet used — no `phone` column on `Prospect` — kept for a
+future field addition, not wired further here).
+
+**Manual verification:** Ran `RealGoogleMapsProvider.search()` + `RealEnrichmentService.enrich()`
+against live APIs for Marrakech/hotel_riad — confirmed `phone` correctly captured
+(`+212 6 38 37 89 01`) and correctly absent from the final enriched output; `website`/
+`note_booking`/`capacite_description` still populate correctly from the free Google data with
+no Apify Maps actor call (noticeably faster — no ~60s Apify poll wait). Output shape unchanged.
+`app/tests/test_scan.py` (10 tests) + `app/tests/test_prospects.py` (21 tests) — 31 passed,
+~18s.
 
 **Goal:** Remove `_run_maps_scraper()` (the `compass/crawler-google-places` call) since it mostly
 duplicates data already fetched for free by `RealGoogleMapsProvider` (Section 2). Keep only its
