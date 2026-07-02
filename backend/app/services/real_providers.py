@@ -24,6 +24,11 @@ _APIFY_RUN_TIMEOUT_S = 60
 
 _EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 _EMAIL_BLOCKLIST = ("noreply", "no-reply", "example.com", "test@", "sentry")
+_EMAIL_CANDIDATE_PATHS = ("", "/contact", "/contact-us", "/about", "/a-propos")
+_SCRAPE_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 _QUERY_TEMPLATES: dict[str, str] = {
     "hotel_riad": "riad hotel {ville} {pays}",
@@ -172,9 +177,10 @@ class RealGoogleMapsProvider:
 class RealEnrichmentService:
     """
     Enriches a raw place dict (from RealGoogleMapsProvider) with real data:
-      Stage 1 — website /contact page crawl for an email (Apify website-content-crawler;
-                website/rating/reviews already come from RealGoogleMapsProvider — Google
-                Places Details has no business-email field, confirmed against the API)
+      Stage 1 — free httpx scrape of a few candidate pages (homepage, /contact, /about, ...)
+                for an email via regex (no Apify; website/rating/reviews already come from
+                RealGoogleMapsProvider — Google Places Details has no business-email field,
+                confirmed against the API)
       Stage 2 — Booking.com / Expedia presence heuristic (HEAD request)
     Any stage failure degrades gracefully — the pipeline never crashes on
     enrichment errors, it just falls back to the raw/default values, matching
@@ -219,23 +225,31 @@ class RealEnrichmentService:
         return enriched
 
     async def _scrape_email_from_website(self, client: httpx.AsyncClient, website: str) -> str:
-        try:
-            contact_url = website.rstrip("/") + "/contact"
-            run = await self._run_apify_actor(
-                client,
-                _APIFY_CRAWLER_ACTOR,
-                {"startUrls": [{"url": contact_url}, {"url": website}], "maxCrawlPages": 2},
-            )
-            items = await self._get_dataset_items(client, run)
-            for item in items:
-                text = item.get("text", "")
-                for match in _EMAIL_REGEX.findall(text):
+        """
+        Free scrape: GET a short list of candidate pages and regex-match an email in
+        the raw HTML. Each candidate page is tried independently — a failure (timeout,
+        403, DNS error) on one page must not prevent trying the others. Returns the
+        first valid match found, or "" if none of the candidates yield one.
+        """
+        base = website.rstrip("/")
+        for path in _EMAIL_CANDIDATE_PATHS:
+            url = base + path
+            try:
+                response = await client.get(
+                    url,
+                    headers={"User-Agent": _SCRAPE_USER_AGENT},
+                    timeout=10.0,
+                    follow_redirects=True,
+                )
+                if response.status_code >= 400:
+                    continue
+                for match in _EMAIL_REGEX.findall(response.text):
                     if not any(bad in match.lower() for bad in _EMAIL_BLOCKLIST):
                         return match
-            return ""
-        except Exception as exc:
-            logger.warning("Website email scrape failed for %r | error=%s", website, exc)
-            return ""
+            except httpx.HTTPError as exc:
+                logger.debug("Email scrape failed for %r | error=%s", url, exc)
+                continue
+        return ""
 
     async def _check_ota_presence(
         self, client: httpx.AsyncClient, domain: str, nom: str

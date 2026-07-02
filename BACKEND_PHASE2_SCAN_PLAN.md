@@ -317,7 +317,27 @@ refactor(scan): drop redundant Apify Maps actor, reuse free Google data
 
 ## Section 7 — Free email scraping (replace Apify website-content-crawler)
 
-**Status:** Not started
+**Status:** Done
+
+**Manual verification results:**
+- `_scrape_email_from_website` rewritten to plain `httpx.AsyncClient.get()` against 5 candidate
+  paths (homepage, `/contact`, `/contact-us`, `/about`, `/a-propos`) with a normal browser
+  `User-Agent`, regex-matched independently per page — one page's failure never blocks the rest.
+- Tested against 6 real Paris tour operators from a live scan:
+  **4/6 (67%) hit rate** — `info@emitravel.net`, `booking@paris-trip.com`,
+  `contact@myprivateparis.com`, `infoamsterdam@whiteumbrellatours.com` all correctly extracted.
+  Better than the original ~40-55% estimate.
+- The one known regression case: `woyago.com` (Section 3's original Apify success case) returns
+  no email via free scraping. Investigated directly — the email is not present anywhere in the
+  raw HTML of the homepage or any candidate contact page (confirmed no Cloudflare email
+  obfuscation markers either), meaning it's rendered client-side via JavaScript. This is the
+  expected free/paid gap: Apify's actor uses a real headless browser that executes JS; a plain
+  `httpx` GET cannot. Accepted as a known limitation, not a bug — matches the documented
+  free-vs-paid tradeoff.
+- `_run_apify_actor` / `_get_dataset_items` / `_APIFY_CRAWLER_ACTOR` are now unused but left in
+  place per plan sequencing — actual removal is Section 10's scope.
+- `app/tests/test_scan.py` + `app/tests/test_prospects.py` — 31 passed, ~21s (ENV=development,
+  mocks active). Full suite run separately to confirm no wider regressions.
 
 **Goal:** Replace `_scrape_email_from_website` (currently an Apify `website-content-crawler` run)
 with a plain `httpx` GET + regex scraper — no Apify cost.
