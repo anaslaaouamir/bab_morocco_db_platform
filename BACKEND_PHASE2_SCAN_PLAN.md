@@ -421,35 +421,30 @@ fix(scan): stop mislabeling Google rating as note_booking, document OTA block
 
 ---
 
-## Section 9 — Best-effort `nb_chambres` extraction
+## Section 9 — Best-effort `nb_chambres` extraction — SKIPPED, not feasible for now
 
-**Status:** Not started
+**Status:** Skipped (2026-07-02) — `nb_chambres` stays permanently `None`, no code change made.
 
-**Goal:** Attempt to extract a room count from crawled page text (the same pages fetched in
-Section 7) via keyword/regex patterns (e.g. "12 chambres", "20 rooms", "suites: 8"). Low
-expected yield (~10-20%, per the earlier estimate) — this is a best-effort pass, not a
-guaranteed field.
+**Original goal:** Extract a room count from crawled page text via regex (e.g. "12 chambres",
+"20 rooms") reusing the pages already fetched in Section 7.
 
-**Files to read first:**
-- `backend/app/services/real_providers.py` (as modified by Section 7)
+**Finding — not a blocking/access problem (unlike Section 8), a data-shape problem:**
+Live-tested a `(\d+)\s*(chambres?|rooms?|suites?)` regex against real fetched pages (2 Marrakech
+riads + a real hotel's dedicated `/rooms` page) — **zero matches** across all of them. The pages
+are fully reachable (no anti-bot block), but hotels/riads simply don't publish room count as a
+single stated number in prose. They list individual **room types/categories** by name instead
+(e.g. "Suites", "Spacious suite with a double bed...") with no aggregate total anywhere in the
+text. Confirmed directly on a real hotel's `/rooms` page, not assumed.
 
-**Files to modify:**
-- `backend/app/services/real_providers.py`:
-  - Add a small regex set (French + English patterns: `(\d+)\s*(chambres|rooms|suites)`) run
-    against the same page text already fetched during email scraping (Section 7) — no extra
-    HTTP requests needed, reuse the fetched text.
-  - `enrich()`: set `nb_chambres` from the first confident match, else keep `None` (current
-    behavior — this is strictly additive, never a regression).
+A more sophisticated heuristic (counting distinct room-type sections as a rough proxy) was
+considered but rejected: 3 room-type listings doesn't reliably mean 3 physical rooms — could be
+3 categories each with multiple units — making it a guess dressed up as data, not a real
+improvement over `None`.
 
-**Tests to run before committing:**
-- `cd backend && pytest` — full suite green.
-- Manual: check whether any of the previously-tested real sites (Section 2/3/7 examples) yield
-  a room count; record the actual hit rate against the ~10-20% estimate.
-
-**Commit message:**
-```
-feat(scan): best-effort nb_chambres extraction from scraped page text
-```
+**Decision (per user, 2026-07-02):** Skip this field entirely for now. `nb_chambres` remains
+hardcoded `None` in `RealEnrichmentService.enrich()` (already its current value — no code
+change was needed). Revisit only if a future paid/structured data source becomes available
+(e.g. a hotel-industry API, not general web scraping).
 
 ---
 
