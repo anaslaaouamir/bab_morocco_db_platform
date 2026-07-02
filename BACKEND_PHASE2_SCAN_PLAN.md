@@ -368,42 +368,55 @@ refactor(scan): replace Apify email crawler with free httpx scraping
 
 ---
 
-## Section 8 — Free Booking.com / Expedia presence + real rating
+## Section 8 — Booking.com / Expedia presence + rating — BLOCKED, decision deferred
 
-**Status:** Not started
+**Status:** Done (scoped down — see finding below)
 
-**Goal:** Replace the current HEAD-request heuristic (`_check_ota_presence`) with a real GET +
-HTML-parse against Booking.com and Expedia search result pages, and — for Booking.com — extract
-the actual listing rating (0-10 scale) instead of mislabeling the Google rating as `note_booking`.
+**Original goal:** Replace the HEAD-request heuristic with a real GET + HTML-parse against
+Booking.com and Expedia search results, and extract a real Booking.com rating (0-10 scale) to
+fix `note_booking`'s scale-mismatch bug (it was populated from the Google rating, 0-5 scale,
+against a scoring check written for a 0-10 scale).
 
-**Files to read first:**
-- `backend/app/services/real_providers.py` (`RealEnrichmentService._check_ota_presence`,
-  `RealEnrichmentService.enrich`)
+**Finding — free scraping is not viable for either platform (verified live, 2026-07-02):**
+- **Booking.com** returns an **AWS WAF JavaScript challenge** page (HTTP 202, no real search
+  content) on every plain HTTP request — confirmed by fetching a real search URL directly and
+  inspecting the response body (`challenge.js`, `awsWafCookieDomainList`).
+- **Expedia** returns an explicit **"Bot or Not?"** block page (HTTP 429) — same direct-fetch
+  verification.
+- Both require a real or headless browser to get past (i.e. paid, e.g. a dedicated Apify actor —
+  see the cost/success estimates from the pre-Section-6 conversation: ~85-90% success, ~$0.01-
+  0.02/prospect). This is not a parsing-quality problem the original plan's "GET + HTML-parse"
+  approach could have fixed — no HTML is ever served to a non-browser client.
 
-**Files to modify:**
+**Decision (per user, 2026-07-02):** Keep `presence_booking` / `presence_expedia` hardcoded
+`False` and `note_booking` hardcoded `None` for now. Do **not** drop these fields from the
+scoring formula (`scoring.py` `_score_activite` / `_score_liberte` are unchanged) — they stay
+part of the score, they will just always resolve to their default/zero contribution until a
+future decision is made. **Open decision for later** (not resolved by this plan): drop
+presence/rating from scoring entirely, pay for a dedicated OTA-scraper Apify actor, or leave as
+permanently free/`False` indefinitely.
+
+**Files modified:**
 - `backend/app/services/real_providers.py`:
-  - Rewrite `_check_ota_presence` (or split into `_check_booking` / `_check_expedia`) to
-    `GET` the OTA's search results page for the business name + city, and parse the HTML
-    for a matching listing (fuzzy name match against the prospect's `nom`) rather than relying
-    on a redirect URL pattern.
-  - For Booking.com specifically: when a matching listing is found, also extract its real rating
-    (0-10 scale) from the search result HTML and return it alongside the boolean — this becomes
-    the correctly-scaled `note_booking`.
-  - `enrich()`: set `note_booking` from this real Booking rating (or `None` if no match), not
-    from the Google rating. Google's rating can still be kept internally on the raw dict for
-    reference/logging but must not be written to `note_booking`.
-  - Document in code that OTA search-page HTML structure changes periodically — this scraper
-    should fail soft (return `False`/`None`) on any parse error, never raise.
+  - `_check_ota_presence` — simplified to a documented hardcoded `False` (removed the HEAD
+    request entirely — it always failed silently for the same WAF/bot-block reason, so keeping
+    it was wasted network calls, not a real heuristic).
+  - `enrich()` — `note_booking` now set to `None` instead of `raw.get("note_google")` (fixes the
+    mislabeling bug honestly — no longer pretends a Google rating is a Booking rating).
 
-**Tests to run before committing:**
-- `cd backend && pytest` — full suite green.
-- Manual: run against 5-10 real prospects, spot-check at least one known-listed hotel/riad
-  manually on Booking.com/Expedia to confirm the presence detection and rating extraction are
-  actually correct (not just non-crashing).
+**Manual verification:**
+- Live-fetched real Booking.com and Expedia search URLs directly, confirmed both block with
+  bot-detection pages (not a code bug — verified against the actual services).
+- Re-ran `enrich()` against 2 real Marrakech riads: `note_booking` correctly `None`,
+  `presence_booking`/`presence_expedia` correctly `False`, email scraping (Section 7) still
+  working (`riadfleurdesable@gmail.com` found this run).
+- `app/tests/test_scan.py` + `test_prospects.py` + `test_scoring.py` — 42 passed, ~20s
+  (ENV=development, mocks active — scoring tests confirm no regression in the scoring engine
+  itself, which is unchanged).
 
 **Commit message:**
 ```
-fix(scan): scrape real Booking/Expedia presence and correct note_booking scale
+fix(scan): stop mislabeling Google rating as note_booking, document OTA block
 ```
 
 ---

@@ -181,7 +181,8 @@ class RealEnrichmentService:
                 for an email via regex (no Apify; website/rating/reviews already come from
                 RealGoogleMapsProvider — Google Places Details has no business-email field,
                 confirmed against the API)
-      Stage 2 — Booking.com / Expedia presence heuristic (HEAD request)
+      Stage 2 — Booking.com / Expedia presence + rating: currently disabled, see
+                `_check_ota_presence` for why (both platforms actively block scraping).
     Any stage failure degrades gracefully — the pipeline never crashes on
     enrichment errors, it just falls back to the raw/default values, matching
     MockEnrichmentService's guaranteed-output-shape contract.
@@ -197,7 +198,6 @@ class RealEnrichmentService:
         enriched.pop("nb_avis_google", None)
 
         website = raw.get("adresse_web") or ""
-        note = raw.get("note_google")
         reviews_count = raw.get("nb_avis_google") or 0
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -212,7 +212,11 @@ class RealEnrichmentService:
             "adresse_web": website,
             "email_contact": email,
             "presence_booking": presence_booking,
-            "note_booking": note,
+            # Not the Google rating — Booking.com's own 0-10 rating is what this field
+            # means (see scoring.py's `> 8.0` check). We don't have a reliable source for
+            # it (see _check_ota_presence), so it stays None rather than mislabeling the
+            # Google rating (0-5 scale) as a Booking rating.
+            "note_booking": None,
             "presence_expedia": presence_expedia,
             "nb_chambres": None,
             "linkedin_contact": None,
@@ -254,17 +258,16 @@ class RealEnrichmentService:
     async def _check_ota_presence(
         self, client: httpx.AsyncClient, domain: str, nom: str
     ) -> bool:
-        try:
-            response = await client.head(
-                f"https://www.{domain}/search.html",
-                params={"ss": nom},
-                follow_redirects=True,
-            )
-            path = str(response.url.path).lower()
-            marker = "/hotel/" if "booking" in domain else "/h"
-            return marker in path
-        except httpx.HTTPError:
-            return False
+        """
+        Hardcoded False — verified directly against both platforms (2026-07-02):
+        Booking.com returns an AWS WAF JavaScript challenge (HTTP 202, no real search
+        results) on every plain HTTP request; Expedia returns an explicit "Bot or Not?"
+        block page (HTTP 429). Neither can be scraped for free without a real/headless
+        browser. Left as a stub (not deleted) so this can be swapped for a paid Apify
+        actor or a browser-based scraper later without touching enrich()'s call sites.
+        See BACKEND_PHASE2_SCAN_PLAN.md Section 8 for the decision this is pending on.
+        """
+        return False
 
     async def _run_apify_actor(
         self, client: httpx.AsyncClient, actor: str, run_input: dict
