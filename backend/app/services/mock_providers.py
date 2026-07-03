@@ -137,7 +137,7 @@ class MockEnrichmentService:
       odd  index → poor attributes (veille territory)
     """
 
-    async def enrich(self, raw: dict) -> dict:
+    async def enrich(self, raw: dict, browser=None) -> dict:
         idx = raw.get("_index", 0)
         enriched = dict(raw)
 

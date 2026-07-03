@@ -15,13 +15,14 @@ from sqlalchemy.exc import IntegrityError
 from app.models.prospect import Prospect
 from app.models.scan_job import ScanJob
 from app.models.user import User
-from app.services.real_providers import get_scan_providers
+from app.services.real_providers import RealEnrichmentService, get_scan_providers
 from app.services.scoring import scoring_engine
 from app.services.prospect_service import COMMISSION_DEFAULTS, detect_langue
 
 logger = logging.getLogger(__name__)
 
 _maps_provider, _enrichment_svc = get_scan_providers()
+_USES_PLAYWRIGHT = isinstance(_enrichment_svc, RealEnrichmentService)
 
 
 async def _distribute_to_commercials(db, prospect_ids: list[uuid.UUID]) -> None:
@@ -65,7 +66,19 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
             logger.error("ScanJob %s not found", job_id)
             return
 
+        browser = None
+        pw_ctx = None
         try:
+            # One shared Chromium instance for the whole job — Playwright's
+            # fallback fires per-prospect (see real_providers.py Section 4),
+            # and launching a fresh browser for each one would dominate scan
+            # time at 50-100 prospects/scan. Only launched when the real
+            # enrichment service is active; mocks never touch Playwright.
+            if _USES_PLAYWRIGHT:
+                from playwright.async_api import async_playwright
+                pw_ctx = await async_playwright().start()
+                browser = await pw_ctx.chromium.launch(headless=True)
+
             # ── Step 1: Mock Google Maps search ──────────────────────────────
             job.statut = "running"
             await db.commit()
@@ -84,7 +97,7 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
 
             for i, raw in enumerate(raw_results):
                 # ── Step 2: Enrichment ──────────────────────────────────────
-                enriched = await _enrichment_svc.enrich(raw)
+                enriched = await _enrichment_svc.enrich(raw, browser)
 
                 # ── Step 3: Scoring ─────────────────────────────────────────
                 breakdown = scoring_engine.compute_breakdown(enriched)
@@ -172,3 +185,9 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
             job.statut = "error"
             job.erreur = str(exc)
             await db.commit()
+        finally:
+            # Always release the shared browser, even on a mid-scan crash.
+            if browser is not None:
+                await browser.close()
+            if pw_ctx is not None:
+                await pw_ctx.stop()
