@@ -43,6 +43,11 @@ class OutreachEmailResponse(BaseModel):
     created_at: datetime
 
 
+class OutreachEmailUpdate(BaseModel):
+    sujet: Optional[str] = None
+    corps: Optional[str] = None
+
+
 class NextStepResponse(BaseModel):
     next_step: Optional[str]
     reason: str

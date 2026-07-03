@@ -770,7 +770,12 @@ export default function NegociationPage() {
 
   // scenario confirm (A or B)
   const [confirmScenario, setConfirmScenario] = useState<RawScenario | null>(null);
+  const [confirmMessage, setConfirmMessage] = useState("");
   const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (confirmScenario) setConfirmMessage(confirmScenario.message_propose);
+  }, [confirmScenario]);
 
   // escalade dialog (C)
   const [escaladeScenario, setEscaladeScenario] = useState<RawScenario | null>(null);
@@ -971,7 +976,8 @@ export default function NegociationPage() {
     if (!confirmScenario || !selectedId) return;
     setConfirming(true);
     try {
-      const msg = await negotiationApi.respond(selectedId, confirmScenario.scenario as "A" | "B" | "C");
+      const edited = confirmMessage.trim() !== confirmScenario.message_propose.trim() ? confirmMessage : undefined;
+      const msg = await negotiationApi.respond(selectedId, confirmScenario.scenario as "A" | "B" | "C", edited);
       handleRespondDone(selectedId, { scenarioChosen: confirmScenario.scenario, sentMessage: msg.corps, isEscalation: false, sentAt: new Date().toISOString() });
       showSnackbar({ message: `Scénario ${confirmScenario.scenario} envoyé à ${selectedProspect?.nom}.`, severity: "success", duration: 5000 });
       setConfirmScenario(null);
@@ -1451,19 +1457,18 @@ export default function NegociationPage() {
                 {confirmScenario.description}
               </Typography>
               <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
-                Message qui sera envoyé :
+                Message qui sera envoyé — modifiable avant l&apos;envoi :
               </Typography>
-              <Box sx={{
-                p: "10px 12px", borderRadius: 2,
-                bgcolor: "action.hover", border: `1px solid ${theme.palette.divider}`,
-                maxHeight: 160, overflow: "auto",
-              }}>
-                {confirmScenario.message_propose.split("\n").map((line, i) => (
-                  <Typography key={i} variant="bodySmall" sx={{ display: "block", lineHeight: 1.6, fontFamily: "inherit" }}>
-                    {line || <br />}
-                  </Typography>
-                ))}
-              </Box>
+              <TextField
+                multiline
+                minRows={6}
+                maxRows={12}
+                fullWidth
+                value={confirmMessage}
+                onChange={(e) => setConfirmMessage(e.target.value)}
+                disabled={confirming}
+                sx={{ "& .MuiInputBase-root": { fontSize: "0.8125rem", fontFamily: "inherit" } }}
+              />
               {analysis?.requires_human && confirmScenario.scenario === "A" && (
                 <Typography variant="bodySmall" color="error.main" sx={{ fontWeight: 600, mt: 1 }}>
                   ⚠ Validation humaine obligatoire avant toute réponse au partenaire.

@@ -200,6 +200,12 @@ export const outreachApi = {
   nextStep: (prospectId: string): Promise<RawNextStepResponse> =>
     apiFetch<RawNextStepResponse>(`/outreach/${prospectId}/next-step`),
 
+  update: (emailId: string, data: { sujet?: string; corps?: string }): Promise<RawOutreachEmail> =>
+    apiFetch<RawOutreachEmail>(`/outreach/${emailId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
   validate: (emailId: string): Promise<RawOutreachEmail> =>
     apiFetch<RawOutreachEmail>(`/outreach/${emailId}/validate`, { method: "POST" }),
 

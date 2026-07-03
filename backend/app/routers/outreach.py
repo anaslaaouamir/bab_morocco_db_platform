@@ -9,7 +9,12 @@ from app.dependencies.auth import get_current_user, require_own_prospect
 from app.models.outreach import OutreachEmail
 from app.models.prospect import Prospect
 from app.models.user import User
-from app.schemas.outreach import NextStepResponse, OutreachEmailResponse, TriggerFollowupsResponse
+from app.schemas.outreach import (
+    NextStepResponse,
+    OutreachEmailResponse,
+    OutreachEmailUpdate,
+    TriggerFollowupsResponse,
+)
 from app.services.email_generator import EmailGeneratorProtocol, get_email_generator
 from app.services.email_transport import EmailTransportProtocol, get_email_transport
 from app.services.outreach_service import OutreachService
@@ -67,6 +72,23 @@ async def list_emails(
     prospect: Prospect = Depends(require_own_prospect),
 ):
     return await svc.list_emails(db, prospect.id)
+
+
+@router.patch("/{email_id}", response_model=OutreachEmailResponse)
+async def update_email(
+    email_id: uuid.UUID,
+    body: OutreachEmailUpdate,
+    db: AsyncSession = Depends(get_session),
+    svc: OutreachService = Depends(get_outreach_service),
+    user: User = Depends(get_current_user),
+):
+    await _get_prospect_for_email(email_id, user, db)
+    try:
+        return await svc.update_content(db, email_id, body.sujet, body.corps)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
 
 @router.post("/{email_id}/validate", response_model=OutreachEmailResponse)

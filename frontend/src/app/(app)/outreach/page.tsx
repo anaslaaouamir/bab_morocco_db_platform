@@ -417,6 +417,7 @@ function EmailComposer({
   const [editMode, setEditMode]               = useState(false);
   const [editSubject, setEditSubject]         = useState("");
   const [editBody, setEditBody]               = useState("");
+  const [savingEdit, setSavingEdit]           = useState(false);
   const [confirmType, setConfirmType]         = useState<"validate" | "send" | null>(null);
 
   const fetchedForRef = useRef<string | null>(null);
@@ -575,6 +576,26 @@ function EmailComposer({
     setEditSubject(selectedEmail.sujet);
     setEditBody(selectedEmail.corps);
     setEditMode(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!selectedEmail) return;
+    setSavingEdit(true);
+    try {
+      const updated = await outreachApi.update(selectedEmail.id, { sujet: editSubject, corps: editBody });
+      const next = emails.map((e) => (e.id === selectedEmail.id ? updated : e));
+      setEmails(next);
+      onEmailsChange(prospect.id, next);
+      setEditMode(false);
+      showSnackbar({ message: "Modifications enregistrées.", severity: "success" });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de l'enregistrement.",
+        severity: "error",
+      });
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   const isActionLoading = selectedEmail ? (actionLoading[selectedEmail.id] ?? false) : false;
@@ -793,7 +814,7 @@ function EmailComposer({
               {editMode ? (
                 <>
                   <Alert severity="info" sx={{ mb: 1.5, borderRadius: 2, fontSize: "0.75rem" }}>
-                    Mode édition local — les modifications sont pour votre revue. Le backend conserve le texte généré par l&apos;IA.
+                    Cliquez sur &quot;Enregistrer&quot; pour appliquer vos modifications avant l&apos;envoi.
                   </Alert>
                   <TextField
                     label="Objet"
@@ -858,16 +879,40 @@ function EmailComposer({
                 justifyContent: "space-between", alignItems: "center",
               }}
             >
-              <Button
-                startIcon={editMode ? <VisibilityRoundedIcon /> : <EditRoundedIcon />}
-                onClick={editMode ? () => setEditMode(false) : enterEditMode}
-                variant="outlined"
-                size="small"
-                disabled={isSentOrBeyond}
-                sx={{ fontWeight: 600, textTransform: "none" }}
-              >
-                {editMode ? "Aperçu" : "Modifier (local)"}
-              </Button>
+              {editMode ? (
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <Button
+                    onClick={() => setEditMode(false)}
+                    variant="outlined"
+                    size="small"
+                    disabled={savingEdit}
+                    sx={{ fontWeight: 600, textTransform: "none" }}
+                  >
+                    Annuler
+                  </Button>
+                  <Button
+                    startIcon={savingEdit ? <CircularProgress size={16} color="inherit" /> : <VisibilityRoundedIcon />}
+                    onClick={handleSaveEdit}
+                    variant="contained"
+                    size="small"
+                    disabled={savingEdit || !editSubject.trim() || !editBody.trim()}
+                    sx={{ fontWeight: 600, textTransform: "none" }}
+                  >
+                    Enregistrer
+                  </Button>
+                </Box>
+              ) : (
+                <Button
+                  startIcon={<EditRoundedIcon />}
+                  onClick={enterEditMode}
+                  variant="outlined"
+                  size="small"
+                  disabled={isSentOrBeyond}
+                  sx={{ fontWeight: 600, textTransform: "none" }}
+                >
+                  Modifier
+                </Button>
+              )}
 
               <Box sx={{ display: "flex", gap: 1 }}>
                 {isDraft && (

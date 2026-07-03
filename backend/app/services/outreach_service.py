@@ -176,6 +176,22 @@ class OutreachService:
 
     # ── Validate / Send ───────────────────────────────────────────────────────
 
+    async def update_content(
+        self, db: AsyncSession, email_id: uuid.UUID, sujet: Optional[str], corps: Optional[str]
+    ) -> OutreachEmail:
+        email = await db.get(OutreachEmail, email_id)
+        if not email:
+            raise ValueError("Email not found")
+        if email.statut not in ("draft", "validated"):
+            raise PermissionError("Email can only be edited before it is sent")
+        if sujet is not None:
+            email.sujet = sujet
+        if corps is not None:
+            email.corps = corps
+        await db.commit()
+        await db.refresh(email)
+        return email
+
     async def validate(self, db: AsyncSession, email_id: uuid.UUID) -> OutreachEmail:
         email = await db.get(OutreachEmail, email_id)
         if not email:

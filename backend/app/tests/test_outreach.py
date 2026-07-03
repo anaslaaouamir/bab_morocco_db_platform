@@ -269,3 +269,51 @@ async def test_generate_unknown_prospect_returns_404(client: AsyncClient):
 async def test_send_unknown_email_returns_404(client: AsyncClient):
     r = await client.post(f"/outreach/{uuid.uuid4()}/send")
     assert r.status_code == 404
+
+
+async def test_update_email_persists_edited_content(client: AsyncClient):
+    p = await _create_prospect(client)
+    gen = await client.post(f"/outreach/{p['id']}/generate")
+    email_id = gen.json()[0]["id"]
+
+    r = await client.patch(f"/outreach/{email_id}", json={"sujet": "Nouvel objet", "corps": "Nouveau corps du message"})
+    assert r.status_code == 200
+    assert r.json()["sujet"] == "Nouvel objet"
+    assert r.json()["corps"] == "Nouveau corps du message"
+
+    # Persisted — visible on a fresh fetch, not just in the response
+    listed = await client.get(f"/outreach/{p['id']}")
+    updated = next(e for e in listed.json() if e["id"] == email_id)
+    assert updated["sujet"] == "Nouvel objet"
+    assert updated["corps"] == "Nouveau corps du message"
+
+
+async def test_update_email_reflected_in_sent_email(client: AsyncClient, caplog):
+    """The edited body — not the original AI draft — is what actually gets sent."""
+    p = await _create_prospect(client)
+    gen = await client.post(f"/outreach/{p['id']}/generate")
+    email_id = gen.json()[0]["id"]
+
+    await client.patch(f"/outreach/{email_id}", json={"corps": "Corps édité par l'utilisateur"})
+    await client.post(f"/outreach/{email_id}/validate")
+
+    with caplog.at_level(logging.INFO, logger="app.services.email_transport"):
+        send = await client.post(f"/outreach/{email_id}/send")
+    assert send.status_code == 200
+    assert send.json()["corps"] == "Corps édité par l'utilisateur"
+
+
+async def test_cannot_update_sent_email(client: AsyncClient):
+    p = await _create_prospect(client)
+    gen = await client.post(f"/outreach/{p['id']}/generate")
+    email_id = gen.json()[0]["id"]
+    await client.post(f"/outreach/{email_id}/validate")
+    await client.post(f"/outreach/{email_id}/send")
+
+    r = await client.patch(f"/outreach/{email_id}", json={"sujet": "Trop tard"})
+    assert r.status_code == 403
+
+
+async def test_update_unknown_email_returns_404(client: AsyncClient):
+    r = await client.patch(f"/outreach/{uuid.uuid4()}", json={"sujet": "x"})
+    assert r.status_code == 404
