@@ -19,6 +19,15 @@ export interface RawProspect {
   presence_booking: boolean;
   note_booking: number | null;
   presence_expedia: boolean;
+  note_google: number | null;
+  nb_avis_google: number | null;
+  telephone: string | null;
+  business_status: string | null;
+  https_actif: boolean | null;
+  cta_reservation_present: boolean | null;
+  formulaire_contact_present: boolean | null;
+  reseaux_sociaux: string | null;
+  langues_disponibles: string | null;
   score_activite_digitale: number;
   score_coherence_marche: number;
   score_taille_capacite: number;

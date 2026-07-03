@@ -61,6 +61,15 @@ export interface Prospect {
   presenceBooking: boolean;
   noteBooking?: number;
   presenceExpedia: boolean;
+  noteGoogle?: number;
+  nbAvisGoogle?: number;
+  telephone?: string;
+  businessStatus?: string;
+  httpsActif?: boolean;
+  ctaReservationPresent?: boolean;
+  formulaireContactPresent?: boolean;
+  reseauxSociaux?: string;
+  languesDisponibles?: string;
   score: ScoreBreakdown;
   stage: PipelineStage;
   commissionStandard: number;   // %

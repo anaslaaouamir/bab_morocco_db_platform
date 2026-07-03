@@ -21,6 +21,15 @@ export function rawToProspect(r: RawProspect): Prospect {
     presenceBooking: r.presence_booking,
     noteBooking: r.note_booking ?? undefined,
     presenceExpedia: r.presence_expedia,
+    noteGoogle: r.note_google ?? undefined,
+    nbAvisGoogle: r.nb_avis_google ?? undefined,
+    telephone: r.telephone ?? undefined,
+    businessStatus: r.business_status ?? undefined,
+    httpsActif: r.https_actif ?? undefined,
+    ctaReservationPresent: r.cta_reservation_present ?? undefined,
+    formulaireContactPresent: r.formulaire_contact_present ?? undefined,
+    reseauxSociaux: r.reseaux_sociaux ?? undefined,
+    languesDisponibles: r.langues_disponibles ?? undefined,
     score: {
       activiteDigitale: r.score_activite_digitale,
       coherenceMarche: r.score_coherence_marche,
@@ -59,6 +68,15 @@ export function prospectToCreate(p: Omit<Prospect, "id" | "score">) {
     presence_booking: p.presenceBooking,
     note_booking: p.noteBooking,
     presence_expedia: p.presenceExpedia,
+    note_google: p.noteGoogle,
+    nb_avis_google: p.nbAvisGoogle,
+    telephone: p.telephone,
+    business_status: p.businessStatus,
+    https_actif: p.httpsActif,
+    cta_reservation_present: p.ctaReservationPresent,
+    formulaire_contact_present: p.formulaireContactPresent,
+    reseaux_sociaux: p.reseauxSociaux,
+    langues_disponibles: p.languesDisponibles,
     stage: p.stage,
     commission_standard: p.commissionStandard,
     commission_plancher: p.commissionPlancher,
@@ -89,6 +107,15 @@ export function prospectToUpdate(partial: Partial<Prospect>) {
   if (partial.presenceBooking !== undefined)   out.presence_booking = partial.presenceBooking;
   if (partial.noteBooking !== undefined)       out.note_booking = partial.noteBooking;
   if (partial.presenceExpedia !== undefined)   out.presence_expedia = partial.presenceExpedia;
+  if (partial.noteGoogle !== undefined)        out.note_google = partial.noteGoogle;
+  if (partial.nbAvisGoogle !== undefined)      out.nb_avis_google = partial.nbAvisGoogle;
+  if (partial.telephone !== undefined)         out.telephone = partial.telephone;
+  if (partial.businessStatus !== undefined)    out.business_status = partial.businessStatus;
+  if (partial.httpsActif !== undefined)        out.https_actif = partial.httpsActif;
+  if (partial.ctaReservationPresent !== undefined) out.cta_reservation_present = partial.ctaReservationPresent;
+  if (partial.formulaireContactPresent !== undefined) out.formulaire_contact_present = partial.formulaireContactPresent;
+  if (partial.reseauxSociaux !== undefined)    out.reseaux_sociaux = partial.reseauxSociaux;
+  if (partial.languesDisponibles !== undefined) out.langues_disponibles = partial.languesDisponibles;
   if (partial.stage !== undefined)             out.stage = partial.stage;
   if (partial.commissionStandard !== undefined) out.commission_standard = partial.commissionStandard;
   if (partial.commissionPlancher !== undefined) out.commission_plancher = partial.commissionPlancher;
