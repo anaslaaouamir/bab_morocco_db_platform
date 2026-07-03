@@ -52,6 +52,15 @@ class ProspectCreate(BaseModel):
     presence_booking: bool = False
     note_booking: Optional[float] = None
     presence_expedia: bool = False
+    note_google: Optional[float] = None
+    nb_avis_google: Optional[int] = None
+    telephone: Optional[str] = None
+    business_status: Optional[str] = None
+    https_actif: Optional[bool] = None
+    cta_reservation_present: Optional[bool] = None
+    formulaire_contact_present: Optional[bool] = None
+    reseaux_sociaux: Optional[str] = None
+    langues_disponibles: Optional[str] = None
 
     # Score fields accepted but overridden by engine
     score_activite_digitale: int = Field(default=0, ge=0, le=25)
@@ -85,6 +94,15 @@ class ProspectUpdate(BaseModel):
     presence_booking: Optional[bool] = None
     note_booking: Optional[float] = None
     presence_expedia: Optional[bool] = None
+    note_google: Optional[float] = None
+    nb_avis_google: Optional[int] = None
+    telephone: Optional[str] = None
+    business_status: Optional[str] = None
+    https_actif: Optional[bool] = None
+    cta_reservation_present: Optional[bool] = None
+    formulaire_contact_present: Optional[bool] = None
+    reseaux_sociaux: Optional[str] = None
+    langues_disponibles: Optional[str] = None
 
     stage: Optional[StageEnum] = None
     commission_standard: Optional[float] = None
@@ -112,6 +130,11 @@ class ScorePreviewRequest(BaseModel):
     presence_expedia: bool = False
     nb_chambres: Optional[int] = None
     capacite_description: Optional[str] = None
+    note_google: Optional[float] = None
+    nb_avis_google: Optional[int] = None
+    telephone: Optional[str] = None
+    business_status: Optional[str] = None
+    langues_disponibles: Optional[str] = None
 
 
 class ScorePreviewResponse(BaseModel):
@@ -144,6 +167,15 @@ class ProspectResponse(BaseModel):
     presence_booking: bool
     note_booking: Optional[float]
     presence_expedia: bool
+    note_google: Optional[float]
+    nb_avis_google: Optional[int]
+    telephone: Optional[str]
+    business_status: Optional[str]
+    https_actif: Optional[bool]
+    cta_reservation_present: Optional[bool]
+    formulaire_contact_present: Optional[bool]
+    reseaux_sociaux: Optional[str]
+    langues_disponibles: Optional[str]
 
     score_activite_digitale: int
     score_coherence_marche: int
