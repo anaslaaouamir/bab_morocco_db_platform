@@ -475,8 +475,19 @@ OTA-badge-on-own-site idea.
 
 ## Section 6 — Scan pipeline wiring
 
-**Status:** Partially done — field wiring completed early, during Section 5 (see that section's
-scope note for why). **Remaining scope: only the shared-browser-per-scan-job optimization below.**
+**Status:** Done — committed 2026-07-03 (field wiring was completed early, during Section 5; this
+commit finishes the shared-browser-per-scan-job optimization).
+
+**Manual verification performed:** live scan (`ENV=production`, `GOOGLE_MAPS_API_KEY` set,
+Essaouira / `prestataire_activites` / `limite=3`) run directly against `run_scan_pipeline` (not
+just the mocks). Job completed in 21.5s for 3 real prospects, all three inserted with every new
+field populated (`note_google`, `nb_avis_google`, `https_actif`, `cta_reservation_present`,
+`formulaire_contact_present`, `reseaux_sociaux`, `langues_disponibles`) and correctly scored
+(86-90, all above the outreach threshold — Lou's Rides, Quad Adventure Essaouira, Essaouira Yoga
+& Experiences). Confirmed via `wmic`/`tasklist` that no Playwright-launched Chromium process was
+left running after the job finished — the shared browser closes cleanly in the `finally` block
+even though this run's job completed successfully (crash-path release wasn't separately exercised,
+lower risk since `finally` always runs regardless of which branch raised).
 
 **Goal:** Manage a single shared Playwright `Browser` instance per scan job instead of launching
 one per prospect (the field-wiring half of this section's original goal is already done).
