@@ -28,6 +28,22 @@ class Prospect(Base):
     note_booking: Mapped[float | None] = mapped_column(Float, nullable=True)
     presence_expedia: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Google Places-sourced (free, already fetched by the scan, previously discarded)
+    note_google: Mapped[float | None] = mapped_column(Float, nullable=True)
+    nb_avis_google: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    telephone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    business_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    # Scrape-derived, type-agnostic signals (httpx-first, Playwright fallback — see
+    # SCRAPING_ENRICHMENT_SCORING_PLAN.md). Nullable, not default=False: None means
+    # "never checked" (e.g. manual entry), False means "checked, confirmed absent" —
+    # the scoring engine treats these differently.
+    https_actif: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    cta_reservation_present: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    formulaire_contact_present: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    reseaux_sociaux: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    langues_disponibles: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     score_activite_digitale: Mapped[int] = mapped_column(Integer, default=0)
     score_coherence_marche: Mapped[int] = mapped_column(Integer, default=0)
     score_taille_capacite: Mapped[int] = mapped_column(Integer, default=0)
