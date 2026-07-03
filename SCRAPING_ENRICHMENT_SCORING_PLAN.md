@@ -530,7 +530,11 @@ feat(scan): wire enrichment fields into Prospect rows, share one browser per sca
 
 ## Section 7 — Frontend types + API mapping layer
 
-**Status:** Not started
+**Status:** Done — committed 2026-07-03. `prospectToCreate`/`prospectToUpdate` map all 9 new
+fields symmetrically to the legacy fields (not just the 4 Section 10 will expose on the manual
+add-form) — the human-editable-subset restriction is a Section 10 UI concern, not a mapper-layer
+one. `npx tsc --noEmit` clean. No UI surface changed yet (Sections 8-10 add the actual
+display/edit surfaces), so nothing to verify in a browser preview for this section.
 
 **Goal:** Add the 9 new fields to the frontend's type system and snake↔camel mapping layer.
 
