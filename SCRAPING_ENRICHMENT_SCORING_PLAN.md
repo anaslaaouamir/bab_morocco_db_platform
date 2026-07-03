@@ -239,7 +239,34 @@ chore(scan): add Playwright dependency for enrichment fallback
 
 ## Section 4 — Scraping/enrichment rewrite: httpx-first, Playwright-fallback
 
-**Status:** Not started
+**Status:** Done — committed 2026-07-03.
+
+**Corrections made during implementation:**
+- The "Sentry/Wixpress false-positive" described in this plan's research turned out to already
+  be blocked by the existing `_EMAIL_BLOCKLIST` (it already contained `"sentry"`, which is a
+  substring of `sentry.wixpress.com`) — the false positive only showed up in the throwaway test
+  script's own incomplete filter, not in production code. Added `"wixpress"` to the blocklist
+  defensively anyway (cheap, no downside), but the real, previously-unfixed bug was the missing
+  image-extension check (`Logo-Cyan-Gradient@0.75x.png`-style matches) — that one is now fixed via
+  `_EMAIL_BAD_EXTENSIONS`, and the standalone task flagged for it earlier is superseded/dismissed.
+- There was no phone-scraping regex in production before this section (phone previously came only
+  from Google Places). The new `_PHONE_REGEX` + `_valid_phone` combination was tuned live against
+  `riadfleurdesable.com` (the real GPS-coordinate false-positive site from testing) — the first
+  version (8-digit floor) still let a garbage `"00000080"` match through; raising the digit floor
+  to 10 fixed it and produced a correct `+212 808 662 133` instead. Verified against 3 real sites
+  post-fix (see below).
+- Playwright fallback timing is genuinely variable run-to-run on the same site (confirmed:
+  `marrakechtravelandtransfer.com` took 20.0s and 14.1s and 6.4s across three consecutive runs,
+  sometimes completing well within the 8s cap, sometimes hitting it) — this is real network/render
+  variance, not a bug; the graceful-degradation design (keep httpx's values when the fallback
+  doesn't return in time) already handles it correctly.
+
+**Manual verification performed:** re-ran `RealEnrichmentService.enrich()` directly (not the mock)
+against 3 real cases from this plan's original research — `riadfleurdesable.com` (known
+email/phone false-positive site, now clean), `marrakechtravelandtransfer.com` (known thin-shell
+site, confirmed fallback fires and recovers CTA/social/contact-form data httpx alone misses), and
+`galaxyvoyage.ma` (known-good site, confirmed fallback does NOT fire when httpx already found
+email+phone on a normal-sized page).
 
 **Goal:** Rewrite `RealEnrichmentService.enrich()` to (a) extract the full type-agnostic signal
 set from a single `httpx` fetch, (b) fall back to Playwright only when the `httpx` result looks
