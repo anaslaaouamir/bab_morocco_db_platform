@@ -212,7 +212,9 @@ feat(schemas): add enrichment fields to prospect schemas
 
 ## Section 3 — Playwright dependency
 
-**Status:** Not started
+**Status:** Done — committed 2026-07-03. No backend README/setup doc existed to document the
+`playwright install chromium` post-install step in, so it's documented as a comment directly
+above the dependency line in `requirements.txt` instead.
 
 **Goal:** Add Playwright to the backend's declared dependencies so a fresh environment setup
 matches what's already installed on this machine.
