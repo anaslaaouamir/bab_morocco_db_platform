@@ -366,7 +366,33 @@ matching as emails, GPS coordinates matching as phone numbers.
 
 ## Section 5 — Scoring engine rewrite
 
-**Status:** Not started
+**Status:** Done — committed 2026-07-03.
+
+**Scope note:** also touched `prospect_service.py`'s `update_prospect()` re-scoring dict (flagged
+in Section 2) since it's a hard dependency for scoring to actually read the new fields on edit.
+**Also pulled forward part of Section 6's scope out of necessity**: the full backend suite broke
+after this rewrite (`test_scan.py::test_high_score_goes_to_outreach` and two `test_prospects.py`
+tests) because `scan_pipeline.py` and `MockEnrichmentService` didn't yet wire the 9 new fields
+into scanned `Prospect` rows — every mock-scanned prospect scored identically under the new
+formula (no more even/odd differentiation), so none reached the outreach threshold. Fixed by
+wiring `Prospect(...)`'s constructor (the exact change Section 6 already specified) and extending
+`MockEnrichmentService.enrich()` with deterministic even/odd fake values for the new fields (also
+already anticipated in Section 6's text). **Section 6 now only has the shared-browser-per-scan-job
+optimization left** — the field-wiring half is done.
+
+**Design note surfaced during implementation (flagging for visibility, not changing the plan
+unilaterally):** the manual-entry neutral-pass rule, applied consistently across
+`https_actif`/`cta_reservation_present`/`formulaire_contact_present`/`business_status`, means an
+entirely unscanned/manual prospect now scores 63 (see `test_score_total_always_computed`) versus
+~41 under the old formula — meaningfully closer to the 75 outreach threshold on pure absence of
+negative signal. This is the direct, intended consequence of the neutral-pass design already
+agreed for this plan (extending the old plan's `business_status` precedent to more fields), not a
+bug — but it's a bigger behavior shift than the plan text made obvious, so noting it here in case
+it's worth revisiting once real data is observed post-launch.
+
+**Real-data sanity check:** re-scored 3 real prospects from Section 4's live testing (Riad Fleur
+de Sable, Marrakech Travel & Transfer, Galaxy Voyage) — spread was 80/85/85, all differentiated
+sub-scores, none hitting the old fixed 58/66 ceiling.
 
 **Goal:** Redefine the 5 CLAUDE.md §4 categories (same names, same point totals: 25/25/20/15/15)
 around the fields validated in Sections 1-4 — combining the Google-Places-sourced fields carried
@@ -449,32 +475,31 @@ OTA-badge-on-own-site idea.
 
 ## Section 6 — Scan pipeline wiring
 
-**Status:** Not started
+**Status:** Partially done — field wiring completed early, during Section 5 (see that section's
+scope note for why). **Remaining scope: only the shared-browser-per-scan-job optimization below.**
 
-**Goal:** Wire the 9 new enriched fields into the `Prospect` row, and manage a single shared
-Playwright `Browser` instance per scan job instead of per-prospect.
+**Goal:** Manage a single shared Playwright `Browser` instance per scan job instead of launching
+one per prospect (the field-wiring half of this section's original goal is already done).
 
 **Files to read first:**
 - `backend/app/services/scan_pipeline.py` (full file)
 - `backend/app/services/real_providers.py` (as rewritten in Section 4)
 
-**Files to modify:**
+**Already done (during Section 5):**
+- `Prospect(...)` constructor call in `run_scan_pipeline` now passes all 9 new fields from
+  `enriched`.
+- `MockEnrichmentService.enrich()` (`mock_providers.py`) now populates deterministic even/odd
+  fake values for the 9 new keys, matching the existing quality-split pattern.
+
+**Files still to modify:**
 - `backend/app/services/scan_pipeline.py`:
   - Launch one Playwright `Browser` at the start of `run_scan_pipeline` (only if the real
     enrichment service is active — mocks never touch Playwright) and pass it into
-    `_enrichment_svc.enrich(raw, browser)` (signature change) or hold it as an attribute the
+    `_enrichment_svc.enrich(raw, browser)` (signature already accepts an optional `browser` param
+    from Section 4 — this section just needs to actually supply one) or hold it as an attribute the
     service reads — pick whichever fits the existing DI pattern (`get_scan_providers()`) with the
     least disruption; close the browser in a `finally` block alongside the existing
     try/except/job-status-update logic so a mid-scan crash still releases it.
-  - Add the 9 new fields to the `Prospect(...)` constructor call:
-    `note_google=enriched.get("note_google")`, `nb_avis_google=enriched.get("nb_avis_google")`,
-    `telephone=enriched.get("telephone")`, `business_status=enriched.get("business_status")`,
-    `https_actif=enriched.get("https_actif")`, `cta_reservation_present=enriched.get("cta_reservation_present")`,
-    `formulaire_contact_present=enriched.get("formulaire_contact_present")`,
-    `reseaux_sociaux=enriched.get("reseaux_sociaux")`, `langues_disponibles=enriched.get("langues_disponibles")`.
-  - `MockEnrichmentService.enrich()` (`mock_providers.py`) — extend with plausible fake values for
-    the 9 new keys so dev-mode scans exercise the same code paths (not required for tests to
-    pass, but keeps dev/prod behavior visibly consistent, same note as the original scan plan).
 
 **Tests to run before committing:**
 - `cd backend && pytest app/tests/test_scan.py app/tests/test_prospects.py app/tests/test_scoring.py`
