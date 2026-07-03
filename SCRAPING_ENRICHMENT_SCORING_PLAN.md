@@ -567,7 +567,14 @@ feat(types): add enrichment fields to frontend Prospect type + mappers
 
 ## Section 8 — Prospection table: replace the "OTAs" column
 
-**Status:** Not started
+**Status:** Done (code) — committed 2026-07-03. **Manual browser verification not performed** —
+ports 3000/8000 were already occupied by processes outside this tool's tracked preview servers
+(likely the user's own running dev instances), and the user didn't respond to the port-reuse
+question, so touching them was avoided per the "don't take risky/destructive actions without
+confirmation" rule. Confirmed only via `curl` that both ports respond (200/307 — alive, plausibly
+this exact app) and via `npx tsc --noEmit` (clean). **Recommend an actual visual check next time a
+preview server is available**, since a table layout/rendering issue wouldn't show up in a
+type-check.
 
 **Goal:** Replace `ProspectTable.tsx`'s "OTAs" column (line ~286 header, ~431-436 cell — currently
 Booking/Expedia presence, always empty on real data) with a column reflecting what's actually
