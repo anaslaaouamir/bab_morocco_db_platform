@@ -56,12 +56,14 @@ async def test_list_prospects_paginated(client):
 
 @pytest.mark.anyio
 async def test_filter_by_stage(client):
-    # High-score prospect → engine assigns stage=outreach (France+booking+30rooms+email = 75)
+    # High-score prospect → engine assigns stage=outreach
+    # (France base 18 + telephone +4 + nb_avis_google 30-99 tier +10, on top of
+    # the unscanned baseline 61, = 75 — see test_scoring.py's identical recipe)
     await client.post(BASE, json=prospect_payload(
         adresse_web="https://high-fr.ma",
         pays="France",
-        presence_booking=True,
-        nb_chambres=30,
+        telephone="+33600000000",
+        nb_avis_google=50,
     ))
     # Low-score prospect → engine assigns stage=veille
     await client.post(BASE, json=prospect_payload(
@@ -168,8 +170,9 @@ async def test_score_total_always_computed(client):
     """
     score_total is always computed by the ScoringEngine from prospect attributes.
     Manually provided score fields in the request are ignored.
-    MINIMAL_PROSPECT (Maroc, no booking, no expedia, no rooms, email only):
-      activite=8, coherence=25, taille=5, contact=8, liberte=15 → total=61
+    MINIMAL_PROSPECT (Maroc, email only, never scanned — every scan-only field
+    None, so the scan-only sub-checks neutral-pass, see scoring.py):
+      activite=17, coherence=20, taille=0, contact=11, liberte=15 → total=63
     """
     resp = await client.post(BASE, json=MINIMAL_PROSPECT)
     assert resp.status_code == 201
@@ -182,7 +185,7 @@ async def test_score_total_always_computed(client):
         + body["score_liberte_ota"]
     )
     assert body["score_total"] == expected
-    assert body["score_total"] == 61  # exact engine output for MINIMAL_PROSPECT
+    assert body["score_total"] == 63  # exact engine output for MINIMAL_PROSPECT
 
 
 @pytest.mark.anyio

@@ -155,6 +155,19 @@ class MockEnrichmentService:
             enriched["nom_contact"] = "Directeur Général"
             enriched["poste_contact"] = "DG"
             enriched["capacite_description"] = None
+            # Google/scrape-sourced fields (SCRAPING_ENRICHMENT_SCORING_PLAN.md
+            # Section 5/6) — deterministic "good" values so the scan pipeline's
+            # even/odd quality split still produces meaningful score
+            # differentiation under the new formula.
+            enriched["note_google"] = 4.6
+            enriched["nb_avis_google"] = 180 + idx * 5
+            enriched["telephone"] = "+212600000000"
+            enriched["business_status"] = "OPERATIONAL"
+            enriched["https_actif"] = True
+            enriched["cta_reservation_present"] = True
+            enriched["formulaire_contact_present"] = True
+            enriched["reseaux_sociaux"] = "instagram,facebook"
+            enriched["langues_disponibles"] = "fr,en"
         else:
             # Low-quality prospect
             enriched["presence_booking"] = False
@@ -165,5 +178,14 @@ class MockEnrichmentService:
             enriched["nom_contact"] = "Responsable"
             enriched["poste_contact"] = "Gérant"
             enriched["capacite_description"] = None
+            enriched["note_google"] = 3.2
+            enriched["nb_avis_google"] = 4
+            enriched["telephone"] = None
+            enriched["business_status"] = "OPERATIONAL"
+            enriched["https_actif"] = False
+            enriched["cta_reservation_present"] = False
+            enriched["formulaire_contact_present"] = False
+            enriched["reseaux_sociaux"] = None
+            enriched["langues_disponibles"] = None
 
         return enriched

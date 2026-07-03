@@ -197,6 +197,15 @@ async def update_prospect(
         "presence_expedia": prospect.presence_expedia,
         "nb_chambres": prospect.nb_chambres,
         "capacite_description": prospect.capacite_description,
+        "note_google": prospect.note_google,
+        "nb_avis_google": prospect.nb_avis_google,
+        "telephone": prospect.telephone,
+        "business_status": prospect.business_status,
+        "https_actif": prospect.https_actif,
+        "cta_reservation_present": prospect.cta_reservation_present,
+        "formulaire_contact_present": prospect.formulaire_contact_present,
+        "reseaux_sociaux": prospect.reseaux_sociaux,
+        "langues_disponibles": prospect.langues_disponibles,
         "stage": prospect.stage,
     }
     _apply_scoring(current)
