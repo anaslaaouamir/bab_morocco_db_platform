@@ -18,8 +18,6 @@ import LinearProgress from "@mui/material/LinearProgress";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
 import SearchIcon from "@mui/icons-material/Search";
-import CheckIcon from "@mui/icons-material/Check";
-import CloseIcon from "@mui/icons-material/Close";
 import { alpha, useTheme } from "@mui/material/styles";
 
 import type { Prospect, PipelineStage, PartnerType } from "@/types/prospect";
@@ -84,6 +82,17 @@ function stableSort(rows: Prospect[], key: SortKey, order: SortOrder): Prospect[
     const cmp = av < bv ? -1 : av > bv ? 1 : 0;
     return order === "asc" ? cmp : -cmp;
   });
+}
+
+// Counts confirmed digital-presence signals (HTTPS, booking CTA, social links)
+// — deliberately excludes fields still `null` (never scanned) from the count
+// rather than treating them as absent, matching the scoring engine's own
+// neutral-pass distinction between "never checked" and "checked, confirmed
+// absent" (see backend scoring.py's _scraped()).
+function digitalSignalCount(p: Prospect): number {
+  return [p.httpsActif === true, p.ctaReservationPresent === true, !!p.reseauxSociaux].filter(
+    Boolean
+  ).length;
 }
 
 // ─── Score cell ────────────────────────────────────────────────────────────
@@ -283,7 +292,10 @@ export default function ProspectTable({ prospects, onProspectClick, isAdmin = fa
                 </TableCell>
               ))}
               {/* Non-sortable columns */}
-              {(isAdmin ? ["Responsable", "Type", "OTAs", "Langue"] : ["Type", "OTAs", "Langue"]).map((h) => (
+              {(isAdmin
+                ? ["Responsable", "Type", "Signaux digitaux", "Langue"]
+                : ["Type", "Signaux digitaux", "Langue"]
+              ).map((h) => (
                 <TableCell key={h} sx={{ py: 1.5 }}>
                   <Typography variant="labelMedium" sx={{ fontWeight: 700 }}>
                     {h}
@@ -428,28 +440,25 @@ export default function ProspectTable({ prospects, onProspectClick, isAdmin = fa
                   />
                 </TableCell>
 
-                {/* OTAs */}
+                {/* Signaux digitaux */}
                 <TableCell sx={{ py: 1.25 }}>
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
-                    {[
-                      { present: prospect.presenceBooking, label: `Booking${prospect.noteBooking ? ` ${prospect.noteBooking}` : ""}` },
-                      { present: prospect.presenceExpedia, label: "Expedia" },
-                    ].map(({ present, label }) => (
-                      <Box key={label} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                        {present ? (
-                          <CheckIcon sx={{ fontSize: 14, color: "success.main" }} />
-                        ) : (
-                          <CloseIcon sx={{ fontSize: 14, color: "text.disabled" }} />
+                  {prospect.noteGoogle != null ? (
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+                      <Typography variant="bodySmall" sx={{ fontWeight: 600 }}>
+                        ★ {prospect.noteGoogle.toFixed(1)}
+                        {prospect.nbAvisGoogle != null && (
+                          <Typography component="span" variant="bodySmall" color="text.secondary">
+                            {" "}· {prospect.nbAvisGoogle} avis
+                          </Typography>
                         )}
-                        <Typography
-                          variant="bodySmall"
-                          color={present ? "text.primary" : "text.disabled"}
-                        >
-                          {label}
-                        </Typography>
-                      </Box>
-                    ))}
-                  </Box>
+                      </Typography>
+                      <Typography variant="labelSmall" color="text.secondary">
+                        {digitalSignalCount(prospect)}/3 signaux
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Typography variant="bodySmall" color="text.disabled">—</Typography>
+                  )}
                 </TableCell>
 
                 {/* Langue */}
