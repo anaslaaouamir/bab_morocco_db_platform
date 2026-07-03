@@ -3,6 +3,15 @@ RealGoogleMapsProvider and RealEnrichmentService — production replacements for
 MockGoogleMapsProvider / MockEnrichmentService (see BACKEND_PHASE2_SCAN_PLAN.md).
 Output dict shapes must match the mock providers exactly so scan_pipeline.py
 requires no changes beyond awaiting these calls.
+
+Enrichment strategy (see SCRAPING_ENRICHMENT_SCORING_PLAN.md Section 4): a plain
+httpx GET runs first on every prospect site — fast and free, and sufficient for
+most real sites. A Playwright-rendered fetch only runs as a fallback, triggered
+per-site when httpx found neither an email nor a phone, or when the httpx
+response looks like a thin JS shell (real content loaded client-side, invisible
+to a plain GET). This was validated against 10 real prospect sites across 5
+partner types: httpx averaged ~3.7s/site vs Playwright's ~13.2s/site, so the
+fallback is deliberately conditional, not a default path.
 """
 import asyncio
 import logging
@@ -18,12 +27,44 @@ _PLACES_TEXTSEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/
 _PLACES_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 
 _EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-_EMAIL_BLOCKLIST = ("noreply", "no-reply", "example.com", "test@", "sentry")
+_EMAIL_BLOCKLIST = ("noreply", "no-reply", "example.com", "test@", "sentry", "wixpress")
+_EMAIL_BAD_EXTENSIONS = (".png", ".jpg", ".jpeg", ".svg", ".webp", ".gif", ".ico")
 _EMAIL_CANDIDATE_PATHS = ("", "/contact", "/contact-us", "/about", "/a-propos")
 _SCRAPE_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
+
+# Requires a leading "+" or "00" country-code marker (real GPS coordinates found
+# embedded in map widgets during testing never carry this) — see _valid_phone
+# for the second layer of the same defense.
+_PHONE_REGEX = re.compile(r"(?:\+\d{1,3}|00\d{1,3})[\s.\-]?(?:\(?\d{1,4}\)?[\s.\-]?){2,5}\d{2,4}")
+
+_CTA_WORDS = (
+    "book now", "réserver", "reserver", "réservation en ligne",
+    "request a quote", "demander un devis", "check availability",
+    "vérifier la disponibilité", "get a quote",
+)
+_SOCIAL_DOMAINS: dict[str, str] = {
+    "instagram.com": "instagram",
+    "facebook.com": "facebook",
+    "linkedin.com/company": "linkedin",
+    "tiktok.com": "tiktok",
+    "wa.me": "whatsapp",
+    "whatsapp.com": "whatsapp",
+    "youtube.com": "youtube",
+}
+_LANG_PATH_HINTS = ("/en/", "/fr/", "/es/", "/de/", "/ar/")
+_LANG_HREFLANG_RE = re.compile(r'hreflang=["\'](\w{2})', re.I)
+_TARGET_LANGS = {"fr", "en", "es", "de", "ar"}
+
+# Thin-shell heuristic — calibrated from one real failure case (a JS-rendered
+# transport-company site returned 10,123 chars via httpx while every legitimate
+# content-bearing page in the same test sample measured 29,939+ chars). Not
+# final — validate against a larger sample before trusting this number long-term.
+_THIN_HTML_THRESHOLD = 15_000
+_PLAYWRIGHT_TIMEOUT_MS = 8_000
+_PLAYWRIGHT_SETTLE_MS = 1_000
 
 _QUERY_TEMPLATES: dict[str, str] = {
     "hotel_riad": "riad hotel {ville} {pays}",
@@ -40,13 +81,71 @@ _DEFAULT_QUERY_TEMPLATE = "hotel {ville} {pays}"
 _MAX_PAGE_SIZE = 20
 
 
+def _valid_phone(match: str) -> bool:
+    """
+    Second layer of GPS-coordinate rejection (first layer is the +/00 prefix
+    requirement in _PHONE_REGEX itself). A real phone number's digit count
+    falls in a plausible international range and never has 5+ digits after a
+    single decimal point — GPS coordinates like "9.3251406" do.
+    """
+    digits = re.sub(r"\D", "", match)
+    if not (10 <= len(digits) <= 15):
+        return False
+    if re.search(r"\.\d{5,}", match):
+        return False
+    return True
+
+
+def _extract_page_signals(html: str, url: str) -> dict:
+    """
+    Pulls every type-agnostic signal out of one already-fetched page in a
+    single pass — no extra requests. Used identically on httpx-fetched and
+    Playwright-fetched HTML (see SCRAPING_ENRICHMENT_SCORING_PLAN.md Section 4).
+    """
+    if not html:
+        return {}
+    low = html.lower()
+
+    email = ""
+    for m in _EMAIL_REGEX.findall(html):
+        ml = m.lower()
+        if any(bad in ml for bad in _EMAIL_BLOCKLIST):
+            continue
+        if ml.endswith(_EMAIL_BAD_EXTENSIONS):
+            continue
+        email = m
+        break
+
+    phone = ""
+    for m in _PHONE_REGEX.findall(html):
+        if _valid_phone(m):
+            phone = m.strip()
+            break
+
+    socials = sorted({label for domain, label in _SOCIAL_DOMAINS.items() if domain in low})
+
+    langs = {m.lower() for m in _LANG_HREFLANG_RE.findall(html)} & _TARGET_LANGS
+    langs |= {p.strip("/") for p in _LANG_PATH_HINTS if p in low}
+
+    return {
+        "email": email,
+        "phone": phone,
+        "https_actif": url.startswith("https://"),
+        "cta_reservation_present": any(word in low for word in _CTA_WORDS),
+        "formulaire_contact_present": "<form" in low and ("email" in low or "contact" in low),
+        "reseaux_sociaux": ",".join(socials) if socials else None,
+        "langues_disponibles": ",".join(sorted(langs)) if langs else None,
+        "_html_len": len(html),
+    }
+
+
 class RealGoogleMapsProvider:
     """
     Queries the legacy Google Places API — Text Search — for real places
     matching (ville, type_partenaire). Paginates via next_page_token until
     `limite` results are collected or the API is exhausted. For each result,
-    fetches the website via a Place Details call (Text Search does not
-    return it).
+    fetches the website, phone, and business status via a Place Details call
+    (Text Search does not return these).
     """
 
     async def search(
@@ -92,6 +191,7 @@ class RealGoogleMapsProvider:
                     "type": type_partenaire,
                     "place_id": place.get("place_id", ""),
                     "phone": details.get("phone", ""),
+                    "business_status": details.get("business_status") or None,
                     "note_google": place.get("rating"),
                     "nb_avis_google": place.get("user_ratings_total", 0),
                     "_index": i,
@@ -128,9 +228,9 @@ class RealGoogleMapsProvider:
     async def _fetch_details(self, client: httpx.AsyncClient, place_id: str) -> dict:
         """
         Place Details does not expose a business email field (confirmed against the
-        API — only website and phone are available beyond what Text Search already
-        returns), so email is sourced entirely via website scraping in
-        RealEnrichmentService instead.
+        API — only website, phone, and business_status are available beyond what
+        Text Search already returns), so email is sourced entirely via website
+        scraping in RealEnrichmentService instead.
         """
         if not place_id:
             return {}
@@ -139,7 +239,7 @@ class RealGoogleMapsProvider:
             _PLACES_DETAILS_URL,
             {
                 "place_id": place_id,
-                "fields": "website,international_phone_number",
+                "fields": "website,international_phone_number,business_status",
                 "key": settings.GOOGLE_MAPS_API_KEY,
             },
         )
@@ -149,6 +249,7 @@ class RealGoogleMapsProvider:
         return {
             "website": result.get("website", ""),
             "phone": result.get("international_phone_number", ""),
+            "business_status": result.get("business_status", ""),
         }
 
     async def _get_json(self, client: httpx.AsyncClient, url: str, params: dict) -> dict:
@@ -172,40 +273,56 @@ class RealGoogleMapsProvider:
 class RealEnrichmentService:
     """
     Enriches a raw place dict (from RealGoogleMapsProvider) with real data:
-      Stage 1 — free httpx scrape of a few candidate pages (homepage, /contact, /about, ...)
-                for an email via regex (no Apify; website/rating/reviews already come from
-                RealGoogleMapsProvider — Google Places Details has no business-email field,
-                confirmed against the API)
-      Stage 2 — Booking.com / Expedia presence + rating: currently disabled, see
-                `_check_ota_presence` for why (both platforms actively block scraping).
+      Stage 1 — free httpx scrape of a few candidate pages (homepage, /contact, /about, ...),
+                extracting email, phone, and every type-agnostic signal (HTTPS, booking CTA,
+                social links, published languages, contact form) from each page fetched.
+      Stage 2 — Playwright fallback: only runs when Stage 1 found neither an email nor a
+                phone, or when the homepage response looks like a thin JS shell (see
+                _THIN_HTML_THRESHOLD). Re-extracts every signal from the rendered page and
+                fully replaces Stage 1's results when it succeeds.
+      Stage 3 — Booking.com / Expedia presence: hardcoded False, see `_check_ota_presence`
+                (both platforms actively block scraping — unchanged from prior findings).
     Any stage failure degrades gracefully — the pipeline never crashes on
     enrichment errors, it just falls back to the raw/default values, matching
     MockEnrichmentService's guaranteed-output-shape contract.
     """
 
-    async def enrich(self, raw: dict) -> dict:
-        idx = raw.get("_index", 0)
+    async def enrich(self, raw: dict, browser=None) -> dict:
         enriched = dict(raw)
         enriched.pop("_index", None)
         enriched.pop("place_id", None)
         enriched.pop("phone", None)
-        enriched.pop("note_google", None)
-        enriched.pop("nb_avis_google", None)
 
         website = raw.get("adresse_web") or ""
+        phone_google = raw.get("phone") or ""
         reviews_count = raw.get("nb_avis_google") or 0
 
+        signals: dict = {}
+        homepage_len = 0
+
         async with httpx.AsyncClient(timeout=30.0) as client:
-            email = ""
             if website:
-                email = await self._scrape_email_from_website(client, website)
+                signals, homepage_len = await self._gather_page_signals(client, website)
 
             presence_booking = await self._check_ota_presence(client, "booking.com", raw["nom"])
             presence_expedia = await self._check_ota_presence(client, "expedia.com", raw["nom"])
 
+        if website:
+            needs_fallback = (
+                (not signals.get("email") and not signals.get("phone") and not phone_google)
+                or homepage_len < _THIN_HTML_THRESHOLD
+            )
+            if needs_fallback:
+                pw_html = await self._fetch_with_playwright(website, browser)
+                if pw_html:
+                    pw_signals = _extract_page_signals(pw_html, website)
+                    signals = {k: v for k, v in pw_signals.items() if k != "_html_len"}
+
+        telephone = phone_google or signals.get("phone") or None
+
         enriched.update({
             "adresse_web": website,
-            "email_contact": email,
+            "email_contact": signals.get("email") or "",
             "presence_booking": presence_booking,
             # Not the Google rating — Booking.com's own 0-10 rating is what this field
             # means (see scoring.py's `> 8.0` check). We don't have a reliable source for
@@ -220,18 +337,37 @@ class RealEnrichmentService:
             "capacite_description": (
                 f"{reviews_count} avis Google" if reviews_count else None
             ),
+            "note_google": raw.get("note_google"),
+            "nb_avis_google": raw.get("nb_avis_google"),
+            "telephone": telephone,
+            "business_status": raw.get("business_status"),
+            "https_actif": signals.get("https_actif"),
+            "cta_reservation_present": signals.get("cta_reservation_present"),
+            "formulaire_contact_present": signals.get("formulaire_contact_present"),
+            "reseaux_sociaux": signals.get("reseaux_sociaux"),
+            "langues_disponibles": signals.get("langues_disponibles"),
         })
         return enriched
 
-    async def _scrape_email_from_website(self, client: httpx.AsyncClient, website: str) -> str:
+    async def _gather_page_signals(self, client: httpx.AsyncClient, website: str) -> tuple[dict, int]:
         """
-        Free scrape: GET a short list of candidate pages and regex-match an email in
-        the raw HTML. Each candidate page is tried independently — a failure (timeout,
-        403, DNS error) on one page must not prevent trying the others. Returns the
-        first valid match found, or "" if none of the candidates yield one.
+        Fetches the homepage plus (only while email is still missing) a few
+        contact-page candidates, merging type-agnostic signals across every page
+        actually fetched. Returns the merged signals plus the homepage's raw HTML
+        length — the length feeds the thin-shell Playwright-fallback check in
+        enrich(), so it's tracked from the homepage specifically, not the total.
         """
         base = website.rstrip("/")
-        for path in _EMAIL_CANDIDATE_PATHS:
+        merged: dict = {
+            "email": "", "phone": "", "https_actif": None,
+            "cta_reservation_present": None, "formulaire_contact_present": None,
+            "reseaux_sociaux": None, "langues_disponibles": None,
+        }
+        homepage_len = 0
+
+        for i, path in enumerate(_EMAIL_CANDIDATE_PATHS):
+            if i > 0 and merged["email"]:
+                break  # only keep hunting extra pages while email is still missing
             url = base + path
             try:
                 response = await client.get(
@@ -242,13 +378,62 @@ class RealEnrichmentService:
                 )
                 if response.status_code >= 400:
                     continue
-                for match in _EMAIL_REGEX.findall(response.text):
-                    if not any(bad in match.lower() for bad in _EMAIL_BLOCKLIST):
-                        return match
+                html = response.text
             except httpx.HTTPError as exc:
-                logger.debug("Email scrape failed for %r | error=%s", url, exc)
+                logger.debug("Page fetch failed for %r | error=%s", url, exc)
                 continue
-        return ""
+
+            if i == 0:
+                homepage_len = len(html)
+
+            page_signals = _extract_page_signals(html, url)
+            for key in ("email", "phone", "reseaux_sociaux", "langues_disponibles"):
+                if not merged.get(key) and page_signals.get(key):
+                    merged[key] = page_signals[key]
+            for key in ("https_actif", "cta_reservation_present", "formulaire_contact_present"):
+                if merged.get(key) is None and page_signals.get(key) is not None:
+                    merged[key] = page_signals[key]
+
+        return merged, homepage_len
+
+    async def _fetch_with_playwright(self, url: str, browser=None) -> str:
+        """
+        Headless-browser fallback for JS-rendered sites httpx can't see. Uses
+        wait_until="load" rather than "networkidle" — confirmed in testing that
+        many real sites (chat widgets, analytics beacons) never go network-idle,
+        which caused false timeouts. Never raises — any failure (timeout, block,
+        crash) degrades to "" and the caller keeps whatever httpx already found.
+
+        `browser` is an optional shared Playwright Browser instance (passed by
+        the scan pipeline — see SCRAPING_ENRICHMENT_SCORING_PLAN.md Section 6, one
+        browser per scan job rather than one per prospect). When not provided,
+        launches and closes its own instance for standalone use.
+        """
+        from playwright.async_api import async_playwright
+
+        owns_browser = browser is None
+        pw_ctx = None
+        try:
+            if owns_browser:
+                pw_ctx = await async_playwright().start()
+                browser = await pw_ctx.chromium.launch(headless=True)
+
+            page = await browser.new_page(user_agent=_SCRAPE_USER_AGENT)
+            try:
+                await page.goto(url, timeout=_PLAYWRIGHT_TIMEOUT_MS, wait_until="load")
+                await page.wait_for_timeout(_PLAYWRIGHT_SETTLE_MS)
+                html = await page.content()
+            finally:
+                await page.close()
+            return html
+        except Exception as exc:
+            logger.debug("Playwright fallback failed for %r | error=%s", url, exc)
+            return ""
+        finally:
+            if owns_browser and pw_ctx is not None:
+                if browser is not None:
+                    await browser.close()
+                await pw_ctx.stop()
 
     async def _check_ota_presence(
         self, client: httpx.AsyncClient, domain: str, nom: str
@@ -269,10 +454,11 @@ def get_scan_providers():
     """
     Real providers activate when ENV=production and GOOGLE_MAPS_API_KEY is set.
     APIFY_API_TOKEN is no longer required — every enrichment stage is free
-    (httpx scraping / hardcoded stubs, see RealEnrichmentService) as of the
-    Section 6-9 revision in BACKEND_PHASE2_SCAN_PLAN.md. The setting is kept
-    dormant in config for a possible future paid re-introduction (e.g. a
-    dedicated Booking.com actor) rather than removed outright.
+    (httpx scraping, Playwright fallback, hardcoded stubs — see
+    RealEnrichmentService) as of BACKEND_PHASE2_SCAN_PLAN.md's Section 6-9
+    revision and SCRAPING_ENRICHMENT_SCORING_PLAN.md Section 4. The setting is
+    kept dormant in config for a possible future paid re-introduction rather
+    than removed outright.
     Otherwise mocks — used automatically in development and in the test suite.
     """
     from app.services.mock_providers import MockEnrichmentService, MockGoogleMapsProvider
