@@ -99,7 +99,7 @@ cost is CPU/RAM/wall-clock time per page render, not money.
 | 2 | Backend schemas | Backend | — | `schemas/prospect.py` |
 | 3 | Playwright dependency | Backend | — | `requirements.txt` |
 | 4 | Scraping/enrichment rewrite | Backend | — | `services/real_providers.py` |
-| 5 | Scoring engine rewrite | Backend | — | `services/scoring.py` |
+| 5 | Scoring engine rewrite | Backend | — | `services/scoring.py`, `services/prospect_service.py` |
 | 6 | Scan pipeline wiring | Backend | — | `services/scan_pipeline.py` |
 | 7 | Frontend types + mappers | Frontend | — | `types/prospect.ts`, `lib/api/types.ts`, `lib/api/mappers.ts` |
 | 8 | Prospection table column | Frontend | — | `ProspectTable.tsx` |
@@ -168,7 +168,15 @@ feat(db): add Google/scrape-sourced enrichment fields to prospects
 
 ## Section 2 — Backend schemas
 
-**Status:** Not started
+**Status:** Done — committed 2026-07-03.
+
+**Note for Section 5:** `prospect_service.py`'s `update_prospect()` rebuilds a hardcoded `current`
+dict (lines ~190-201) to feed the scoring engine on edit — it currently only lists legacy fields
+and will need the 9 new ones added when Section 5 rewrites `scoring.py` to actually read them,
+otherwise editing a prospect's `telephone`/`note_google`/etc. via the drawer won't trigger
+correct re-scoring. Not a Section 2 concern (current scoring engine doesn't read these fields
+yet), but flagged here so Section 5 doesn't miss this file — it wasn't in the original files-to-
+modify list for that section.
 
 **Goal:** Expose the 9 new fields through `ProspectCreate` / `ProspectUpdate` / `ProspectResponse`
 / `ScorePreviewRequest`, preserving the `None` vs `False` distinction from Section 1's Guiding
