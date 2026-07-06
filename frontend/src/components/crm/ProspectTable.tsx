@@ -372,12 +372,19 @@ export default function ProspectTable({ prospects, onProspectClick, isAdmin = fa
 
                 {/* Commission */}
                 <TableCell align="right" sx={{ py: 1.25, whiteSpace: "nowrap" }}>
-                  <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
-                    {prospect.commissionStandard}%
-                  </Typography>
-                  <Typography variant="bodySmall" color="text.secondary">
-                    plancher {prospect.commissionPlancher}%
-                  </Typography>
+                  <Tooltip title={`Négociable jusqu'à ${prospect.commissionPlancher}% (plancher absolu)`}>
+                    <Box sx={{ display: "inline-flex", alignItems: "baseline", gap: 0.5, cursor: "default" }}>
+                      <Typography variant="labelSmall" sx={{ color: "text.disabled", fontWeight: 500 }}>
+                        {prospect.commissionPlancher}%
+                      </Typography>
+                      <Typography variant="labelSmall" sx={{ color: "text.disabled" }}>
+                        →
+                      </Typography>
+                      <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
+                        {prospect.commissionStandard}%
+                      </Typography>
+                    </Box>
+                  </Tooltip>
                 </TableCell>
 
                 {/* Date ajouté + prochain contact */}
@@ -452,9 +459,11 @@ export default function ProspectTable({ prospects, onProspectClick, isAdmin = fa
                           </Typography>
                         )}
                       </Typography>
-                      <Typography variant="labelSmall" color="text.secondary">
-                        {digitalSignalCount(prospect)}/3 signaux
-                      </Typography>
+                      <Tooltip title="HTTPS actif, bouton de réservation/devis, présence sur les réseaux sociaux" placement="top">
+                        <Typography variant="labelSmall" color="text.secondary" sx={{ cursor: "help" }}>
+                          {digitalSignalCount(prospect)}/3 signaux
+                        </Typography>
+                      </Tooltip>
                     </Box>
                   ) : (
                     <Typography variant="bodySmall" color="text.disabled">—</Typography>

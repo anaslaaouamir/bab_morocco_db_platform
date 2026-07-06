@@ -14,8 +14,6 @@ import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import FormHelperText from "@mui/material/FormHelperText";
-import Switch from "@mui/material/Switch";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
@@ -115,9 +113,6 @@ interface FormValues {
   languesDisponibles:   string;
   nbChambres:           string;
   capaciteDescription:  string;
-  presenceBooking:      boolean;
-  noteBooking:          string;
-  presenceExpedia:      boolean;
   stage:                PipelineStage;
   commissionStandard:   string;
   commissionPlancher:   string;
@@ -142,9 +137,6 @@ const INITIAL_FORM: FormValues = {
   languesDisponibles:   "",
   nbChambres:           "",
   capaciteDescription:  "",
-  presenceBooking:      false,
-  noteBooking:          "",
-  presenceExpedia:      false,
   stage:                "prospection",
   commissionStandard:   "",
   commissionPlancher:   "",
@@ -345,9 +337,6 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
           pays:                values.pays || undefined,
           emailContact:        values.emailContact.trim() || undefined,
           linkedinContact:     values.linkedinContact.trim() || undefined,
-          presenceBooking:     values.presenceBooking,
-          noteBooking:         values.noteBooking ? Number(values.noteBooking) : undefined,
-          presenceExpedia:     values.presenceExpedia,
           nbChambres:          values.nbChambres ? Number(values.nbChambres) : undefined,
           capaciteDescription: values.capaciteDescription.trim() || undefined,
           noteGoogle:          values.noteGoogle ? Number(values.noteGoogle) : undefined,
@@ -368,7 +357,6 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
   }, [
     open,
     values.adresseWeb, values.pays, values.emailContact, values.linkedinContact,
-    values.presenceBooking, values.noteBooking, values.presenceExpedia,
     values.nbChambres, values.capaciteDescription,
     values.noteGoogle, values.nbAvisGoogle, values.telephone, values.languesDisponibles,
   ]);
@@ -413,9 +401,6 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
         posteContact:       values.posteContact.trim(),
         nbChambres:         values.nbChambres ? Number(values.nbChambres) : undefined,
         capaciteDescription:values.capaciteDescription.trim() || undefined,
-        presenceBooking:    values.presenceBooking,
-        noteBooking:        values.noteBooking ? Number(values.noteBooking) : undefined,
-        presenceExpedia:    values.presenceExpedia,
         telephone:          values.telephone.trim() || undefined,
         noteGoogle:         values.noteGoogle ? Number(values.noteGoogle) : undefined,
         nbAvisGoogle:       values.nbAvisGoogle ? Number(values.nbAvisGoogle) : undefined,
@@ -705,49 +690,6 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                 disabled={submitting}
               />
             </Field2Col>
-
-            <Box
-              sx={{
-                display: "flex", alignItems: "center", gap: 2,
-                p: 1.5, borderRadius: 2, bgcolor: "action.hover", flexWrap: "wrap",
-              }}
-            >
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={values.presenceBooking}
-                    onChange={(e) => set("presenceBooking", e.target.checked)}
-                    size="small" disabled={submitting}
-                  />
-                }
-                label={<Typography variant="bodySmall">Booking.com</Typography>}
-                sx={{ mr: 0, flexShrink: 0 }}
-              />
-              {values.presenceBooking && (
-                <TextField
-                  label="Note Booking"
-                  type="number"
-                  value={values.noteBooking}
-                  onChange={(e) => set("noteBooking", e.target.value)}
-                  size="small"
-                  sx={{ width: 130 }}
-                  slotProps={{ htmlInput: { min: 0, max: 10, step: 0.1 } }}
-                  placeholder="8.5"
-                  disabled={submitting}
-                />
-              )}
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={values.presenceExpedia}
-                    onChange={(e) => set("presenceExpedia", e.target.checked)}
-                    size="small" disabled={submitting}
-                  />
-                }
-                label={<Typography variant="bodySmall">Expedia</Typography>}
-                sx={{ mr: 0, ml: { xs: 0, sm: "auto" } }}
-              />
-            </Box>
 
           </Box>
         </Box>

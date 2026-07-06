@@ -23,8 +23,6 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import Skeleton from "@mui/material/Skeleton";
 import CircularProgress from "@mui/material/CircularProgress";
-import Switch from "@mui/material/Switch";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import Autocomplete from "@mui/material/Autocomplete";
 import { alpha, useTheme } from "@mui/material/styles";
 import useMediaQuery from "@mui/material/useMediaQuery";
@@ -706,9 +704,6 @@ interface EditForm {
   posteContact: string;
   nbChambres: string;
   capaciteDescription: string;
-  presenceBooking: boolean;
-  noteBooking: string;
-  presenceExpedia: boolean;
   telephone: string;
   noteGoogle: string;
   nbAvisGoogle: string;
@@ -733,9 +728,6 @@ function prospectToEditForm(p: Prospect): EditForm {
     posteContact: p.posteContact,
     nbChambres: p.nbChambres != null ? String(p.nbChambres) : "",
     capaciteDescription: p.capaciteDescription ?? "",
-    presenceBooking: p.presenceBooking,
-    noteBooking: p.noteBooking != null ? String(p.noteBooking) : "",
-    presenceExpedia: p.presenceExpedia,
     telephone: p.telephone ?? "",
     noteGoogle: p.noteGoogle != null ? String(p.noteGoogle) : "",
     nbAvisGoogle: p.nbAvisGoogle != null ? String(p.nbAvisGoogle) : "",
@@ -845,20 +837,7 @@ function EditProspectForm({
           <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
             Informations complémentaires (optionnel)
           </Typography>
-          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
-            <TextField size="small" label="Nb. chambres" type="number" value={form.nbChambres} onChange={(e) => set("nbChambres", e.target.value)} />
-            <TextField size="small" label="Note Booking" type="number" value={form.noteBooking} onChange={(e) => set("noteBooking", e.target.value)} slotProps={{ htmlInput: { step: 0.1, min: 0, max: 10 } }} />
-          </Box>
-          <Box sx={{ display: "flex", gap: 2 }}>
-            <FormControlLabel
-              control={<Switch checked={form.presenceBooking} onChange={(e) => set("presenceBooking", e.target.checked)} size="small" />}
-              label={<Typography variant="bodySmall">Booking.com</Typography>}
-            />
-            <FormControlLabel
-              control={<Switch checked={form.presenceExpedia} onChange={(e) => set("presenceExpedia", e.target.checked)} size="small" />}
-              label={<Typography variant="bodySmall">Expedia</Typography>}
-            />
-          </Box>
+          <TextField size="small" label="Nb. chambres" type="number" fullWidth value={form.nbChambres} onChange={(e) => set("nbChambres", e.target.value)} />
         </Box>
       </Box>
 
@@ -954,9 +933,6 @@ export default function ProspectDrawer({
         posteContact: editForm.posteContact,
         nbChambres: editForm.nbChambres ? parseInt(editForm.nbChambres, 10) : undefined,
         capaciteDescription: editForm.capaciteDescription || undefined,
-        presenceBooking: editForm.presenceBooking,
-        noteBooking: editForm.noteBooking ? parseFloat(editForm.noteBooking) : undefined,
-        presenceExpedia: editForm.presenceExpedia,
         telephone: editForm.telephone || undefined,
         noteGoogle: editForm.noteGoogle ? parseFloat(editForm.noteGoogle) : undefined,
         nbAvisGoogle: editForm.nbAvisGoogle ? parseInt(editForm.nbAvisGoogle, 10) : undefined,
@@ -1349,11 +1325,6 @@ export default function ProspectDrawer({
                     ] as { label: string; present: boolean | undefined }[]
                   )
                     .filter(({ present }) => present != null)
-                    .concat(
-                      prospect.reseauxSociaux
-                        ? [{ label: "Réseaux sociaux", present: true }]
-                        : []
-                    )
                     .map(({ label, present }) => (
                       <Box key={label} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                         {present ? (
@@ -1367,6 +1338,47 @@ export default function ProspectDrawer({
                       </Box>
                     ))}
                 </Box>
+
+                {prospect.reseauxSociaux && (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mt: 1, flexWrap: "wrap" }}>
+                    <Typography variant="bodySmall" color="text.secondary">
+                      Réseaux sociaux :
+                    </Typography>
+                    {prospect.reseauxSociaux
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                      .map((entry) => {
+                        // New format is "label|url"; older scanned rows only
+                        // stored the bare platform name with no link.
+                        const [label, url] = entry.split("|");
+                        const chipLabel = label.charAt(0).toUpperCase() + label.slice(1);
+                        return url ? (
+                          <Chip
+                            key={label}
+                            component="a"
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            clickable
+                            label={chipLabel}
+                            size="small"
+                            variant="outlined"
+                            icon={<OpenInNewRoundedIcon sx={{ fontSize: "12px !important" }} />}
+                            sx={{ fontSize: "0.6875rem", height: 20 }}
+                          />
+                        ) : (
+                          <Chip
+                            key={label}
+                            label={chipLabel}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontSize: "0.6875rem", height: 20 }}
+                          />
+                        );
+                      })}
+                  </Box>
+                )}
 
                 {prospect.languesDisponibles && (
                   <Typography variant="bodySmall" color="text.secondary" sx={{ mt: 0.75, display: "block" }}>
