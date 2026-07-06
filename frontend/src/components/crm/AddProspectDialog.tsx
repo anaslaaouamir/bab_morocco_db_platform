@@ -14,7 +14,6 @@ import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import FormHelperText from "@mui/material/FormHelperText";
-import Slider from "@mui/material/Slider";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Typography from "@mui/material/Typography";
@@ -41,6 +40,7 @@ import {
   scoreColor,
 } from "@/types/prospect";
 import { prospectsApi, ApiError } from "@/lib/api";
+import type { RawScorePreviewResponse } from "@/lib/api";
 import { COUNTRIES, CITIES_BY_COUNTRY } from "@/lib/constants/geography";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 
@@ -109,6 +109,10 @@ interface FormValues {
   posteContact:         string;
   emailContact:         string;
   linkedinContact:      string;
+  telephone:            string;
+  noteGoogle:           string;
+  nbAvisGoogle:         string;
+  languesDisponibles:   string;
   nbChambres:           string;
   capaciteDescription:  string;
   presenceBooking:      boolean;
@@ -118,7 +122,6 @@ interface FormValues {
   commissionStandard:   string;
   commissionPlancher:   string;
   langue:               OutreachLanguage;
-  score:                ScoreBreakdown;
   notes:                string;
 }
 
@@ -133,6 +136,10 @@ const INITIAL_FORM: FormValues = {
   posteContact:         "",
   emailContact:         "",
   linkedinContact:      "",
+  telephone:            "",
+  noteGoogle:           "",
+  nbAvisGoogle:         "",
+  languesDisponibles:   "",
   nbChambres:           "",
   capaciteDescription:  "",
   presenceBooking:      false,
@@ -142,15 +149,20 @@ const INITIAL_FORM: FormValues = {
   commissionStandard:   "",
   commissionPlancher:   "",
   langue:               "fr",
-  score: {
-    activiteDigitale: 0,
-    coherenceMarche:  0,
-    tailleCapacite:   0,
-    contactDecideur:  0,
-    liberteOta:       0,
-  },
   notes: "",
 };
+
+// Maps the backend's snake_case score-preview response to the camelCase
+// ScoreBreakdown shape the existing <ScorePreview> display component expects.
+function previewToBreakdown(r: RawScorePreviewResponse): ScoreBreakdown {
+  return {
+    activiteDigitale: r.score_activite_digitale,
+    coherenceMarche:  r.score_coherence_marche,
+    tailleCapacite:   r.score_taille_capacite,
+    contactDecideur:  r.score_contact_decideur,
+    liberteOta:       r.score_liberte_ota,
+  };
+}
 
 // ─── Validation ───────────────────────────────────────────────────────────
 
@@ -306,14 +318,60 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
   const [attempted, setAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Live score preview — computed by the real scoring engine (backend
+  // recomputes on submit regardless, so this must reflect the same formula
+  // rather than letting a Commercial hand-set a number the server ignores).
+  const [preview, setPreview] = useState<ScoreBreakdown | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   useEffect(() => {
     if (open) {
       setValues(INITIAL_FORM);
       setErrors({});
       setAttempted(false);
       setSubmitting(false);
+      setPreview(null);
+      setPreviewLoading(false);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setPreviewLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const resp = await prospectsApi.scorePreview({
+          adresseWeb:          values.adresseWeb.trim() || undefined,
+          pays:                values.pays || undefined,
+          emailContact:        values.emailContact.trim() || undefined,
+          linkedinContact:     values.linkedinContact.trim() || undefined,
+          presenceBooking:     values.presenceBooking,
+          noteBooking:         values.noteBooking ? Number(values.noteBooking) : undefined,
+          presenceExpedia:     values.presenceExpedia,
+          nbChambres:          values.nbChambres ? Number(values.nbChambres) : undefined,
+          capaciteDescription: values.capaciteDescription.trim() || undefined,
+          noteGoogle:          values.noteGoogle ? Number(values.noteGoogle) : undefined,
+          nbAvisGoogle:        values.nbAvisGoogle ? Number(values.nbAvisGoogle) : undefined,
+          telephone:           values.telephone.trim() || undefined,
+          languesDisponibles:  values.languesDisponibles.trim() || undefined,
+        });
+        setPreview(previewToBreakdown(resp));
+      } catch {
+        // Live preview is best-effort — a failed call just leaves the last
+        // known preview in place rather than blocking the form.
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    open,
+    values.adresseWeb, values.pays, values.emailContact, values.linkedinContact,
+    values.presenceBooking, values.noteBooking, values.presenceExpedia,
+    values.nbChambres, values.capaciteDescription,
+    values.noteGoogle, values.nbAvisGoogle, values.telephone, values.languesDisponibles,
+  ]);
 
   const set = useCallback(<K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((prev) => {
@@ -333,10 +391,6 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
       setErrors((prev) => { const e = { ...prev }; delete e[key]; return e; });
     }
   }, [attempted]);
-
-  const setScore = useCallback((key: keyof ScoreBreakdown, value: number) => {
-    setValues((prev) => ({ ...prev, score: { ...prev.score, [key]: value } }));
-  }, []);
 
   async function handleSubmit() {
     setAttempted(true);
@@ -362,6 +416,10 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
         presenceBooking:    values.presenceBooking,
         noteBooking:        values.noteBooking ? Number(values.noteBooking) : undefined,
         presenceExpedia:    values.presenceExpedia,
+        telephone:          values.telephone.trim() || undefined,
+        noteGoogle:         values.noteGoogle ? Number(values.noteGoogle) : undefined,
+        nbAvisGoogle:       values.nbAvisGoogle ? Number(values.nbAvisGoogle) : undefined,
+        languesDisponibles: values.languesDisponibles.trim() || undefined,
         stage:              values.stage,
         commissionStandard: Number(values.commissionStandard) || TYPE_COMMISSION[values.type as PartnerType].standard,
         commissionPlancher: Number(values.commissionPlancher) || TYPE_COMMISSION[values.type as PartnerType].plancher,
@@ -382,10 +440,11 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
     }
   }
 
-  const scoreTotal =
-    values.score.activiteDigitale + values.score.coherenceMarche +
-    values.score.tailleCapacite  + values.score.contactDecideur  +
-    values.score.liberteOta;
+  const scoreTotal = preview
+    ? preview.activiteDigitale + preview.coherenceMarche +
+      preview.tailleCapacite  + preview.contactDecideur  +
+      preview.liberteOta
+    : 0;
 
   return (
     <Dialog
@@ -572,15 +631,68 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
               disabled={submitting}
             />
 
+            <TextField
+              label="Téléphone"
+              value={values.telephone}
+              onChange={(e) => set("telephone", e.target.value)}
+              size="small" fullWidth
+              placeholder="+212 6 00 00 00 00"
+              disabled={submitting}
+            />
+
           </Box>
         </Box>
 
         <Divider />
 
-        {/* ── 3. Établissement & OTAs ────────────────────────────── */}
+        {/* ── 3. Établissement ───────────────────────────────────── */}
         <Box>
-          <SectionLabel>③ Établissement & présence OTA</SectionLabel>
+          <SectionLabel>③ Établissement</SectionLabel>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+
+            <Field2Col>
+              <TextField
+                label="Note Google"
+                type="number"
+                value={values.noteGoogle}
+                onChange={(e) => set("noteGoogle", e.target.value)}
+                size="small"
+                slotProps={{ htmlInput: { min: 0, max: 5, step: 0.1 } }}
+                disabled={submitting}
+              />
+              <TextField
+                label="Nb. avis Google"
+                type="number"
+                value={values.nbAvisGoogle}
+                onChange={(e) => set("nbAvisGoogle", e.target.value)}
+                size="small"
+                slotProps={{ htmlInput: { min: 0 } }}
+                disabled={submitting}
+              />
+            </Field2Col>
+
+            <TextField
+              label="Langues publiées"
+              value={values.languesDisponibles}
+              onChange={(e) => set("languesDisponibles", e.target.value)}
+              size="small" fullWidth
+              placeholder="Ex : fr,en,es"
+              disabled={submitting}
+            />
+
+            <TextField
+              label="Description de la capacité"
+              value={values.capaciteDescription}
+              onChange={(e) => set("capaciteDescription", e.target.value)}
+              size="small"
+              placeholder="Ex : 8 tentes · 24 personnes"
+              disabled={submitting}
+              fullWidth
+            />
+
+            <Typography variant="bodySmall" color="text.secondary" sx={{ mt: 0.5 }}>
+              Informations complémentaires (optionnel)
+            </Typography>
 
             <Field2Col>
               <TextField
@@ -590,14 +702,6 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
                 onChange={(e) => set("nbChambres", e.target.value)}
                 size="small"
                 slotProps={{ htmlInput: { min: 0 } }}
-                disabled={submitting}
-              />
-              <TextField
-                label="Description de la capacité"
-                value={values.capaciteDescription}
-                onChange={(e) => set("capaciteDescription", e.target.value)}
-                size="small"
-                placeholder="Ex : 8 tentes · 24 personnes"
                 disabled={submitting}
               />
             </Field2Col>
@@ -750,59 +854,22 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
 
         <Divider />
 
-        {/* ── 5. Scoring ─────────────────────────────────────────── */}
+        {/* ── 5. Score ───────────────────────────────────────────── */}
         <Box>
-          <SectionLabel>⑤ Scoring manuel (0–100)</SectionLabel>
-          <ScorePreview score={values.score} />
-
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {SCORE_CRITERIA.map(({ key, label, max, hint }) => {
-              const val = values.score[key];
-              const pct = (val / max) * 100;
-              const sliderColor = pct >= 80 ? "success" : pct >= 50 ? "warning" : "primary";
-
-              return (
-                <Box key={key}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                    <Box>
-                      <Typography variant="bodySmall" sx={{ fontWeight: 600 }}>{label}</Typography>
-                      <Typography variant="bodySmall" color="text.secondary" sx={{ display: "block" }}>
-                        {hint}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.25, flexShrink: 0 }}>
-                      <Typography
-                        sx={{
-                          fontSize: "1.25rem", fontWeight: 800, lineHeight: 1,
-                          color:
-                            pct >= 80 ? theme.palette.success.main
-                            : pct >= 50 ? theme.palette.warning.main
-                            : theme.palette.text.secondary,
-                        }}
-                      >
-                        {val}
-                      </Typography>
-                      <Typography variant="bodySmall" color="text.disabled">/{max}</Typography>
-                    </Box>
-                  </Box>
-                  <Slider
-                    value={val}
-                    min={0} max={max} step={1}
-                    color={sliderColor}
-                    valueLabelDisplay="auto"
-                    marks={[
-                      { value: 0, label: "0" },
-                      { value: Math.round(max * 0.5), label: String(Math.round(max * 0.5)) },
-                      { value: max, label: String(max) },
-                    ]}
-                    onChange={(_, v) => setScore(key, v as number)}
-                    disabled={submitting}
-                    sx={{ "& .MuiSlider-markLabel": { fontSize: "0.625rem" } }}
-                  />
-                </Box>
-              );
-            })}
-          </Box>
+          <SectionLabel>
+            ⑤ Aperçu du score {previewLoading && <CircularProgress size={12} sx={{ ml: 1 }} />}
+          </SectionLabel>
+          <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 1.5, display: "block" }}>
+            Calculé automatiquement par le moteur de scoring à mesure que vous remplissez le
+            formulaire — le score final est toujours recalculé côté serveur.
+          </Typography>
+          {preview ? (
+            <ScorePreview score={preview} />
+          ) : (
+            <Typography variant="bodySmall" color="text.disabled">
+              Renseignez le pays et l&apos;email pour voir un premier aperçu.
+            </Typography>
+          )}
         </Box>
 
         <Divider />

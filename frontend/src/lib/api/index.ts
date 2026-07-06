@@ -74,6 +74,11 @@ export interface ScorePreviewParams {
   presenceExpedia?: boolean;
   nbChambres?: number;
   capaciteDescription?: string;
+  noteGoogle?: number;
+  nbAvisGoogle?: number;
+  telephone?: string;
+  businessStatus?: string;
+  languesDisponibles?: string;
 }
 
 export const prospectsApi = {
@@ -154,6 +159,11 @@ export const prospectsApi = {
         presence_expedia:     params.presenceExpedia ?? false,
         nb_chambres:          params.nbChambres,
         capacite_description: params.capaciteDescription,
+        note_google:          params.noteGoogle,
+        nb_avis_google:       params.nbAvisGoogle,
+        telephone:            params.telephone,
+        business_status:      params.businessStatus,
+        langues_disponibles:  params.languesDisponibles,
       }),
     }),
 };
