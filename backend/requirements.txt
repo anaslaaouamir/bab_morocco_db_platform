@@ -16,6 +16,7 @@ reportlab>=4.0.0
 python-jose[cryptography]>=3.3.0
 bcrypt>=4.1.0
 resend>=2.5.0
+apscheduler>=3.10.4
 # Headless-browser fallback for scan enrichment (see SCRAPING_ENRICHMENT_SCORING_PLAN.md
 # Section 4). After `pip install -r requirements.txt`, also run:
 #   playwright install chromium

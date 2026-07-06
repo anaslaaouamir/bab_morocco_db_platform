@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
@@ -11,6 +10,7 @@ from app.models.scan_job import ScanJob
 from app.models.user import User
 from app.schemas.scan import ScanJobResponse, ScanStartRequest
 from app.services.scan_pipeline import run_scan_pipeline
+from app.services.scheduler import is_due
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -35,17 +35,6 @@ def _job_to_response(job: ScanJob) -> ScanJobResponse:
     )
 
 
-def _is_due(scheduled_at) -> bool:
-    """A naive datetime from the request is treated as UTC, matching how
-    scheduled_at is stored and compared (see scheduler.py)."""
-    if scheduled_at is None:
-        return True
-    now = datetime.now(timezone.utc)
-    if scheduled_at.tzinfo is None:
-        return scheduled_at <= now.replace(tzinfo=None)
-    return scheduled_at <= now
-
-
 @router.get("/history", response_model=list[ScanJobResponse])
 async def scan_history(
     db: AsyncSession = Depends(get_session),
@@ -63,7 +52,7 @@ async def start_scan(
     session_factory=Depends(get_session_factory),
     _admin: User = Depends(require_admin),
 ):
-    due = _is_due(data.scheduled_at)
+    due = is_due(data.scheduled_at)
 
     job = ScanJob(
         ville=data.ville,

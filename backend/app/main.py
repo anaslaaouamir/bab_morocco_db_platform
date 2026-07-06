@@ -8,6 +8,7 @@ from app.database import AsyncSessionLocal
 from app.models.user import User
 from app.routers import auth, health, prospects, scan, outreach, negotiation, contracts, webhooks
 from app.services import auth_service
+from app.services.scheduler import start_scheduler, stop_scheduler
 
 app = FastAPI(title="Bab Morocco BD Intelligence Platform", version="1.0.0")
 
@@ -47,6 +48,19 @@ async def seed_first_admin() -> None:
         )
         session.add(admin)
         await session.commit()
+
+
+@app.on_event("startup")
+async def start_scan_scheduler() -> None:
+    """Server-side clock for scheduled scans (SCHEDULED_SCAN_CALENDAR_PLAN.md
+    Phase B) — runs inside this process, so a scan scheduled for an
+    unattended overnight window fires without any browser tab open."""
+    app.state.scan_scheduler = start_scheduler(AsyncSessionLocal)
+
+
+@app.on_event("shutdown")
+async def stop_scan_scheduler() -> None:
+    stop_scheduler(getattr(app.state, "scan_scheduler", None))
 
 
 @app.get("/", include_in_schema=False)
