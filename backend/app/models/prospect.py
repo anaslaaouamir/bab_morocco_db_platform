@@ -41,7 +41,10 @@ class Prospect(Base):
     https_actif: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     cta_reservation_present: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     formulaire_contact_present: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    reseaux_sociaux: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Text, not String(255) — stores "label|url" pairs per platform (see
+    # real_providers.py _extract_page_signals), which can exceed 255 chars
+    # once real profile URLs are included instead of just platform names.
+    reseaux_sociaux: Mapped[str | None] = mapped_column(Text, nullable=True)
     langues_disponibles: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     score_activite_digitale: Mapped[int] = mapped_column(Integer, default=0)

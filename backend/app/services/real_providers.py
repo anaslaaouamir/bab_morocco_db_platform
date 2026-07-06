@@ -16,12 +16,55 @@ fallback is deliberately conditional, not a default path.
 import asyncio
 import logging
 import re
+import sys
+import threading
 
 import httpx
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# ── Windows/uvicorn/Playwright event-loop workaround ────────────────────────
+# uvicorn explicitly forces WindowsSelectorEventLoopPolicy on Windows (its own
+# compatibility choice, set synchronously in Server.run() before the loop is
+# even created — overriding a policy set anywhere in application code has no
+# effect). SelectorEventLoop cannot create subprocesses on Windows, which
+# Playwright requires to launch its browser driver (confirmed live: every
+# Playwright call raised NotImplementedError from
+# asyncio.base_events._make_subprocess_transport when run under the real
+# uvicorn server, despite working fine in standalone test scripts that use
+# plain `asyncio.run()`, which defaults to ProactorEventLoop on Windows).
+# Fix: run every Playwright call on one dedicated background thread with a
+# real ProactorEventLoop, fully decoupled from uvicorn's main loop. No-op
+# indirection on non-Windows platforms, whose default loop already supports
+# subprocesses.
+_win_pw_loop: "asyncio.AbstractEventLoop | None" = None
+_win_pw_lock = threading.Lock()
+
+
+def _get_windows_playwright_loop() -> asyncio.AbstractEventLoop:
+    global _win_pw_loop
+    with _win_pw_lock:
+        if _win_pw_loop is None:
+            _win_pw_loop = asyncio.ProactorEventLoop()  # type: ignore[attr-defined]
+            threading.Thread(target=_win_pw_loop.run_forever, daemon=True).start()
+        return _win_pw_loop
+
+
+async def run_playwright(coro):
+    """
+    Runs a Playwright coroutine on the dedicated Windows Proactor loop (see
+    above) when on Windows, or directly on the current loop everywhere else.
+    Every Playwright call (browser launch, page operations, close) must go
+    through this so a shared Browser instance stays on the same loop it was
+    created on for its entire lifetime.
+    """
+    if sys.platform != "win32":
+        return await coro
+    loop = _get_windows_playwright_loop()
+    fut = asyncio.run_coroutine_threadsafe(coro, loop)
+    return await asyncio.wrap_future(fut)
 
 _PLACES_TEXTSEARCH_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 _PLACES_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
@@ -39,6 +82,8 @@ _SCRAPE_USER_AGENT = (
 # embedded in map widgets during testing never carry this) — see _valid_phone
 # for the second layer of the same defense.
 _PHONE_REGEX = re.compile(r"(?:\+\d{1,3}|00\d{1,3})[\s.\-]?(?:\(?\d{1,4}\)?[\s.\-]?){2,5}\d{2,4}")
+
+_HREF_REGEX = re.compile(r'href=["\']([^"\']+)["\']', re.I)
 
 _CTA_WORDS = (
     "book now", "réserver", "reserver", "réservation en ligne",
@@ -122,7 +167,14 @@ def _extract_page_signals(html: str, url: str) -> dict:
             phone = m.strip()
             break
 
-    socials = sorted({label for domain, label in _SOCIAL_DOMAINS.items() if domain in low})
+    # Capture the actual profile URL per platform (not just presence) so the
+    # UI can link out to the account instead of merely naming it.
+    social_links: dict[str, str] = {}
+    for m in _HREF_REGEX.findall(html):
+        for domain, label in _SOCIAL_DOMAINS.items():
+            if domain in m.lower() and label not in social_links:
+                social_links[label] = m
+    socials = sorted(social_links)
 
     langs = {m.lower() for m in _LANG_HREFLANG_RE.findall(html)} & _TARGET_LANGS
     langs |= {p.strip("/") for p in _LANG_PATH_HINTS if p in low}
@@ -133,7 +185,11 @@ def _extract_page_signals(html: str, url: str) -> dict:
         "https_actif": url.startswith("https://"),
         "cta_reservation_present": any(word in low for word in _CTA_WORDS),
         "formulaire_contact_present": "<form" in low and ("email" in low or "contact" in low),
-        "reseaux_sociaux": ",".join(socials) if socials else None,
+        # Stored as "label|url" pairs so the frontend can render a clickable
+        # link per platform instead of a bare name.
+        "reseaux_sociaux": (
+            ",".join(f"{label}|{social_links[label]}" for label in socials) if socials else None
+        ),
         "langues_disponibles": ",".join(sorted(langs)) if langs else None,
         "_html_len": len(html),
     }
@@ -295,7 +351,6 @@ class RealEnrichmentService:
 
         website = raw.get("adresse_web") or ""
         phone_google = raw.get("phone") or ""
-        reviews_count = raw.get("nb_avis_google") or 0
 
         signals: dict = {}
         homepage_len = 0
@@ -334,9 +389,11 @@ class RealEnrichmentService:
             "linkedin_contact": None,
             "nom_contact": "Responsable",
             "poste_contact": "DG",
-            "capacite_description": (
-                f"{reviews_count} avis Google" if reviews_count else None
-            ),
+            # No free, reliable capacity signal exists for scraped prospects
+            # (nb_chambres is likewise always None here) — leaving this as a
+            # restated review count mislabeled review volume as "capacity" in
+            # the UI. Capacity stays unset unless entered manually.
+            "capacite_description": None,
             "note_google": raw.get("note_google"),
             "nb_avis_google": raw.get("nb_avis_google"),
             "telephone": telephone,
@@ -407,33 +464,41 @@ class RealEnrichmentService:
         `browser` is an optional shared Playwright Browser instance (passed by
         the scan pipeline — see SCRAPING_ENRICHMENT_SCORING_PLAN.md Section 6, one
         browser per scan job rather than one per prospect). When not provided,
-        launches and closes its own instance for standalone use.
+        launches and closes its own instance for standalone use. The whole
+        interaction runs via `run_playwright()` (module-level, see its
+        docstring) since a shared `browser` must stay on the same event loop
+        it was launched on for its entire lifetime.
         """
         from playwright.async_api import async_playwright
 
         owns_browser = browser is None
-        pw_ctx = None
-        try:
-            if owns_browser:
-                pw_ctx = await async_playwright().start()
-                browser = await pw_ctx.chromium.launch(headless=True)
 
-            page = await browser.new_page(user_agent=_SCRAPE_USER_AGENT)
+        async def _do_fetch() -> str:
+            nonlocal browser
+            pw_ctx = None
             try:
-                await page.goto(url, timeout=_PLAYWRIGHT_TIMEOUT_MS, wait_until="load")
-                await page.wait_for_timeout(_PLAYWRIGHT_SETTLE_MS)
-                html = await page.content()
+                if owns_browser:
+                    pw_ctx = await async_playwright().start()
+                    browser = await pw_ctx.chromium.launch(headless=True)
+
+                page = await browser.new_page(user_agent=_SCRAPE_USER_AGENT)
+                try:
+                    await page.goto(url, timeout=_PLAYWRIGHT_TIMEOUT_MS, wait_until="load")
+                    await page.wait_for_timeout(_PLAYWRIGHT_SETTLE_MS)
+                    return await page.content()
+                finally:
+                    await page.close()
             finally:
-                await page.close()
-            return html
+                if owns_browser and pw_ctx is not None:
+                    if browser is not None:
+                        await browser.close()
+                    await pw_ctx.stop()
+
+        try:
+            return await run_playwright(_do_fetch())
         except Exception as exc:
             logger.debug("Playwright fallback failed for %r | error=%s", url, exc)
             return ""
-        finally:
-            if owns_browser and pw_ctx is not None:
-                if browser is not None:
-                    await browser.close()
-                await pw_ctx.stop()
 
     async def _check_ota_presence(
         self, client: httpx.AsyncClient, domain: str, nom: str

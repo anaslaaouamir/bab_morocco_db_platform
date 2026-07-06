@@ -166,7 +166,9 @@ class MockEnrichmentService:
             enriched["https_actif"] = True
             enriched["cta_reservation_present"] = True
             enriched["formulaire_contact_present"] = True
-            enriched["reseaux_sociaux"] = "instagram,facebook"
+            enriched["reseaux_sociaux"] = (
+                "instagram|https://instagram.com/example,facebook|https://facebook.com/example"
+            )
             enriched["langues_disponibles"] = "fr,en"
         else:
             # Low-quality prospect

@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models.prospect import Prospect
 from app.models.scan_job import ScanJob
 from app.models.user import User
-from app.services.real_providers import RealEnrichmentService, get_scan_providers
+from app.services.real_providers import RealEnrichmentService, get_scan_providers, run_playwright
 from app.services.scoring import scoring_engine
 from app.services.prospect_service import COMMISSION_DEFAULTS, detect_langue
 
@@ -76,8 +76,13 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
             # enrichment service is active; mocks never touch Playwright.
             if _USES_PLAYWRIGHT:
                 from playwright.async_api import async_playwright
-                pw_ctx = await async_playwright().start()
-                browser = await pw_ctx.chromium.launch(headless=True)
+
+                async def _launch():
+                    ctx = await async_playwright().start()
+                    br = await ctx.chromium.launch(headless=True)
+                    return ctx, br
+
+                pw_ctx, browser = await run_playwright(_launch())
 
             # ── Step 1: Mock Google Maps search ──────────────────────────────
             job.statut = "running"
@@ -187,7 +192,12 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
             await db.commit()
         finally:
             # Always release the shared browser, even on a mid-scan crash.
-            if browser is not None:
-                await browser.close()
-            if pw_ctx is not None:
-                await pw_ctx.stop()
+            # Must go through run_playwright() too — it was launched there.
+            async def _close():
+                if browser is not None:
+                    await browser.close()
+                if pw_ctx is not None:
+                    await pw_ctx.stop()
+
+            if browser is not None or pw_ctx is not None:
+                await run_playwright(_close())
