@@ -31,6 +31,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
+import PhoneOutlinedIcon from "@mui/icons-material/PhoneOutlined";
 import LinkedInIcon from "@mui/icons-material/LinkedIn";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import BedOutlinedIcon from "@mui/icons-material/BedOutlined";
@@ -708,6 +709,10 @@ interface EditForm {
   presenceBooking: boolean;
   noteBooking: string;
   presenceExpedia: boolean;
+  telephone: string;
+  noteGoogle: string;
+  nbAvisGoogle: string;
+  languesDisponibles: string;
   commissionStandard: string;
   commissionPlancher: string;
   langue: OutreachLanguage;
@@ -731,6 +736,10 @@ function prospectToEditForm(p: Prospect): EditForm {
     presenceBooking: p.presenceBooking,
     noteBooking: p.noteBooking != null ? String(p.noteBooking) : "",
     presenceExpedia: p.presenceExpedia,
+    telephone: p.telephone ?? "",
+    noteGoogle: p.noteGoogle != null ? String(p.noteGoogle) : "",
+    nbAvisGoogle: p.nbAvisGoogle != null ? String(p.nbAvisGoogle) : "",
+    languesDisponibles: p.languesDisponibles ?? "",
     commissionStandard: String(p.commissionStandard),
     commissionPlancher: String(p.commissionPlancher),
     langue: p.langue as OutreachLanguage,
@@ -812,6 +821,7 @@ function EditProspectForm({
           <TextField size="small" label="Nom du contact" fullWidth value={form.nomContact} onChange={(e) => set("nomContact", e.target.value)} />
           <TextField size="small" label="Poste / Fonction" fullWidth value={form.posteContact} onChange={(e) => set("posteContact", e.target.value)} />
           <TextField size="small" label="Email" fullWidth value={form.emailContact} onChange={(e) => set("emailContact", e.target.value)} />
+          <TextField size="small" label="Téléphone" fullWidth value={form.telephone} onChange={(e) => set("telephone", e.target.value)} />
           <TextField size="small" label="LinkedIn (optionnel)" fullWidth value={form.linkedinContact} onChange={(e) => set("linkedinContact", e.target.value)} />
           <TextField size="small" label="Prochain contact (YYYY-MM-DD)" fullWidth value={form.dateProchainContact} onChange={(e) => set("dateProchainContact", e.target.value)} />
         </Box>
@@ -826,10 +836,19 @@ function EditProspectForm({
         </Typography>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
           <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+            <TextField size="small" label="Note Google" type="number" value={form.noteGoogle} onChange={(e) => set("noteGoogle", e.target.value)} slotProps={{ htmlInput: { step: 0.1, min: 0, max: 5 } }} />
+            <TextField size="small" label="Nb. avis Google" type="number" value={form.nbAvisGoogle} onChange={(e) => set("nbAvisGoogle", e.target.value)} />
+          </Box>
+          <TextField size="small" label="Langues publiées (ex : fr,en,es)" fullWidth value={form.languesDisponibles} onChange={(e) => set("languesDisponibles", e.target.value)} />
+          <TextField size="small" label="Capacité (description)" fullWidth value={form.capaciteDescription} onChange={(e) => set("capaciteDescription", e.target.value)} />
+
+          <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+            Informations complémentaires (optionnel)
+          </Typography>
+          <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
             <TextField size="small" label="Nb. chambres" type="number" value={form.nbChambres} onChange={(e) => set("nbChambres", e.target.value)} />
             <TextField size="small" label="Note Booking" type="number" value={form.noteBooking} onChange={(e) => set("noteBooking", e.target.value)} slotProps={{ htmlInput: { step: 0.1, min: 0, max: 10 } }} />
           </Box>
-          <TextField size="small" label="Capacité (description)" fullWidth value={form.capaciteDescription} onChange={(e) => set("capaciteDescription", e.target.value)} />
           <Box sx={{ display: "flex", gap: 2 }}>
             <FormControlLabel
               control={<Switch checked={form.presenceBooking} onChange={(e) => set("presenceBooking", e.target.checked)} size="small" />}
@@ -938,6 +957,10 @@ export default function ProspectDrawer({
         presenceBooking: editForm.presenceBooking,
         noteBooking: editForm.noteBooking ? parseFloat(editForm.noteBooking) : undefined,
         presenceExpedia: editForm.presenceExpedia,
+        telephone: editForm.telephone || undefined,
+        noteGoogle: editForm.noteGoogle ? parseFloat(editForm.noteGoogle) : undefined,
+        nbAvisGoogle: editForm.nbAvisGoogle ? parseInt(editForm.nbAvisGoogle, 10) : undefined,
+        languesDisponibles: editForm.languesDisponibles || undefined,
         commissionStandard: parseFloat(editForm.commissionStandard),
         commissionPlancher: parseFloat(editForm.commissionPlancher),
         langue: editForm.langue,
@@ -1204,6 +1227,15 @@ export default function ProspectDrawer({
             href={`mailto:${prospect.emailContact}`}
           />
 
+          {prospect.telephone && (
+            <InfoRow
+              icon={<PhoneOutlinedIcon sx={{ fontSize: 16 }} />}
+              label="Téléphone"
+              value={prospect.telephone}
+              href={`tel:${prospect.telephone}`}
+            />
+          )}
+
           {prospect.linkedinContact && (
             <InfoRow
               icon={<LinkedInIcon sx={{ fontSize: 16 }} />}
@@ -1268,44 +1300,81 @@ export default function ProspectDrawer({
             })}
           />
 
-          {/* OTA presence */}
+          {/* Présence digitale (Google + signaux scrapés) */}
           <Box sx={{ mt: 1 }}>
             <Typography
               variant="labelSmall"
               color="text.secondary"
               sx={{ display: "block", mb: 0.75 }}
             >
-              Présence OTA concurrentes
+              Présence digitale
             </Typography>
-            <Box sx={{ display: "flex", gap: 2 }}>
-              {[
-                {
-                  label: prospect.noteBooking
-                    ? `Booking.com · ${prospect.noteBooking}★`
-                    : "Booking.com",
-                  present: prospect.presenceBooking,
-                },
-                { label: "Expedia", present: prospect.presenceExpedia },
-              ].map(({ label, present }) => (
-                <Box key={label} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                  {present ? (
-                    <CheckCircleOutlineIcon
-                      sx={{ fontSize: 15, color: "success.main" }}
-                    />
-                  ) : (
-                    <RadioButtonUncheckedIcon
-                      sx={{ fontSize: 15, color: "text.disabled" }}
-                    />
-                  )}
-                  <Typography
-                    variant="bodySmall"
-                    color={present ? "text.primary" : "text.disabled"}
-                  >
-                    {label}
-                  </Typography>
+
+            {prospect.noteGoogle == null &&
+            prospect.httpsActif == null &&
+            prospect.ctaReservationPresent == null &&
+            !prospect.reseauxSociaux &&
+            !prospect.languesDisponibles ? (
+              <Typography variant="bodySmall" color="text.disabled">—</Typography>
+            ) : (
+              <>
+                {(prospect.noteGoogle != null || prospect.businessStatus) && (
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1, flexWrap: "wrap" }}>
+                    {prospect.noteGoogle != null && (
+                      <Typography variant="bodySmall" sx={{ fontWeight: 600 }}>
+                        ★ {prospect.noteGoogle.toFixed(1)}
+                        {prospect.nbAvisGoogle != null && (
+                          <Typography component="span" variant="bodySmall" color="text.secondary">
+                            {" "}· {prospect.nbAvisGoogle} avis Google
+                          </Typography>
+                        )}
+                      </Typography>
+                    )}
+                    {prospect.businessStatus && (
+                      <Chip
+                        label={prospect.businessStatus === "OPERATIONAL" ? "Actif" : prospect.businessStatus}
+                        size="small"
+                        color={prospect.businessStatus === "OPERATIONAL" ? "success" : "warning"}
+                        sx={{ fontSize: "0.625rem", height: 18 }}
+                      />
+                    )}
+                  </Box>
+                )}
+
+                <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                  {(
+                    [
+                      { label: "HTTPS", present: prospect.httpsActif },
+                      { label: "CTA réservation", present: prospect.ctaReservationPresent },
+                    ] as { label: string; present: boolean | undefined }[]
+                  )
+                    .filter(({ present }) => present != null)
+                    .concat(
+                      prospect.reseauxSociaux
+                        ? [{ label: "Réseaux sociaux", present: true }]
+                        : []
+                    )
+                    .map(({ label, present }) => (
+                      <Box key={label} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        {present ? (
+                          <CheckCircleOutlineIcon sx={{ fontSize: 15, color: "success.main" }} />
+                        ) : (
+                          <RadioButtonUncheckedIcon sx={{ fontSize: 15, color: "text.disabled" }} />
+                        )}
+                        <Typography variant="bodySmall" color={present ? "text.primary" : "text.disabled"}>
+                          {label}
+                        </Typography>
+                      </Box>
+                    ))}
                 </Box>
-              ))}
-            </Box>
+
+                {prospect.languesDisponibles && (
+                  <Typography variant="bodySmall" color="text.secondary" sx={{ mt: 0.75, display: "block" }}>
+                    Langues publiées : {prospect.languesDisponibles}
+                  </Typography>
+                )}
+              </>
+            )}
           </Box>
         </Box>
 
