@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
@@ -28,9 +29,21 @@ def _job_to_response(job: ScanJob) -> ScanJobResponse:
         nb_doublons=job.nb_doublons,
         progression=job.progression,
         erreur=job.erreur,
+        scheduled_at=job.scheduled_at,
         created_at=job.created_at,
         completed_at=job.completed_at,
     )
+
+
+def _is_due(scheduled_at) -> bool:
+    """A naive datetime from the request is treated as UTC, matching how
+    scheduled_at is stored and compared (see scheduler.py)."""
+    if scheduled_at is None:
+        return True
+    now = datetime.now(timezone.utc)
+    if scheduled_at.tzinfo is None:
+        return scheduled_at <= now.replace(tzinfo=None)
+    return scheduled_at <= now
 
 
 @router.get("/history", response_model=list[ScanJobResponse])
@@ -50,18 +63,24 @@ async def start_scan(
     session_factory=Depends(get_session_factory),
     _admin: User = Depends(require_admin),
 ):
+    due = _is_due(data.scheduled_at)
+
     job = ScanJob(
         ville=data.ville,
         pays=data.pays,
         type_partenaire=data.type_partenaire.value,
         limite=data.limite,
-        statut="pending",
+        statut="pending" if due else "scheduled",
+        scheduled_at=None if due else data.scheduled_at,
     )
     db.add(job)
     await db.commit()
     await db.refresh(job)
 
-    background_tasks.add_task(run_scan_pipeline, job.id, session_factory)
+    if due:
+        background_tasks.add_task(run_scan_pipeline, job.id, session_factory)
+    # else: left as statut="scheduled" — the backend scheduler picks it up
+    # and fires it once scheduled_at arrives (see scheduler.py).
     return _job_to_response(job)
 
 
@@ -75,3 +94,21 @@ async def get_scan_job(
     if not job:
         raise HTTPException(status_code=404, detail="ScanJob introuvable.")
     return _job_to_response(job)
+
+
+@router.delete("/{job_id}", status_code=204)
+async def cancel_scheduled_scan(
+    job_id: uuid.UUID,
+    db: AsyncSession = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
+    job = await db.get(ScanJob, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="ScanJob introuvable.")
+    if job.statut != "scheduled":
+        raise HTTPException(
+            status_code=409,
+            detail="Seul un scan planifié non encore démarré peut être annulé.",
+        )
+    job.statut = "cancelled"
+    await db.commit()

@@ -26,5 +26,10 @@ class ScanJob(Base):
     progression: Mapped[int] = mapped_column(Integer, default=0)
     erreur: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # NULL = run immediately (legacy/default behavior). A future timestamp means
+    # "don't start until then" — the job sits with statut="scheduled" until the
+    # backend scheduler (see scheduler.py) picks it up and fires it.
+    scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
