@@ -15,18 +15,6 @@ export interface AppSettings {
   scheduledScan: ScheduledScanSettings;
 }
 
-// ─── Scheduled job stored in localStorage ──────────────────────────────────
-
-export interface ScheduledScanJob {
-  id: string;          // uuid generated client-side
-  ville: string;
-  pays: string;
-  typePartenaire: string;
-  limite: number;      // = batchSize
-  scheduledAt: string; // ISO timestamp when this batch should fire
-  fired: boolean;
-}
-
 // ─── Defaults ───────────────────────────────────────────────────────────────
 
 const DEFAULTS: AppSettings = {
@@ -39,7 +27,6 @@ const DEFAULTS: AppSettings = {
 };
 
 const SETTINGS_KEY  = "bab_morocco_settings";
-const JOBS_KEY      = "bab_morocco_scheduled_jobs";
 
 // ─── Raw localStorage helpers ────────────────────────────────────────────────
 
@@ -65,47 +52,37 @@ export function saveSettings(settings: AppSettings): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-export function loadScheduledJobs(): ScheduledScanJob[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(JOBS_KEY);
-    return raw ? (JSON.parse(raw) as ScheduledScanJob[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveScheduledJobs(jobs: ScheduledScanJob[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(JOBS_KEY, JSON.stringify(jobs));
-}
-
-export function clearFiredJobs(): void {
-  const remaining = loadScheduledJobs().filter((j) => !j.fired);
-  saveScheduledJobs(remaining);
-}
-
 // ─── Schedule builder ────────────────────────────────────────────────────────
 
 /**
- * Build a flat list of ScheduledScanJob entries spread evenly across the next
- * occurrence of the configured time window.
+ * A batch ready to submit to POST /scan/start with its own scheduled_at —
+ * the backend (not the browser) parks it and fires it when due, see
+ * SCHEDULED_SCAN_CALENDAR_PLAN.md Phase A/B.
+ */
+export interface ScheduledScanBatch {
+  typePartenaire: string;
+  limite: number;
+  scheduledAt: string; // ISO timestamp when this batch should fire
+}
+
+/**
+ * Build a flat list of batches spread evenly across a time window.
  *
  * Logic:
- *   - Window = [windowStartHour, windowEndHour) today, or tomorrow if the window
- *     has already passed today.
- *   - Jobs are distributed at equal intervals across the window duration.
+ *   - Window = [windowStartHour, windowEndHour) on targetDate if given,
+ *     otherwise the next occurrence of the window (today if it hasn't
+ *     started yet, otherwise tomorrow).
+ *   - Batches are distributed at equal intervals across the window duration.
  */
 export function buildScheduledJobs(params: {
-  ville: string;
-  pays: string;
   types: string[];
   limiteParType: number;
   batchSize: number;
   windowStartHour: number;
   windowEndHour: number;
-}): ScheduledScanJob[] {
-  const { ville, pays, types, limiteParType, batchSize, windowStartHour, windowEndHour } = params;
+  targetDate?: Date; // anchor to this specific day instead of "next occurrence"
+}): ScheduledScanBatch[] {
+  const { types, limiteParType, batchSize, windowStartHour, windowEndHour, targetDate } = params;
 
   // Build flat list: for each type, ceil(limiteParType / batchSize) batches
   const batches: { typePartenaire: string; limite: number }[] = [];
@@ -118,13 +95,15 @@ export function buildScheduledJobs(params: {
     }
   }
 
-  // Compute window start timestamp (next occurrence)
-  const now = new Date();
-  const windowStart = new Date(now);
+  // Compute window start timestamp
+  const windowStart = targetDate ? new Date(targetDate) : new Date();
   windowStart.setHours(windowStartHour, 0, 0, 0);
-  if (windowStart <= now) {
-    // Window already started/passed today → schedule for tomorrow
-    windowStart.setDate(windowStart.getDate() + 1);
+  if (!targetDate) {
+    const now = new Date();
+    if (windowStart <= now) {
+      // Window already started/passed today → schedule for tomorrow
+      windowStart.setDate(windowStart.getDate() + 1);
+    }
   }
   const windowEnd = new Date(windowStart);
   windowEnd.setHours(windowEndHour, 0, 0, 0);
@@ -136,13 +115,9 @@ export function buildScheduledJobs(params: {
   const intervalMs = batches.length > 1 ? windowMs / (batches.length - 1) : 0;
 
   return batches.map((b, i) => ({
-    id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-    ville,
-    pays,
     typePartenaire: b.typePartenaire,
     limite: b.limite,
     scheduledAt: new Date(windowStart.getTime() + i * intervalMs).toISOString(),
-    fired: false,
   }));
 }
 

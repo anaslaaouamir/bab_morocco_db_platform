@@ -175,6 +175,10 @@ export interface ScanStartParams {
   pays: string;
   typePartenaire: PartnerType;
   limite?: number;
+  // Omitted or already-due → runs immediately. A future ISO timestamp parks
+  // the job server-side (statut="scheduled") until the backend scheduler
+  // fires it — see SCHEDULED_SCAN_CALENDAR_PLAN.md.
+  scheduledAt?: string;
 }
 
 export const scanApi = {
@@ -186,6 +190,7 @@ export const scanApi = {
         pays:            params.pays,
         type_partenaire: params.typePartenaire,
         limite:          params.limite ?? 10,
+        scheduled_at:    params.scheduledAt,
       }),
     }),
 
@@ -194,6 +199,9 @@ export const scanApi = {
 
   history: (): Promise<RawScanJob[]> =>
     apiFetch<RawScanJob[]>("/scan/history"),
+
+  cancel: (jobId: string): Promise<void> =>
+    apiFetch<void>(`/scan/${jobId}`, { method: "DELETE" }),
 };
 
 // ─── Outreach ─────────────────────────────────────────────────────────────────

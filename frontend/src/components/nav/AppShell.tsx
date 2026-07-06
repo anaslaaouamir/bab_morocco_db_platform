@@ -18,8 +18,7 @@ import AccountCircleRoundedIcon from "@mui/icons-material/AccountCircleRounded";
 import { alpha } from "@mui/material/styles";
 import navItems, { isActive } from "./navItems";
 import ProfileDialog from "@/components/settings/ProfileDialog";
-import { healthApi, scanApi } from "@/lib/api";
-import { loadSettings, loadScheduledJobs, saveScheduledJobs } from "@/lib/settingsStore";
+import { healthApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 // MD3 Navigation Rail dimensions
@@ -272,55 +271,6 @@ export default function AppShell({
   useEffect(() => {
     healthApi.check().catch(() => setBackendDown(true));
   }, []);
-
-  // ── Scheduled scan executor ────────────────────────────────────
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    const POLL_INTERVAL_MS = 60_000; // check every minute
-
-    async function runDueJobs() {
-      const settings = loadSettings();
-      if (!settings.scheduledScan.enabled) return;
-
-      const now = new Date();
-      const currentHour = now.getHours();
-      const { windowStartHour, windowEndHour } = settings.scheduledScan;
-
-      // Determine if we are within the configured window
-      const inWindow = windowEndHour > windowStartHour
-        ? currentHour >= windowStartHour && currentHour < windowEndHour
-        : currentHour >= windowStartHour || currentHour < windowEndHour; // overnight window
-
-      if (!inWindow) return;
-
-      const jobs = loadScheduledJobs();
-      const due  = jobs.filter((j) => !j.fired && new Date(j.scheduledAt) <= now);
-      if (due.length === 0) return;
-
-      for (const job of due) {
-        try {
-          // Fire and forget — just start the job; the scan dialog handles polling
-          await scanApi.start({
-            ville:          job.ville,
-            pays:           job.pays,
-            typePartenaire: job.typePartenaire as import("@/types/prospect").PartnerType,
-            limite:         job.limite,
-          });
-        } catch {
-          // Silent fail — will retry on next tick if not marked fired
-        }
-        // Mark as fired regardless so we don't re-fire on error spam
-        job.fired = true;
-      }
-
-      saveScheduledJobs(jobs);
-    }
-
-    runDueJobs();
-    const timer = setInterval(runDueJobs, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [isAdmin]);
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>

@@ -80,13 +80,14 @@ export interface RawScanJob {
   pays: string;
   type_partenaire: string;
   limite: number;
-  statut: "pending" | "running" | "done" | "error";
+  statut: "scheduled" | "pending" | "running" | "done" | "error" | "cancelled";
   nb_trouves: number;
   nb_ajoutes: number;
   nb_veille: number;
   nb_doublons: number;
   progression: number;
   erreur: string | null;
+  scheduled_at: string | null;
   created_at: string;
   completed_at: string | null;
 }

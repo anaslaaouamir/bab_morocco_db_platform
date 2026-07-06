@@ -38,7 +38,7 @@ import { PARTNER_TYPE_LABELS } from "@/types/prospect";
 import { scanApi, ApiError, type RawScanJob } from "@/lib/api";
 import { COUNTRIES_BY_MARKET, CITIES_BY_COUNTRY } from "@/lib/constants/geography";
 import { useSnackbar } from "@/contexts/SnackbarContext";
-import { useSettings, buildScheduledJobs, loadScheduledJobs, saveScheduledJobs } from "@/lib/settingsStore";
+import { useSettings, buildScheduledJobs } from "@/lib/settingsStore";
 import { useAuth } from "@/contexts/AuthContext";
 
 // ─── Config maps ──────────────────────────────────────────────────────────────
@@ -249,9 +249,7 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
 
     // ── Scheduled mode ────────────────────────────────────────────
     if (ss.enabled) {
-      const jobs = buildScheduledJobs({
-        ville:           form.ville,
-        pays:            form.pays,
+      const batches = buildScheduledJobs({
         types:           form.types,
         limiteParType:   perType,
         batchSize:       ss.batchSize,
@@ -259,18 +257,40 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
         windowEndHour:   ss.windowEndHour,
       });
 
-      // Append to any existing queued jobs
-      const existing = loadScheduledJobs();
-      saveScheduledJobs([...existing, ...jobs]);
+      setSubmitting(true);
+      try {
+        // Each batch is persisted server-side as its own scheduled ScanJob —
+        // the backend scheduler fires it when due, no browser needs to stay
+        // open (see SCHEDULED_SCAN_CALENDAR_PLAN.md Phase A/B).
+        await Promise.all(
+          batches.map((b) =>
+            scanApi.start({
+              ville:          form.ville,
+              pays:           form.pays,
+              typePartenaire: b.typePartenaire as PartnerType,
+              limite:         b.limite,
+              scheduledAt:    b.scheduledAt,
+            }),
+          ),
+        );
 
-      const startLabel = `${String(ss.windowStartHour).padStart(2, "0")}:00`;
-      const endLabel   = `${String(ss.windowEndHour).padStart(2, "0")}:00`;
-      showSnackbar({
-        message: `${jobs.length} scan${jobs.length > 1 ? "s" : ""} planifié${jobs.length > 1 ? "s" : ""} entre ${startLabel} et ${endLabel}.`,
-        severity: "info",
-        duration: 7000,
-      });
-      onClose();
+        const startLabel = `${String(ss.windowStartHour).padStart(2, "0")}:00`;
+        const endLabel   = `${String(ss.windowEndHour).padStart(2, "0")}:00`;
+        showSnackbar({
+          message: `${batches.length} scan${batches.length > 1 ? "s" : ""} planifié${batches.length > 1 ? "s" : ""} entre ${startLabel} et ${endLabel}.`,
+          severity: "info",
+          duration: 7000,
+        });
+        onClose();
+      } catch (err) {
+        const msg =
+          err instanceof ApiError
+            ? err.detail
+            : "Erreur réseau — impossible de planifier le scan.";
+        showSnackbar({ message: msg, severity: "error", duration: 6000 });
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
