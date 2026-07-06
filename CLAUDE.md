@@ -59,16 +59,27 @@ L'interface est construite sur **Material Design 3 (Google)** :
 
 ## 4. Algorithme de Scoring des Prospects (0-100)
 
+> Sous-criteres mis a jour Juillet 2026 (voir SCRAPING_ENRICHMENT_SCORING_PLAN.md) — categories et
+> ponderations inchangees, mais recalculees a partir de signaux reellement obtenables gratuitement
+> (Google Places + scraping type-agnostique du site du prospect), au lieu de signaux Booking/
+> Expedia/LinkedIn/nb chambres qui se sont averes soit bloques (WAF), soit non pertinents pour 6
+> des 8 types de partenaires (agences, transport, activites...).
+
 | Critere | Poids | Detail |
 |---------|-------|--------|
-| Activite digitale | 25 pts | Presence web, avis, referencement sur OTAs concurrentes |
-| Coherence marche | 25 pts | Clientele alignee avec la cible Bab Morocco (Europe / Golfe) |
-| Taille & capacite | 20 pts | Nb chambres/activites, volume potentiel de reservations |
-| Contact decideur | 15 pts | Email direct ou LinkedIn du DG / responsable commercial |
-| Liberte OTA | 15 pts | Absence de partenariat exclusif avec OTA concurrente |
+| Activite digitale | 25 pts | Site web (3) + note Google (jusqu'a 8) + statut Google actif (3) + HTTPS (2) + bouton reservation/devis (4) + presence reseaux sociaux (5) |
+| Coherence marche | 25 pts | Pays cible Bab Morocco (jusqu'a 20) + bonus si le site publie >=2 langues cibles fr/en/es/de/ar (+5) |
+| Taille & capacite | 20 pts | Nombre d'avis Google (>=300 avis : 20 pts, >=100 : 15, >=30 : 10, >=10 : 5, sinon 0) |
+| Contact decideur | 15 pts | Email (8) + telephone (4) + formulaire de contact detecte sur le site (3) |
+| Liberte OTA | 15 pts | Valeur fixe pour l'instant — aucun signal gratuit fiable identifie (Booking/Expedia bloquent le scraping direct) |
 
 **Seuil de passage en outreach : score >= 75**
 En dessous : mise en veille automatique avec date de re-evaluation.
+
+**Prospects ajoutes manuellement (hors scan) :** les sous-criteres qui dependent d'un scan reel
+(statut Google, HTTPS, bouton reservation, formulaire, reseaux sociaux) ne penalisent pas un
+prospect saisi a la main — l'absence de donnee est traitee comme neutre plutot que comme un echec,
+puisqu'un Commercial a deja valide humainement ce prospect avant de l'ajouter.
 
 ---
 
