@@ -727,7 +727,7 @@ feat(prospection): add human-editable enrichment fields to add-prospect form
 
 ## Section 11 — CLAUDE.md sync (optional — confirm with the doc owner first)
 
-**Status:** Not started
+**Status:** Done — committed 2026-07-06, after explicit confirmation from the doc owner.
 
 **Goal:** CLAUDE.md §4 still describes the original Booking/LinkedIn/room-count sub-checks, and
 §8's tech stack lists Playwright as already in use when in fact it was only added by this plan.
