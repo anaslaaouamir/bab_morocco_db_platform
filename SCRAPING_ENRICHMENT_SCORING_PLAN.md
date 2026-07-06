@@ -608,7 +608,20 @@ feat(prospection): replace OTAs column with Google + digital-signal indicators
 
 ## Section 9 — Prospect drawer: replace OTA + capacité sections
 
-**Status:** Not started
+**Status:** Done — committed 2026-07-03.
+
+**Manual verification performed (real browser, not just tsc):** logged into the running app
+(`admin@babmorocco.com`) and opened the drawer for a real scanned prospect (Quad Adventure
+Essaouira, `prestataire_activites` — a non-hotel type, per the plan's own test discipline). Read
+mode confirmed: phone row rendered with `tel:` link, "Présence digitale" block showed
+`★ 5.0 · 110 avis Google`, an "Actif" status chip, and correct HTTPS/CTA/social icons; "Capacité"
+correctly showed only the description (no phantom room count for a scanned prospect). Edit mode
+confirmed: `Note Google`/`Nb. avis Google`/`Langues publiées` promoted to the primary
+Établissement section, legacy Booking/Expedia/room-count fields demoted under "Informations
+complémentaires (optionnel)", all fields pre-populated correctly. Edited `langues_disponibles` to
+`"fr,en"`, saved — `PUT /prospects/{id}` returned 200 with the field persisted, and
+`score_coherence_marche` correctly recalculated live from 20 to 25 (the Section 5 language bonus
+firing for real), total 90→95. Full round-trip confirmed working, not just compiling.
 
 **Goal:** Update the drawer's read-only view and edit form to reflect the new signal set.
 
