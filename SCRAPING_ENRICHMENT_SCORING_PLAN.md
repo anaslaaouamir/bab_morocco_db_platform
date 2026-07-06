@@ -664,7 +664,36 @@ feat(prospection): show digital-signal data in prospect drawer, editable subset
 
 ## Section 10 — Add-prospect form + live score preview
 
-**Status:** Not started
+**Status:** Done — committed 2026-07-03.
+
+**Bigger finding than the plan assumed:** the "live score preview" this section was supposed to
+extend didn't actually exist — `AddProspectDialog.tsx` had manual sliders letting a Commercial
+hand-drag a score value, completely disconnected from `scoring.py` (the backend always overrides
+submitted scores on create anyway, per `prospect_service.py`'s `_apply_scoring`). A
+`prospectsApi.scorePreview()` function and backend `/prospects/score-preview` endpoint already
+existed but were never called from this dialog. Fixed properly rather than papering over it:
+removed the manual sliders entirely, added a debounced (400ms) live call to the real
+`score-preview` endpoint on every relevant field change, and display the actual computed
+breakdown. This is a more faithful implementation of the plan's stated intent ("live score shown
+to the Commercial... matches Section 3's actual formula") than the original text anticipated.
+
+**Files also touched (not in original Section 10 list, required for the fix above):**
+`frontend/src/lib/api/index.ts` — `ScorePreviewParams` interface and `scorePreview()` gained the 5
+new params (noteGoogle, nbAvisGoogle, telephone, businessStatus, languesDisponibles).
+
+**Manual verification performed (real browser):** opened the manual add-prospect flow, confirmed
+a default preview (`Score 39/100`) appears immediately from empty-form defaults, filled in
+pays=Maroc + email + noteGoogle=4.8 + nbAvisGoogle=350 + languesDisponibles="fr,en" and watched
+the live score update to 96/100 — matched by hand-calculation exactly (20 base + 5 language bonus
+= 25 coherence, etc.). Submitted the form (also filling required fields): first attempt correctly
+hit a pre-existing 409 (duplicate empty `adresse_web` — unrelated to this change), second attempt
+with a real URL succeeded (201), and the created prospect's stored fields matched the live preview
+exactly, `score_total: 100`. Confirmed `https_actif`/`cta_reservation_present`/
+`formulaire_contact_present`/`reseaux_sociaux` were correctly absent from the payload (scan-only,
+not on this form) while the 4 human-editable fields persisted correctly. One HMR-related false
+alarm during testing (stale "Cannot read properties of undefined" console errors) turned out to be
+a dev-server hot-reload artifact from many live edits in one session — resolved by a clean
+frontend restart, confirmed not a real bug via a fresh reproduction.
 
 **Goal:** Update the manual "Add Prospect" dialog to match the new scoring formula, adding only
 the fields a human can meaningfully type in.
