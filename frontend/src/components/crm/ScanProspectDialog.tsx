@@ -97,16 +97,27 @@ interface ScanProspectDialogProps {
   onClose: () => void;
   onBack: () => void;
   onScanComplete?: () => void;
+  // Set when opened from the Calendrier page for a specific future day —
+  // forces scheduled mode for that exact date, regardless of the global
+  // "Scan planifié" toggle (picking a calendar day is itself an explicit
+  // scheduling action). See SCHEDULED_SCAN_CALENDAR_PLAN.md Phase D.
+  targetDate?: Date;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function ScanProspectDialog({ open, onClose, onBack, onScanComplete }: ScanProspectDialogProps) {
+export default function ScanProspectDialog({ open, onClose, onBack, onScanComplete, targetDate }: ScanProspectDialogProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const { showSnackbar } = useSnackbar();
   const { settings } = useSettings();
   const { isCommercial } = useAuth();
+
+  // A calendar-picked date always schedules, regardless of the global toggle.
+  const isScheduledMode = settings.scheduledScan.enabled || !!targetDate;
+  const dateLabel = targetDate
+    ? targetDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })
+    : null;
 
   const [form, setForm]           = useState<ScanForm>(INITIAL);
   const [errors, setErrors]       = useState<FormErrors>({});
@@ -248,13 +259,14 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
     const perType = Math.max(1, Math.floor(form.limite / form.types.length));
 
     // ── Scheduled mode ────────────────────────────────────────────
-    if (ss.enabled) {
+    if (isScheduledMode) {
       const batches = buildScheduledJobs({
         types:           form.types,
         limiteParType:   perType,
         batchSize:       ss.batchSize,
         windowStartHour: ss.windowStartHour,
         windowEndHour:   ss.windowEndHour,
+        targetDate,
       });
 
       setSubmitting(true);
@@ -277,7 +289,7 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
         const startLabel = `${String(ss.windowStartHour).padStart(2, "0")}:00`;
         const endLabel   = `${String(ss.windowEndHour).padStart(2, "0")}:00`;
         showSnackbar({
-          message: `${batches.length} scan${batches.length > 1 ? "s" : ""} planifié${batches.length > 1 ? "s" : ""} entre ${startLabel} et ${endLabel}.`,
+          message: `${batches.length} scan${batches.length > 1 ? "s" : ""} planifié${batches.length > 1 ? "s" : ""}${dateLabel ? ` le ${dateLabel}` : ""} entre ${startLabel} et ${endLabel}.`,
           severity: "info",
           duration: 7000,
         });
@@ -655,10 +667,10 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
             <Button onClick={onBack} variant="text" disabled={submitting}>
               Retour
             </Button>
-            {settings.scheduledScan.enabled && (
+            {isScheduledMode && (
               <Chip
                 icon={<ScheduleRoundedIcon sx={{ fontSize: "14px !important" }} />}
-                label={`Planifié ${String(settings.scheduledScan.windowStartHour).padStart(2, "0")}:00–${String(settings.scheduledScan.windowEndHour).padStart(2, "0")}:00`}
+                label={`Planifié ${dateLabel ? `${dateLabel} ` : ""}${String(settings.scheduledScan.windowStartHour).padStart(2, "0")}:00–${String(settings.scheduledScan.windowEndHour).padStart(2, "0")}:00`}
                 size="small"
                 color="secondary"
                 variant="outlined"
@@ -674,13 +686,13 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
               startIcon={
                 submitting
                   ? <CircularProgress size={16} color="inherit" />
-                  : settings.scheduledScan.enabled
+                  : isScheduledMode
                     ? <ScheduleRoundedIcon />
                     : <TravelExploreRoundedIcon />
               }
               sx={{ minWidth: 160 }}
             >
-              {submitting ? "Planification…" : settings.scheduledScan.enabled ? "Planifier le scan" : "Lancer le scan"}
+              {submitting ? "Planification…" : isScheduledMode ? "Planifier le scan" : "Lancer le scan"}
             </Button>
           </>
         ) : (

@@ -22,6 +22,8 @@ import DescriptionIcon from "@mui/icons-material/Description";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import SettingsIcon from "@mui/icons-material/Settings";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import CalendarMonthOutlinedIcon from "@mui/icons-material/CalendarMonthOutlined";
 
 const navItems: NavItem[] = [
   {
@@ -53,6 +55,13 @@ const navItems: NavItem[] = [
     href: "/contrats",
     ActiveIcon: DescriptionIcon,
     InactiveIcon: DescriptionOutlinedIcon,
+  },
+  {
+    label: "Calendrier",
+    href: "/calendrier",
+    ActiveIcon: CalendarMonthIcon,
+    InactiveIcon: CalendarMonthOutlinedIcon,
+    requiresAdmin: true,
   },
   {
     label: "Paramètres",
