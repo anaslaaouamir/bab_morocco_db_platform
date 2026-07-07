@@ -36,6 +36,7 @@ import { rawToProspect } from "@/lib/api";
 import ProspectDrawer from "@/components/crm/ProspectDrawer";
 import ContractGenerateDialog from "@/components/contracts/ContractGenerateDialog";
 import { useSnackbar } from "@/contexts/SnackbarContext";
+import { useNotifications } from "@/contexts/NotificationsContext";
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
@@ -359,6 +360,7 @@ function ContractCard({
 export default function ContratsPage() {
   const theme = useTheme();
   const { showSnackbar } = useSnackbar();
+  const { subscribe } = useNotifications();
 
   // Data
   const [contracts, setContracts] = useState<RawContract[]>([]);
@@ -426,6 +428,26 @@ export default function ContratsPage() {
       fetchData();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live update — a real inbound partner reply or email-open event for a
+  // contract arrives via the notifications WebSocket. Refresh that one
+  // contract's card everywhere; only touch the open dialog if it's already
+  // showing this exact contract (never swap dialogContract without also
+  // updating dialogProspect — they must always refer to the same contract).
+  useEffect(() => {
+    return subscribe((event) => {
+      if (event.type !== "contract_reply" && !(event.type === "email_opened" && event.context === "contract")) {
+        return;
+      }
+      contractsApi
+        .get(event.contract_id)
+        .then((updated) => {
+          setContracts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+          setDialogContract((prev) => (prev && prev.id === updated.id ? updated : prev));
+        })
+        .catch(() => {});
+    });
+  }, [subscribe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStageChange = useCallback((id: string, newStage: import("@/types/prospect").PipelineStage) => {
     setProspectsMap((prev) => prev[id] ? { ...prev, [id]: { ...prev[id], stage: newStage } } : prev);

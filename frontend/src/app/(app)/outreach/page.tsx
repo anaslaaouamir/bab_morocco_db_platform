@@ -31,6 +31,7 @@ import AutorenewRoundedIcon from "@mui/icons-material/AutorenewRounded";
 import type { Prospect, PipelineStage } from "@/types/prospect";
 import { scoreTotal, scoreColor, PARTNER_TYPE_LABELS, STAGE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
 import { useSnackbar } from "@/contexts/SnackbarContext";
+import { useNotifications } from "@/contexts/NotificationsContext";
 import ConfirmationDialog from "@/components/shared/ConfirmationDialog";
 import { prospectsApi, outreachApi, negotiationApi, ApiError } from "@/lib/api";
 import type { RawOutreachEmail } from "@/lib/api";
@@ -1039,6 +1040,7 @@ function ComposerEmptyState() {
 
 export default function OutreachPage() {
   const { showSnackbar } = useSnackbar();
+  const { subscribe } = useNotifications();
 
   const [prospects, setProspects]       = useState<Prospect[]>([]);
   const [loading, setLoading]           = useState(true);
@@ -1072,6 +1074,18 @@ export default function OutreachPage() {
   }
 
   useEffect(() => { fetchProspects(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live update — a real inbound reply (via the Resend webhook) moves a
+  // prospect from "outreach" to "negociation" server-side. Mirror the exact
+  // same list update the [DEV] simulate button already does, so the card
+  // disappears from this page right away instead of only on next refresh.
+  useEffect(() => {
+    return subscribe((event) => {
+      if (event.type !== "outreach_reply") return;
+      setProspects((prev) => prev.filter((p) => p.id !== event.prospect_id));
+      setSelectedId((prev) => (prev === event.prospect_id ? null : prev));
+    });
+  }, [subscribe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedId && prospects.length > 0) setSelectedId(prospects[0].id);

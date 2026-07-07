@@ -258,6 +258,9 @@ export const contractsApi = {
       }),
     }),
 
+  get: (contractId: string): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}`),
+
   generate: (contractId: string, clauseOverrides?: Partial<Record<string, string>>): Promise<RawContract> =>
     apiFetch<RawContract>(`/contracts/${contractId}/generate`, {
       method: "POST",

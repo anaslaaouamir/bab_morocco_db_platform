@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.user import User
-from app.routers import auth, health, prospects, scan, outreach, negotiation, contracts, webhooks
+from app.routers import auth, health, prospects, scan, outreach, negotiation, contracts, webhooks, notifications
 from app.services import auth_service
 from app.services.scheduler import start_scheduler, stop_scheduler
 
@@ -28,6 +28,7 @@ app.include_router(outreach.router)
 app.include_router(negotiation.router)
 app.include_router(contracts.router)
 app.include_router(webhooks.router)
+app.include_router(notifications.router)
 
 
 @app.on_event("startup")

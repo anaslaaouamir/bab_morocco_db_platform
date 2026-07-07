@@ -2,6 +2,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export const AUTH_TOKEN_KEY = "bm_auth_token";
 
+/** Same backend, ws(s):// scheme — used for the live notifications channel. */
+export const WS_API_URL = API_URL.replace(/^http/, "ws");
+
 export class ApiError extends Error {
   constructor(
     public status: number,

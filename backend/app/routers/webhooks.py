@@ -20,6 +20,7 @@ from app.models.prospect import Prospect
 from app.services.contract_service import ContractService
 from app.services.negotiation_generator import NegotiationGeneratorProtocol, get_negotiation_generator
 from app.services.negotiation_service import NegotiationService
+from app.services.notification_bus import notification_bus
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,17 @@ async def _handle_email_opened(db: AsyncSession, email_id: str | None) -> None:
         if msg.opened_at is None:
             msg.opened_at = datetime.utcnow()
             await db.commit()
+            prospect = await db.get(Prospect, msg.prospect_id)
+            if prospect:
+                notification_bus.publish(
+                    {
+                        "type": "email_opened",
+                        "context": "negotiation",
+                        "prospect_id": str(prospect.id),
+                        "prospect_nom": prospect.nom,
+                    },
+                    prospect.assigned_to,
+                )
         return
 
     contract = (
@@ -159,6 +171,18 @@ async def _handle_email_opened(db: AsyncSession, email_id: str | None) -> None:
         if contract.opened_at is None:
             contract.opened_at = datetime.utcnow()
             await db.commit()
+            prospect = await db.get(Prospect, contract.prospect_id)
+            if prospect:
+                notification_bus.publish(
+                    {
+                        "type": "email_opened",
+                        "context": "contract",
+                        "contract_id": str(contract.id),
+                        "prospect_id": str(prospect.id),
+                        "prospect_nom": prospect.nom,
+                    },
+                    prospect.assigned_to,
+                )
         return
 
     logger.info("Resend inbound webhook: email.opened for unknown email_id '%s' — ignored", email_id)
@@ -198,6 +222,10 @@ async def _handle_outreach_reply(
 
     await negotiation_svc.submit_message(
         db, prospect, body_text, email_message_id=email_message_id, email_subject=email_subject
+    )
+    notification_bus.publish(
+        {"type": "outreach_reply", "prospect_id": str(prospect.id), "prospect_nom": prospect.nom},
+        prospect.assigned_to,
     )
 
 
@@ -283,6 +311,16 @@ async def _handle_contract_reply(
     await contract_svc.submit_reply(
         db, contract, body_text, reply_pdf_bytes=pdf_bytes, reply_pdf_filename=pdf_filename
     )
+    prospect = await db.get(Prospect, contract.prospect_id)
+    notification_bus.publish(
+        {
+            "type": "contract_reply",
+            "contract_id": str(contract.id),
+            "prospect_id": str(contract.prospect_id),
+            "prospect_nom": prospect.nom if prospect else None,
+        },
+        prospect.assigned_to if prospect else None,
+    )
 
 
 async def _handle_negotiation_reply(
@@ -316,4 +354,8 @@ async def _handle_negotiation_reply(
 
     await negotiation_svc.submit_message(
         db, prospect, body_text, email_message_id=email_message_id, email_subject=email_subject
+    )
+    notification_bus.publish(
+        {"type": "negotiation_reply", "prospect_id": str(prospect.id), "prospect_nom": prospect.nom},
+        prospect.assigned_to,
     )

@@ -50,6 +50,7 @@ import { useRouter } from "next/navigation";
 import type { Prospect } from "@/types/prospect";
 import { scoreTotal, scoreColor, PARTNER_TYPE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
 import { useSnackbar } from "@/contexts/SnackbarContext";
+import { useNotifications } from "@/contexts/NotificationsContext";
 import ConfirmationDialog from "@/components/shared/ConfirmationDialog";
 import { prospectsApi, negotiationApi, ApiError } from "@/lib/api";
 import type { RawMessageAnalysis, RawNegotiationMessage, RawScenario } from "@/lib/api";
@@ -766,6 +767,7 @@ interface RespondedState {
 
 export default function NegociationPage() {
   const { showSnackbar } = useSnackbar();
+  const { subscribe } = useNotifications();
   const theme = useTheme();
   const router = useRouter();
 
@@ -837,6 +839,25 @@ export default function NegociationPage() {
   }
 
   useEffect(() => { fetchProspects(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live updates — an inbound reply or an email-open event arrives via the
+  // notifications WebSocket instead of requiring a manual refresh. Clearing
+  // the cache entry re-triggers the existing analysis/history fetch effect
+  // below when that prospect is the one currently open; for a prospect not
+  // currently selected, it just means fresh data loads the next time it is.
+  useEffect(() => {
+    return subscribe((event) => {
+      if (event.type === "outreach_reply") {
+        fetchProspects();
+        return;
+      }
+      if (event.type === "negotiation_reply" || (event.type === "email_opened" && event.context === "negotiation")) {
+        const id = event.prospect_id;
+        setAnalysisCache((prev) => { const n = { ...prev }; delete n[id]; return n; });
+        setHistoryCache((prev) => { const n = { ...prev }; delete n[id]; return n; });
+      }
+    });
+  }, [subscribe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedId && prospects.length > 0) setSelectedId(prospects[0].id);
