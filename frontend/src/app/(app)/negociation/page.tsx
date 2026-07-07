@@ -374,6 +374,7 @@ function WaitingForReplyPanel({
   sentMessage,
   isEscalation,
   sentAt,
+  openedAt,
   onPartnerReplied,
   onAnalysisReady,
 }: {
@@ -382,6 +383,7 @@ function WaitingForReplyPanel({
   sentMessage: string;
   isEscalation: boolean;
   sentAt: string;
+  openedAt: string | null;
   onPartnerReplied: () => void;
   onAnalysisReady: (analysis: RawMessageAnalysis) => void;
 }) {
@@ -434,9 +436,19 @@ function WaitingForReplyPanel({
 
         <Divider sx={{ mb: 1.5 }} />
 
-        <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.75 }}>
-          Message envoyé
-        </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.75 }}>
+          <Typography variant="labelSmall" color="text.secondary">
+            Message envoyé
+          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <MarkEmailReadRoundedIcon sx={{ fontSize: 14, color: openedAt ? "success.main" : "text.disabled" }} />
+            <Typography variant="labelSmall" sx={{ fontWeight: 600, color: openedAt ? "success.main" : "text.disabled" }}>
+              {openedAt
+                ? `Ouvert le ${new Date(openedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`
+                : "Pas encore ouvert"}
+            </Typography>
+          </Box>
+        </Box>
         <Box sx={{
           p: "10px 14px",
           borderRadius: 2,
@@ -718,10 +730,18 @@ function InlineLastExchanges({ messages, prospect }: { messages: RawNegotiationM
                       WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                       {msg.corps}
                     </Typography>
-                    <Typography variant="labelSmall" color="text.disabled" sx={{ fontSize: "0.5625rem", mt: 0.375, display: "block",
-                      textAlign: isBab ? "left" : "right" }}>
-                      {new Date(msg.date_message).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
-                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.375, mt: 0.375, justifyContent: isBab ? "flex-start" : "flex-end" }}>
+                      {isBab && (
+                        <Tooltip title={msg.opened_at
+                          ? `Ouvert le ${new Date(msg.opened_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`
+                          : "Envoyé — pas encore ouvert"}>
+                          <MarkEmailReadRoundedIcon sx={{ fontSize: 11, color: msg.opened_at ? "success.main" : "text.disabled" }} />
+                        </Tooltip>
+                      )}
+                      <Typography variant="labelSmall" color="text.disabled" sx={{ fontSize: "0.5625rem" }}>
+                        {new Date(msg.date_message).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                      </Typography>
+                    </Box>
                   </Box>
                 </Box>
               );
@@ -868,6 +888,15 @@ export default function NegociationPage() {
   const responded = selectedId !== null && !manualSubmitIds.has(selectedId)
     ? (respondedCache[selectedId] ?? null)
     : null;
+  // Real open status for the last outbound message — same historyCache the
+  // conversation dialog and inline exchanges list already read from.
+  const lastOutboundOpenedAt = useMemo(() => {
+    const msgs = historyCache[selectedId ?? ""] ?? [];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].direction === "outbound") return msgs[i].opened_at;
+    }
+    return null;
+  }, [historyCache, selectedId]);
 
   // ── History ───────────────────────────────────────────────────────
 
@@ -1211,6 +1240,7 @@ export default function NegociationPage() {
                 sentMessage={responded.sentMessage}
                 isEscalation={responded.isEscalation}
                 sentAt={responded.sentAt}
+                openedAt={lastOutboundOpenedAt}
                 onPartnerReplied={handlePartnerReplied}
                 onAnalysisReady={handleAnalysisReady}
               />
