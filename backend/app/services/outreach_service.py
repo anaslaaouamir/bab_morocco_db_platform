@@ -211,7 +211,7 @@ class OutreachService:
         if not prospect:
             raise ValueError("Prospect not found for email")
         email.prospect = prospect  # type: ignore[assignment]
-        await self._sender.send(
+        message_id = await self._sender.send(
             to=prospect.email_contact,
             subject=email.sujet,
             html=email.corps.replace("\n", "<br>"),
@@ -219,6 +219,7 @@ class OutreachService:
         )
         email.statut = "sent"
         email.date_envoi_reel = datetime.utcnow()
+        email.resend_email_id = message_id
         await db.commit()
         await db.refresh(email)
         await self.auto_trigger_followup(db, prospect)

@@ -17,6 +17,7 @@ import { WS_API_URL } from "@/lib/api/base";
 export type BmNotification =
   | { type: "email_opened"; context: "negotiation"; prospect_id: string; prospect_nom: string }
   | { type: "email_opened"; context: "contract"; contract_id: string; prospect_id: string; prospect_nom: string }
+  | { type: "email_opened"; context: "outreach"; prospect_id: string; prospect_nom: string }
   | { type: "outreach_reply"; prospect_id: string; prospect_nom: string }
   | { type: "negotiation_reply"; prospect_id: string; prospect_nom: string }
   | { type: "contract_reply"; contract_id: string; prospect_id: string; prospect_nom: string | null };

@@ -105,6 +105,7 @@ export interface RawOutreachEmail {
   statut: "draft" | "validated" | "sent" | "opened" | "clicked";
   date_envoi_prevu: string;
   date_envoi_reel: string | null;
+  opened_at: string | null;
   created_at: string;
 }
 

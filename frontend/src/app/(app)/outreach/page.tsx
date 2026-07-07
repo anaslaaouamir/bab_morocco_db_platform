@@ -210,6 +210,9 @@ function OutreachProspectCard({
   const total = scoreTotal(prospect.score);
   const color = scoreColor(total);
   const hasSentEmail = emails.some((e) => ["sent", "opened", "clicked"].includes(e.statut));
+  const lastSentEmail = [...emails]
+    .filter((e) => ["sent", "opened", "clicked"].includes(e.statut))
+    .sort((a, b) => (b.date_envoi_reel ?? "").localeCompare(a.date_envoi_reel ?? ""))[0];
 
   return (
     <Card
@@ -276,6 +279,23 @@ function OutreachProspectCard({
           <Typography variant="labelSmall" sx={{ mt: 0.875, display: "block", color: "warning.main", fontWeight: 600 }}>
             Prochaine action : {currentStep.label} — {currentStep.date}
           </Typography>
+        )}
+
+        {/* Email-opened status for the last sent email */}
+        {lastSentEmail && (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 0.5 }}>
+            <MarkEmailReadRoundedIcon
+              sx={{ fontSize: 12, color: lastSentEmail.opened_at ? "success.main" : "text.disabled" }}
+            />
+            <Typography
+              variant="labelSmall"
+              sx={{ color: lastSentEmail.opened_at ? "success.main" : "text.disabled", fontWeight: 600 }}
+            >
+              {lastSentEmail.opened_at
+                ? `Ouvert le ${new Date(lastSentEmail.opened_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`
+                : "Pas encore ouvert"}
+            </Typography>
+          </Box>
         )}
 
         {/* [DEV] Simulate-partner-reply chip — disabled in the UI, kept for future re-enable.
@@ -1081,9 +1101,17 @@ export default function OutreachPage() {
   // disappears from this page right away instead of only on next refresh.
   useEffect(() => {
     return subscribe((event) => {
-      if (event.type !== "outreach_reply") return;
-      setProspects((prev) => prev.filter((p) => p.id !== event.prospect_id));
-      setSelectedId((prev) => (prev === event.prospect_id ? null : prev));
+      if (event.type === "outreach_reply") {
+        setProspects((prev) => prev.filter((p) => p.id !== event.prospect_id));
+        setSelectedId((prev) => (prev === event.prospect_id ? null : prev));
+        return;
+      }
+      if (event.type === "email_opened" && event.context === "outreach") {
+        outreachApi
+          .nextStep(event.prospect_id)
+          .then((r) => setEmailsCache((prev) => ({ ...prev, [event.prospect_id]: r.emails })))
+          .catch(() => {});
+      }
     });
   }, [subscribe]); // eslint-disable-line react-hooks/exhaustive-deps
 

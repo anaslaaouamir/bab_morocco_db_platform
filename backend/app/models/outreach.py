@@ -21,6 +21,12 @@ class OutreachEmail(Base):
     statut: Mapped[str] = mapped_column(String(20), default="draft")        # draft/validated/sent/opened/clicked
     date_envoi_prevu: Mapped[date] = mapped_column(Date, nullable=False)
     date_envoi_reel: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Resend's own id for this send, and when Resend reported it as opened
+    # (via the email.opened webhook) — same pattern as NegotiationMessage/Contract.
+    resend_email_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     prospect: Mapped["Prospect"] = relationship("Prospect", lazy="select")  # type: ignore[name-defined]

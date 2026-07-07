@@ -16,6 +16,7 @@ from app.config import settings
 from app.database import get_session
 from app.models.contract import Contract
 from app.models.negotiation import NegotiationMessage
+from app.models.outreach import OutreachEmail
 from app.models.prospect import Prospect
 from app.services.contract_service import ContractService
 from app.services.negotiation_generator import NegotiationGeneratorProtocol, get_negotiation_generator
@@ -136,9 +137,10 @@ async def resend_inbound(
 
 async def _handle_email_opened(db: AsyncSession, email_id: str | None) -> None:
     """A partner opened a real Resend email — match it back to whichever row
-    sent it (an outbound NegotiationMessage or a Contract's send_to_partner
-    email) by the id stored at send time, and stamp the first-open timestamp.
-    Never used to decide signed/declined or anything else — informational only."""
+    sent it (an outbound NegotiationMessage, a Contract's send_to_partner
+    email, or an OutreachEmail) by the id stored at send time, and stamp the
+    first-open timestamp. Never used to decide signed/declined or anything
+    else — informational only."""
     if not email_id:
         return
 
@@ -178,6 +180,28 @@ async def _handle_email_opened(db: AsyncSession, email_id: str | None) -> None:
                         "type": "email_opened",
                         "context": "contract",
                         "contract_id": str(contract.id),
+                        "prospect_id": str(prospect.id),
+                        "prospect_nom": prospect.nom,
+                    },
+                    prospect.assigned_to,
+                )
+        return
+
+    outreach_email = (
+        await db.execute(select(OutreachEmail).where(OutreachEmail.resend_email_id == email_id))
+    ).scalars().first()
+    if outreach_email:
+        if outreach_email.opened_at is None:
+            outreach_email.opened_at = datetime.utcnow()
+            if outreach_email.statut == "sent":
+                outreach_email.statut = "opened"
+            await db.commit()
+            prospect = await db.get(Prospect, outreach_email.prospect_id)
+            if prospect:
+                notification_bus.publish(
+                    {
+                        "type": "email_opened",
+                        "context": "outreach",
                         "prospect_id": str(prospect.id),
                         "prospect_nom": prospect.nom,
                     },

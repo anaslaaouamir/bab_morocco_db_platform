@@ -40,6 +40,7 @@ class OutreachEmailResponse(BaseModel):
     statut: str
     date_envoi_prevu: date
     date_envoi_reel: Optional[datetime]
+    opened_at: Optional[datetime]
     created_at: datetime
 
 
