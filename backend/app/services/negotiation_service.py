@@ -202,7 +202,7 @@ class NegotiationService:
             if not subject.strip().lower().startswith("re:"):
                 subject = f"Re: {subject}"
 
-        await self._sender.send(
+        email_id = await self._sender.send(
             to=prospect.email_contact,
             subject=subject,
             html=response_text.replace("\n", "<br>"),
@@ -217,6 +217,7 @@ class NegotiationService:
             corps=response_text,
             date_message=datetime.utcnow(),
             requires_human=False,
+            resend_email_id=email_id,
             created_at=datetime.utcnow(),
         )
         db.add(msg)

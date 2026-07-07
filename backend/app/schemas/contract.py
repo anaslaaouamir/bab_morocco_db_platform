@@ -46,6 +46,7 @@ class ContractResponse(BaseModel):
     partner_replied_at: Optional[datetime]
     has_reply_pdf: bool
     partner_reply_pdf_filename: Optional[str]
+    opened_at: Optional[datetime]
     sent_at: Optional[datetime]
     signed_at: Optional[datetime]
     declined_at: Optional[datetime]

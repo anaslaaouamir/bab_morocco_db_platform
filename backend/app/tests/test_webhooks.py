@@ -12,6 +12,7 @@ from httpx import AsyncClient
 from app.config import settings
 from app.routers import webhooks as webhooks_module
 from app.routers.webhooks import strip_quoted_reply
+from app.services.email_transport import MockEmailTransport
 
 pytestmark = pytest.mark.anyio
 
@@ -567,3 +568,94 @@ async def test_contract_webhook_pdf_fetch_failure_still_records_reply_text(clien
     body = updated.json()
     assert body["partner_reply"] == "Accord, contrat signé joint."
     assert body["has_reply_pdf"] is False
+
+
+# ── email.opened — open tracking ──────────────────────────────────────────────
+
+def _opened_payload(email_id: str) -> str:
+    return json.dumps({"type": "email.opened", "data": {"email_id": email_id}})
+
+
+async def test_email_opened_marks_negotiation_message(client: AsyncClient, monkeypatch):
+    """An email.opened event whose email_id matches an outbound negotiation
+    message's resend_email_id must stamp that message's opened_at — nothing
+    else about the row (or the prospect/contract state) changes."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+    prospect = await _create_prospect(client)
+    submit = await client.post(f"/negotiation/{prospect['id']}/message", json={"corps": "Nous acceptons 10%."})
+    assert submit.status_code == 201
+
+    async def fake_send(self, **kwargs):
+        return "mock-negotiation-known-id"
+
+    monkeypatch.setattr(MockEmailTransport, "send", fake_send)
+
+    r = await client.post(f"/negotiation/{prospect['id']}/respond", json={"scenario": "B"})
+    assert r.status_code == 200, r.text
+
+    history_before = (await client.get(f"/negotiation/{prospect['id']}/history")).json()
+    outbound_before = [m for m in history_before if m["direction"] == "outbound"]
+    assert len(outbound_before) == 1
+    assert outbound_before[0]["opened_at"] is None
+
+    svix_id = "msg_opened_1"
+    timestamp = str(int(time.time()))
+    payload = _opened_payload("mock-negotiation-known-id")
+    r2 = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r2.status_code == 200
+
+    history_after = (await client.get(f"/negotiation/{prospect['id']}/history")).json()
+    outbound_after = [m for m in history_after if m["direction"] == "outbound"]
+    assert outbound_after[0]["opened_at"] is not None
+
+
+async def test_email_opened_marks_contract(client: AsyncClient, monkeypatch):
+    """An email.opened event whose email_id matches a contract's
+    resend_email_id (the send_to_partner email) must stamp contract.opened_at,
+    and must NOT touch contract.status or trigger signed/declined."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+
+    async def fake_send(self, **kwargs):
+        return "mock-contract-known-id"
+
+    monkeypatch.setattr(MockEmailTransport, "send", fake_send)
+
+    contract = await _create_contract_sent_to_partner(client)
+
+    before = (await client.get(f"/contracts/{contract['id']}")).json()
+    assert before["opened_at"] is None
+
+    svix_id = "msg_opened_2"
+    timestamp = str(int(time.time()))
+    payload = _opened_payload("mock-contract-known-id")
+    r = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r.status_code == 200
+
+    after = (await client.get(f"/contracts/{contract['id']}")).json()
+    assert after["opened_at"] is not None
+    assert after["status"] == "sent_to_partner"
+
+
+async def test_email_opened_unknown_id_ignored(client: AsyncClient, monkeypatch):
+    """An email.opened event for an id that matches no row must be a no-op —
+    not an error."""
+    monkeypatch.setattr(settings, "RESEND_WEBHOOK_SECRET", _TEST_SECRET)
+
+    svix_id = "msg_opened_unknown"
+    timestamp = str(int(time.time()))
+    payload = _opened_payload("mock-does-not-exist")
+    r = await client.post(
+        "/webhooks/resend/inbound",
+        content=payload,
+        headers={"svix-id": svix_id, "svix-timestamp": timestamp, "svix-signature": _sign(svix_id, timestamp, payload)},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"status": "processed"}

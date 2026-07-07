@@ -131,6 +131,7 @@ export interface RawNegotiationMessage {
   analyse_objection: string | null;
   taux_demande: number | null;
   requires_human: boolean;
+  opened_at: string | null;
   created_at: string;
 }
 
@@ -190,6 +191,7 @@ export interface RawContract {
   partner_replied_at: string | null;
   has_reply_pdf: boolean;
   partner_reply_pdf_filename: string | null;
+  opened_at: string | null;
   sent_at: string | null;
   signed_at: string | null;
   declined_at: string | null;

@@ -3,16 +3,19 @@ import json
 import logging
 import re
 import uuid
+from datetime import datetime
 from typing import Annotated, Optional
 
 import httpx
 import resend
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_session
 from app.models.contract import Contract
+from app.models.negotiation import NegotiationMessage
 from app.models.prospect import Prospect
 from app.services.contract_service import ContractService
 from app.services.negotiation_generator import NegotiationGeneratorProtocol, get_negotiation_generator
@@ -89,10 +92,16 @@ async def resend_inbound(
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
     event = json.loads(payload_str)
-    if event.get("type") != "email.received":
-        return {"status": "ignored", "reason": f"unhandled event type {event.get('type')}"}
-
+    event_type = event.get("type")
     data = event.get("data", {})
+
+    if event_type == "email.opened":
+        await _handle_email_opened(db, data.get("email_id"))
+        return {"status": "processed"}
+
+    if event_type != "email.received":
+        return {"status": "ignored", "reason": f"unhandled event type {event_type}"}
+
     email_id = data.get("email_id")
     to_addresses = data.get("to") or []
     if not email_id or not to_addresses:
@@ -122,6 +131,37 @@ async def resend_inbound(
         logger.info("Resend inbound webhook: no handler yet for prefix '%s'", prefix)
 
     return {"status": "processed"}
+
+
+async def _handle_email_opened(db: AsyncSession, email_id: str | None) -> None:
+    """A partner opened a real Resend email — match it back to whichever row
+    sent it (an outbound NegotiationMessage or a Contract's send_to_partner
+    email) by the id stored at send time, and stamp the first-open timestamp.
+    Never used to decide signed/declined or anything else — informational only."""
+    if not email_id:
+        return
+
+    msg = (
+        await db.execute(
+            select(NegotiationMessage).where(NegotiationMessage.resend_email_id == email_id)
+        )
+    ).scalars().first()
+    if msg:
+        if msg.opened_at is None:
+            msg.opened_at = datetime.utcnow()
+            await db.commit()
+        return
+
+    contract = (
+        await db.execute(select(Contract).where(Contract.resend_email_id == email_id))
+    ).scalars().first()
+    if contract:
+        if contract.opened_at is None:
+            contract.opened_at = datetime.utcnow()
+            await db.commit()
+        return
+
+    logger.info("Resend inbound webhook: email.opened for unknown email_id '%s' — ignored", email_id)
 
 
 async def _handle_outreach_reply(

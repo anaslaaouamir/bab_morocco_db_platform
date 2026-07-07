@@ -51,6 +51,12 @@ class Contract(Base):
     partner_reply_pdf: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
     partner_reply_pdf_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
+    # Resend's own id for the send_to_partner() email, and when Resend reported
+    # it as opened (via the email.opened webhook). Never used to auto-decide
+    # signed/declined — purely informational (CLAUDE.md §9).
+    resend_email_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     # Timestamps
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

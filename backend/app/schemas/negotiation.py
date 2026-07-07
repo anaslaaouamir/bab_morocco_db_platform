@@ -46,4 +46,5 @@ class NegotiationMessageResponse(BaseModel):
     analyse_objection: Optional[str]
     taux_demande: Optional[float]
     requires_human: bool
+    opened_at: Optional[datetime]
     created_at: datetime

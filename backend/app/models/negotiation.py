@@ -38,6 +38,13 @@ class NegotiationMessage(Base):
     # this subject (as "Re: <subject>") rather than a generic one.
     email_subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
+    # Resend's own id for this row's outbound send (outbound rows only — null
+    # for inbound messages and for mock/manual sends with no real provider id
+    # other than a "mock-<uuid>" placeholder). Used to match a later
+    # email.opened webhook event back to this exact row.
+    resend_email_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     prospect: Mapped["Prospect"] = relationship("Prospect", lazy="select")  # type: ignore[name-defined]

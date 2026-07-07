@@ -84,6 +84,7 @@ def _contract_to_response(contract: Contract) -> ContractResponse:
         partner_replied_at=contract.partner_replied_at,
         has_reply_pdf=contract.partner_reply_pdf is not None,
         partner_reply_pdf_filename=contract.partner_reply_pdf_filename,
+        opened_at=contract.opened_at,
         sent_at=contract.sent_at,
         signed_at=contract.signed_at,
         declined_at=contract.declined_at,
@@ -128,6 +129,8 @@ class ContractService:
             existing.sent_at = None
             existing.signed_at = None
             existing.declined_at = None
+            existing.resend_email_id = None
+            existing.opened_at = None
             requires_human, reason = _check_human_review(prospect, estimated_annual_value)
             existing.human_review_required = requires_human
             existing.human_review_reason = reason
@@ -245,7 +248,7 @@ class ContractService:
             f"ou questions complémentaires).<br><br>"
             f"Cordialement,<br>L'équipe Bab Morocco"
         )
-        await self._sender.send(
+        email_id = await self._sender.send(
             to=contract.partner_email,
             subject=f"Contrat de partenariat Bab Morocco — {contract.partner_name}",
             html=body_html,
@@ -253,6 +256,7 @@ class ContractService:
             attachments=[{"filename": filename, "content": base64.b64encode(contract.pdf_bytes).decode()}],
         )
 
+        contract.resend_email_id = email_id
         contract.status = "sent_to_partner"
         contract.sent_at = datetime.utcnow()
         contract.updated_at = datetime.utcnow()

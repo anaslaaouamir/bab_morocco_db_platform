@@ -485,6 +485,9 @@ function SentPanel({
   const daysSince = contract.sent_at
     ? Math.floor((Date.now() - new Date(contract.sent_at).getTime()) / (1000 * 60 * 60 * 24))
     : 0;
+  const openedDate = contract.opened_at
+    ? new Date(contract.opened_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+    : null;
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -503,6 +506,12 @@ function SentPanel({
             Envoyé le {sentDate} à {contract.partner_email ?? prospect.nomContact}
             {daysSince > 0 && ` · ${daysSince} jour${daysSince > 1 ? "s" : ""} d'attente`}
           </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 0.25 }}>
+            <MarkEmailReadRoundedIcon sx={{ fontSize: 14, color: openedDate ? "info.main" : "text.disabled" }} />
+            <Typography variant="labelSmall" color={openedDate ? "info.main" : "text.disabled"}>
+              {openedDate ? `Ouvert le ${openedDate}` : "Pas encore ouvert"}
+            </Typography>
+          </Box>
         </Box>
         <Button
           size="small"

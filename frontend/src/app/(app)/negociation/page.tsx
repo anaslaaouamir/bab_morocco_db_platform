@@ -174,7 +174,13 @@ function ConversationHistoryDialog({
                         <Chip label={intentDisplay(msg.analyse_intent).label} color={intentDisplay(msg.analyse_intent).color}
                           size="small" sx={{ height: 16, fontSize: "0.5625rem", "& .MuiChip-label": { px: 0.625 } }} />
                       )}
-                      {isBab && <MarkEmailReadRoundedIcon sx={{ fontSize: 13, color: "success.main" }} />}
+                      {isBab && (
+                        <Tooltip title={msg.opened_at
+                          ? `Ouvert le ${new Date(msg.opened_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`
+                          : "Envoyé — pas encore ouvert"}>
+                          <MarkEmailReadRoundedIcon sx={{ fontSize: 13, color: msg.opened_at ? "success.main" : "text.disabled" }} />
+                        </Tooltip>
+                      )}
                     </Box>
                     <Box sx={{
                       p: "10px 14px",
