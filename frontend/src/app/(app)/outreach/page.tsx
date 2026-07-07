@@ -277,7 +277,7 @@ function OutreachProspectCard({
           </Typography>
         )}
 
-        {/* DEV ONLY — simulate partner reply */}
+        {/* [DEV] Simulate-partner-reply chip — disabled in the UI, kept for future re-enable.
         {IS_DEV && hasSentEmail && onSimulateReply && (
           <Box sx={{ mt: 1 }} onClick={(e) => e.stopPropagation()}>
             <Chip
@@ -298,6 +298,7 @@ function OutreachProspectCard({
             />
           </Box>
         )}
+        */}
       </CardContent>
     </Card>
   );

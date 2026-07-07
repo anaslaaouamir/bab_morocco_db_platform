@@ -489,6 +489,7 @@ function WaitingForReplyPanel({
           Envoyer une autre note ou message
         </Button>
 
+        {/* [DEV] Simulate-partner-reply chip — disabled in the UI, kept for future re-enable.
         {IS_DEV && (
           <Box sx={{ mt: 1 }}>
             <Chip
@@ -507,6 +508,7 @@ function WaitingForReplyPanel({
             />
           </Box>
         )}
+        */}
       </CardContent>
     </Card>
   );

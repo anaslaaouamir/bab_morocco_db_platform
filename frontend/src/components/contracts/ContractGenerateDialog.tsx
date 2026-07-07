@@ -630,7 +630,7 @@ function SentPanel({
         </Box>
       )}
 
-      {/* DEV chip — simulate reply only, shown while waiting */}
+      {/* [DEV] Simulate-partner-reply chip — disabled in the UI, kept for future re-enable.
       {IS_DEV && !hasReply && (
         <Box sx={{ pt: 0.5 }}>
           <Chip
@@ -649,6 +649,7 @@ function SentPanel({
           />
         </Box>
       )}
+      */}
     </Box>
   );
 }
