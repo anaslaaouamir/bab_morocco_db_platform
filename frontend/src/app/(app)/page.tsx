@@ -972,7 +972,7 @@ export default function DashboardPage() {
                 </Typography>
               ) : (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                  {outreachProspects.map((p, i) => {
+                  {outreachProspects.slice(0, 5).map((p, i, visibleOutreach) => {
                     const next = p.dateProchainContact ?? "";
                     const isOverdue  = !!next && next < TODAY;
                     const isDueToday = next === TODAY;
@@ -1011,7 +1011,7 @@ export default function DashboardPage() {
                             </Typography>
                           </Box>
                         </Box>
-                        {i < outreachProspects.length - 1 && <Divider />}
+                        {i < visibleOutreach.length - 1 && <Divider />}
                       </React.Fragment>
                     );
                   })}
