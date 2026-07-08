@@ -156,6 +156,12 @@ export interface RawMessageAnalysis {
   scenarios: RawScenario[];
 }
 
+export interface RawWaitingReplyItem {
+  prospect_id: string;
+  prospect_nom: string;
+  last_message_at: string;
+}
+
 // ─── Contracts ────────────────────────────────────────────────────────────────
 
 export interface RawContractClauses {

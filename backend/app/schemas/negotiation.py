@@ -34,6 +34,12 @@ class MessageAnalysisResponse(BaseModel):
     scenarios: list[ScenarioSchema]
 
 
+class WaitingReplyItem(BaseModel):
+    prospect_id: uuid.UUID
+    prospect_nom: str
+    last_message_at: datetime
+
+
 class NegotiationMessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

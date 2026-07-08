@@ -4,14 +4,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
-from app.dependencies.auth import require_own_prospect
+from app.dependencies.auth import get_current_user, require_own_prospect
 from app.models.prospect import Prospect
+from app.models.user import User
 from app.schemas.negotiation import (
     MessageAnalysisResponse,
     MessageSubmitRequest,
     NegotiationMessageResponse,
     RespondRequest,
     ScenarioSchema,
+    WaitingReplyItem,
 )
 from app.services.email_transport import EmailTransportProtocol, get_email_transport
 from app.services.negotiation_generator import NegotiationGeneratorProtocol, get_negotiation_generator
@@ -25,6 +27,28 @@ def get_negotiation_service(
     sender: Annotated[EmailTransportProtocol, Depends(get_email_transport)],
 ) -> NegotiationService:
     return NegotiationService(generator=generator, sender=sender)
+
+
+@router.get("/waiting-reply", response_model=list[WaitingReplyItem])
+async def waiting_reply(
+    db: AsyncSession = Depends(get_session),
+    svc: NegotiationService = Depends(get_negotiation_service),
+    user: User = Depends(get_current_user),
+):
+    """Prospects in négociation whose latest message is inbound — powers the
+    Dashboard's "Alertes prioritaires" card. Commercial sees only their own,
+    Admin sees all — same ownership rule as everywhere else."""
+    items = await svc.get_waiting_on_reply(db)
+    if user.role == "commercial":
+        items = [i for i in items if i["assigned_to"] == user.id]
+    return [
+        WaitingReplyItem(
+            prospect_id=i["prospect_id"],
+            prospect_nom=i["prospect_nom"],
+            last_message_at=i["last_message_at"],
+        )
+        for i in items
+    ]
 
 
 @router.post("/{prospect_id}/message", response_model=MessageAnalysisResponse, status_code=status.HTTP_201_CREATED)

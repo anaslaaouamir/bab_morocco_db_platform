@@ -39,7 +39,8 @@ import {
   STAGE_LABELS,
   LANGUAGE_FLAGS,
 } from "@/types/prospect";
-import { prospectsApi, ApiError } from "@/lib/api";
+import { prospectsApi, negotiationApi, ApiError } from "@/lib/api";
+import type { RawWaitingReplyItem } from "@/lib/api";
 
 // ─── Static config ────────────────────────────────────────────────────────────
 
@@ -176,9 +177,10 @@ export default function DashboardPage() {
   const TODAY = useMemo(() => new Date().toISOString().split("T")[0], []);
 
   // ── Remote state ──────────────────────────────────────────────────────────
-  const [prospects, setProspects]   = useState<Prospect[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [prospects, setProspects]     = useState<Prospect[]>([]);
+  const [waitingReply, setWaitingReply] = useState<RawWaitingReplyItem[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [fetchError, setFetchError]   = useState<string | null>(null);
 
   async function fetchProspects() {
     setLoading(true);
@@ -195,6 +197,8 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
+    // Non-fatal: a failure here shouldn't block the rest of the dashboard.
+    negotiationApi.waitingReply().then(setWaitingReply).catch(() => setWaitingReply([]));
   }
 
   useEffect(() => { fetchProspects(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -224,10 +228,6 @@ export default function DashboardPage() {
     [prospects],
   );
 
-  const humanRequired = useMemo(
-    () => prospects.filter((p) => p.notes?.includes("VALIDATION HUMAINE REQUISE")),
-    [prospects],
-  );
   const dueToday = useMemo(
     () => prospects.filter((p) => p.dateProchainContact === TODAY),
     [prospects, TODAY],
@@ -439,25 +439,26 @@ export default function DashboardPage() {
               </SectionTitle>
 
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-                {humanRequired.map((p) => (
+                {waitingReply.map((item) => (
                   <Alert
-                    key={p.id}
+                    key={item.prospect_id}
                     severity="error"
-                    icon={<WarningAmberRoundedIcon fontSize="small" />}
+                    icon={<ForumRoundedIcon fontSize="small" />}
                     action={
                       <Chip
                         label="Voir"
                         size="small"
                         component={Link}
-                        href="/prospection"
+                        href="/negociation"
                         clickable
                         sx={{ fontSize: "0.625rem" }}
                       />
                     }
                     sx={{ py: 0.5, borderRadius: 2, fontSize: "0.8125rem", alignItems: "center" }}
                   >
-                    <AlertTitle sx={{ fontSize: "0.8125rem", fontWeight: 700, mb: 0 }}>{p.nom}</AlertTitle>
-                    Validation humaine requise · {STAGE_LABELS[p.stage]}
+                    <AlertTitle sx={{ fontSize: "0.8125rem", fontWeight: 700, mb: 0 }}>{item.prospect_nom}</AlertTitle>
+                    En attente de votre réponse depuis le{" "}
+                    {new Date(item.last_message_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}
                   </Alert>
                 ))}
 
@@ -485,7 +486,7 @@ export default function DashboardPage() {
                   </Alert>
                 ))}
 
-                {humanRequired.length === 0 && dueToday.length === 0 && overdue.length === 0 && (
+                {waitingReply.length === 0 && dueToday.length === 0 && overdue.length === 0 && (
                   <Box sx={{ py: 3, display: "flex", flexDirection: "column", alignItems: "center", gap: 1, color: "text.disabled" }}>
                     <CheckCircleRoundedIcon sx={{ fontSize: 32 }} />
                     <Typography variant="bodySmall">Aucune alerte active</Typography>

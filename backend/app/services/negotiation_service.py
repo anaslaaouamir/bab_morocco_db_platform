@@ -153,6 +153,35 @@ class NegotiationService:
         )
         return list(result.scalars().all())
 
+    async def get_waiting_on_reply(self, db: AsyncSession) -> list[dict]:
+        """
+        Prospects in 'negociation' stage whose most recent message is inbound —
+        the partner replied and nobody has answered yet. Powers the Dashboard's
+        "Alertes prioritaires" card.
+        """
+        prospects = (
+            await db.execute(select(Prospect).where(Prospect.stage == "negociation"))
+        ).scalars().all()
+
+        waiting: list[dict] = []
+        for prospect in prospects:
+            last_msg = (
+                await db.execute(
+                    select(NegotiationMessage)
+                    .where(NegotiationMessage.prospect_id == prospect.id)
+                    .order_by(NegotiationMessage.date_message.desc())
+                    .limit(1)
+                )
+            ).scalars().first()
+            if last_msg and last_msg.direction == "inbound":
+                waiting.append({
+                    "prospect_id": prospect.id,
+                    "prospect_nom": prospect.nom,
+                    "assigned_to": prospect.assigned_to,
+                    "last_message_at": last_msg.date_message,
+                })
+        return waiting
+
     async def respond(
         self,
         db: AsyncSession,

@@ -10,6 +10,7 @@ export type {
   RawNegotiationMessage,
   RawMessageAnalysis,
   RawScenario,
+  RawWaitingReplyItem,
   RawScorePreviewResponse,
   RawProspectStats,
   RawContract,
@@ -31,6 +32,7 @@ import type {
   RawTriggerFollowupsResponse,
   RawNegotiationMessage,
   RawMessageAnalysis,
+  RawWaitingReplyItem,
   RawContract,
   RawContractListResponse,
 } from "./types";
@@ -327,4 +329,7 @@ export const negotiationApi = {
     apiFetch<RawMessageAnalysis>(`/negotiation/${prospectId}/simulate-reply`, {
       method: "POST",
     }),
+
+  waitingReply: (): Promise<RawWaitingReplyItem[]> =>
+    apiFetch<RawWaitingReplyItem[]>("/negotiation/waiting-reply"),
 };
