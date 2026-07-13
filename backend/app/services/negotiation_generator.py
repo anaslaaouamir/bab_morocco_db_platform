@@ -5,6 +5,7 @@ import anthropic
 
 from app.config import settings
 from app.models.prospect import Prospect
+from app.services.contract_generator import _partner_type_description
 from app.services.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ Analyze this inbound message from a potential partner and return a structured JS
 
 ## Partner profile
 - Name: {prospect.nom}
-- Type: {prospect.type}
+- Type: {_partner_type_description(prospect.type, prospect.langue)}
 - Country: {prospect.pays}
 - Commission standard: {prospect.commission_standard}%
 - Commission floor (plancher absolu): {prospect.commission_plancher}%
@@ -174,7 +175,7 @@ Rules:
 Generate exactly 3 negotiation response scenarios for the following situation.
 
 ## Partner profile
-- Name: {prospect.nom} | Type: {prospect.type} | Country: {prospect.pays}
+- Name: {prospect.nom} | Type: {_partner_type_description(prospect.type, prospect.langue)} | Country: {prospect.pays}
 - Commission standard: {prospect.commission_standard}% | Floor: {prospect.commission_plancher}%
 {history_block}## Analysis of their message
 - Intent: {analysis.get("intent")} (score: {analysis.get("intent_score")}/5)

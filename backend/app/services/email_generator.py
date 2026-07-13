@@ -5,6 +5,7 @@ import anthropic
 
 from app.config import settings
 from app.models.prospect import Prospect
+from app.services.contract_generator import _partner_type_description
 from app.services.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,17 @@ _STEP_INSTRUCTIONS = {
     "j3": "First follow-up. Prospect has not opened J0. New angle, benefit-focused. Shorter.",
     "j7": "Second follow-up. Direct tone. Last attempt. Close the loop.",
     "j30": "Reactivation after 30 days of silence. Seasonal or market news hook.",
+}
+
+_TYPE_ANGLES = {
+    "hotel_riad": "visibility + occupancy: fill rooms via a new international booking channel",
+    "tour_operateur": "exclusive Moroccan inventory: full-country coverage they can't source alone",
+    "agence_voyage": "ready-made Morocco catalogue + partner extranet for easy booking",
+    "hotel_luxe": "premium positioning: curated luxury segment targeting Europe and Gulf travelers",
+    "activite": "captive OTA audience: travelers already in Morocco looking for experiences",
+    "transport": "seamless transfers: integrated into the booking flow for every traveler",
+    "to_golfe": "Morocco as a trending destination for Gulf travelers, exclusive local supply",
+    "mice": "all-in-one Morocco destination for corporate events and incentives",
 }
 
 
@@ -90,13 +102,17 @@ IMPORTANT: Your subject and angle MUST be clearly different from those above.
         if google_lines:
             google_instruction = "\n- Use the Google rating / review count as a credibility argument when they are high; do not invent data if absent"
 
+        type_label = _partner_type_description(prospect.type, prospect.langue)
+        type_angle = _TYPE_ANGLES.get(prospect.type, "")
+        angle_line = f"\n- Key selling angle for this partner type: {type_angle}" if type_angle else ""
+
         prompt = f"""You are the Business Development AI for Bab Morocco, a premium OTA 100% dedicated to Morocco (pre-launch).
 Your mission: write a B2B partnership outreach email to a potential partner.
 
 ## Partner profile
 - Name: {prospect.nom}
-- Type: {prospect.type}
-- Country: {prospect.pays} | City: {prospect.ville}
+- Type: {type_label}
+- Country: {prospect.pays} | City: {prospect.ville}{angle_line}
 - Commission offered: {prospect.commission_standard}% (floor: {prospect.commission_plancher}%)
 - Language to write in: {prospect.langue}
 {contact_line}{google_lines}
