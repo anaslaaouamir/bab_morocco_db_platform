@@ -52,25 +52,18 @@ def _partner_type_description(partner_type: str, language: str) -> str:
 
 
 def _get_jurisdiction(country: str) -> tuple[str, str]:
-    """Return (applicable_law_label, jurisdiction_city) for the given country."""
+    """Return (applicable_law_label, jurisdiction_clause) for the given country.
+
+    All contracts are governed by Moroccan law. Moroccan partners get Casablanca
+    courts; foreign partners get international arbitration (ICC) — more
+    acceptable to partners abroad while keeping Moroccan law as governing law.
+    """
     c = country.lower()
-    if c in ("france", "belgique", "suisse"):
-        return "français", "Paris"
-    if c in ("maroc", "morocco"):
-        return "marocain (Code des obligations et contrats)", "Casablanca"
-    if c in ("espagne", "spain", "españa"):
-        return "espagnol", "Madrid"
-    if c in ("allemagne", "germany", "autriche", "österreich"):
-        return "allemand (BGB)", "Francfort"
-    if c in ("emirats arabes unis", "uae", "united arab emirates"):
-        return "anglais (droit des Émirats Arabes Unis, DIFC)", "Dubaï"
-    if c in ("arabie saoudite", "saudi arabia"):
-        return "islamique (droit saoudien)", "Riyad"
-    if c in ("qatar",):
-        return "qatarien (QFC)", "Doha"
-    if c in ("royaume-uni", "united kingdom", "uk"):
-        return "anglais", "Londres"
-    return "français", "Paris"
+    is_moroccan = c in ("maroc", "morocco")
+    law_label = "marocain (Code des obligations et contrats)"
+    if is_moroccan:
+        return law_label, "Casablanca"
+    return law_label, "arbitrage international (Chambre de Commerce Internationale — ICC)"
 
 
 def _get_gdpr_clause_label(country: str) -> str:
@@ -216,8 +209,16 @@ class MockContractGenerator:
                 f"du présent contrat fera l'objet, préalablement à toute action judiciaire, "
                 f"d'une tentative de résolution amiable entre les parties dans un délai de "
                 f"30 jours suivant la notification du différend.\n\n"
-                f"À défaut de règlement amiable, les parties se soumettent à la compétence "
-                f"exclusive des **tribunaux de {city}**."
+                + (
+                    f"À défaut de règlement amiable, les parties se soumettent à la compétence "
+                    f"exclusive des **tribunaux de {city}**."
+                    if city == "Casablanca"
+                    else
+                    f"À défaut de règlement amiable, le litige sera tranché par voie "
+                    f"d'**{city}**, conformément à son règlement en vigueur. "
+                    f"Les règles impératives du pays du Partenaire restent applicables "
+                    f"si la loi locale l'exige."
+                )
             ),
             "post_signature_note": (
                 f"La signature électronique du présent contrat par les deux parties via la "
@@ -268,8 +269,8 @@ Generate a complete, professional partnership contract in **{lang_name}** for th
 - Contact: {prospect.nom_contact} ({prospect.poste_contact})
 - Email: {prospect.email_contact}
 - Commission agreed: {prospect.commission_standard}% (absolute floor: {floor}%)
-- Applicable law: {law}
-- Jurisdiction city: {city}
+- Applicable law: Moroccan law ({law})
+- Dispute resolution: {city}
 - Data protection framework: {gdpr}
 
 ## Non-financial perks (ALWAYS include in post_signature_note)
@@ -289,7 +290,7 @@ no extra keys, no explanation. All text values in **{lang_name}**:
   "duree_clause": "<12 months, tacit renewal, 30-day notice, termination for cause>",
   "confidentialite": "<confidentiality, 3-year survival, IP ownership>",
   "rgpd_clause": "<{gdpr} compliance, DPA annex, data usage restrictions>",
-  "juridiction": "<{law} law, {city} jurisdiction, 30-day amicable resolution attempt>",
+  "juridiction": "<Moroccan law, {city} for disputes, 30-day amicable resolution first, mandatory local rules reservation>",
   "post_signature_note": "<YouSign eIDAS signature, 1-hour automatic OTA activation, Partenaire Fondateur perks>"
 }}
 
