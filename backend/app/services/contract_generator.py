@@ -11,7 +11,6 @@ Activation gate (same pattern as email_generator / negotiation_generator):
   anything else                           →  Mock
 """
 
-import json
 import logging
 from typing import Protocol
 
@@ -19,6 +18,7 @@ import anthropic
 
 from app.config import settings
 from app.models.prospect import Prospect
+from app.services.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -302,18 +302,15 @@ no extra keys, no explanation. All text values in **{lang_name}**:
 
         message = await self._client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=4096,
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = message.content[0].text.strip()
         try:
-            return json.loads(raw)
-        except (json.JSONDecodeError, KeyError) as exc:
-            logger.error(
-                "ClaudeContractGenerator.generate_clauses invalid JSON | error=%s | raw=%.300s",
-                exc, raw,
-            )
-            raise ValueError(f"Contract generation failed — Claude returned unexpected output: {exc}") from exc
+            return extract_json(raw)
+        except ValueError as exc:
+            logger.error("ClaudeContractGenerator.generate_clauses failed | %s | raw=%.300s", exc, raw)
+            raise
 
 
 # ─── DI factory ──────────────────────────────────────────────────────────────

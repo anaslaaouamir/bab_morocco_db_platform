@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Protocol
 
@@ -6,6 +5,7 @@ import anthropic
 
 from app.config import settings
 from app.models.prospect import Prospect
+from app.services.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -147,10 +147,10 @@ Rules:
         )
         raw = message.content[0].text.strip()
         try:
-            return json.loads(raw)
-        except json.JSONDecodeError as exc:
-            logger.error("ClaudeNegotiationGenerator.analyze invalid response | error=%s | raw=%.300s", exc, raw)
-            raise ValueError(f"Negotiation analysis failed — Claude returned unexpected output: {exc}") from exc
+            return extract_json(raw)
+        except ValueError as exc:
+            logger.error("ClaudeNegotiationGenerator.analyze failed | %s | raw=%.300s", exc, raw)
+            raise
 
     async def generate_scenarios(self, prospect: Prospect, analysis: dict) -> list[dict]:
         taux = analysis.get("taux_demande") or prospect.commission_standard
@@ -201,10 +201,10 @@ Rules:
         )
         raw = message.content[0].text.strip()
         try:
-            return json.loads(raw)
-        except json.JSONDecodeError as exc:
-            logger.error("ClaudeNegotiationGenerator.generate_scenarios invalid response | error=%s | raw=%.300s", exc, raw)
-            raise ValueError(f"Scenario generation failed — Claude returned unexpected output: {exc}") from exc
+            return extract_json(raw)
+        except ValueError as exc:
+            logger.error("ClaudeNegotiationGenerator.generate_scenarios failed | %s | raw=%.300s", exc, raw)
+            raise
 
     async def generate_response(self, prospect: Prospect, scenario_letter: str, analysis: dict) -> str:
         scenarios = await self.generate_scenarios(prospect, analysis)

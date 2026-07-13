@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Protocol
 
@@ -6,6 +5,7 @@ import anthropic
 
 from app.config import settings
 from app.models.prospect import Prospect
+from app.services.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -102,9 +102,9 @@ Your mission: write a B2B partnership outreach email to a potential partner.
         )
         raw = message.content[0].text.strip()
         try:
-            data = json.loads(raw)
+            data = extract_json(raw)
             return data["sujet"], data["corps"]
-        except (json.JSONDecodeError, KeyError) as exc:
+        except (ValueError, KeyError) as exc:
             logger.error("ClaudeEmailGenerator invalid response | error=%s | raw=%.300s", exc, raw)
             raise ValueError(f"Email generation failed — Claude returned unexpected output: {exc}") from exc
 
