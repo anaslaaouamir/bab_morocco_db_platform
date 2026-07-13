@@ -225,6 +225,8 @@ class OutreachService:
         prospect = await db.get(Prospect, email.prospect_id)
         if not prospect:
             raise ValueError("Prospect not found for email")
+        if not prospect.email_contact or not prospect.email_contact.strip():
+            raise ValueError("Prospect has no email address — cannot send")
         email.prospect = prospect  # type: ignore[assignment]
         message_id = await self._sender.send(
             to=prospect.email_contact,

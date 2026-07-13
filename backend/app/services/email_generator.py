@@ -70,6 +70,26 @@ class ClaudeEmailGenerator:
 
 IMPORTANT: Your subject and angle MUST be clearly different from those above.
 """
+        _GENERIC_NAMES = {"responsable", "dg", "directeur", "directrice", "gérant", "gérante", "manager", ""}
+        contact_name = prospect.nom_contact.strip()
+        is_generic = contact_name.lower() in _GENERIC_NAMES
+        contact_line = (
+            f"- Contact: {contact_name} ({prospect.poste_contact})"
+            if not is_generic
+            else "- Contact name: unknown — use a neutral greeting (e.g. 'Madame, Monsieur,' in French)"
+        )
+
+        google_lines = ""
+        if prospect.note_google:
+            google_lines += f"\n- Google rating: {prospect.note_google}/5"
+        if prospect.nb_avis_google:
+            google_lines += f"\n- Google reviews: {prospect.nb_avis_google}"
+        if prospect.langues_disponibles:
+            google_lines += f"\n- Languages on their site: {prospect.langues_disponibles}"
+        google_instruction = ""
+        if google_lines:
+            google_instruction = "\n- Use the Google rating / review count as a credibility argument when they are high; do not invent data if absent"
+
         prompt = f"""You are the Business Development AI for Bab Morocco, a premium OTA 100% dedicated to Morocco (pre-launch).
 Your mission: write a B2B partnership outreach email to a potential partner.
 
@@ -78,9 +98,8 @@ Your mission: write a B2B partnership outreach email to a potential partner.
 - Type: {prospect.type}
 - Country: {prospect.pays} | City: {prospect.ville}
 - Commission offered: {prospect.commission_standard}% (floor: {prospect.commission_plancher}%)
-- Score: {prospect.score_total}/100
 - Language to write in: {prospect.langue}
-- Contact: {prospect.nom_contact} ({prospect.poste_contact})
+{contact_line}{google_lines}
 - Notes: {prospect.notes or "None"}
 
 ## Email style — Variant {variant}
@@ -104,7 +123,7 @@ Your mission: write a B2B partnership outreach email to a potential partner.
 - Write entirely in {prospect.langue} (fr=French, en=English, es=Spanish, de=German, ar=Arabic)
 - Length: {300 if step == "j0" else 150} words for the body
 - Tone matches the variant style above
-- End with a specific CTA (20-min call for j0/j3, close the loop for j7, seasonal hook for j30)
+- End with a specific CTA (20-min call for j0/j3, close the loop for j7, seasonal hook for j30){google_instruction}
 - Return ONLY a JSON object: {{"sujet": "...", "corps": "..."}}
 - No markdown, no explanation, just the JSON"""
 
