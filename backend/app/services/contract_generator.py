@@ -295,7 +295,9 @@ no extra keys, no explanation. All text values in **{lang_name}**:
 
 ## Strict rules
 - If commission < {floor}%, include field "human_review_required": true and stop — do NOT write clauses.
-- Never promise features not yet live: no partner portal, no advanced analytics, no channel managers.
+- NEVER promise features not yet live: no partner portal, no advanced analytics, no channel managers.
+- NEVER invent traffic, sales, or booking numbers.
+- NEVER reveal internal strategy or technical roadmap.
 - All monetary references use the currency standard of {prospect.pays}.
 - Keep each clause self-contained and professional (150-250 words per clause).
 """

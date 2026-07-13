@@ -87,6 +87,12 @@ Your mission: write a B2B partnership outreach email to a potential partner.
 - Pre-launch phase — founding partners get: locked commission 12 months, Founding Partner Badge, co-marketing at launch, private beta access
 - Payment: 45-day settlement cycle
 
+## Strict rules
+- NEVER promise features that don't exist yet (partner portal, advanced analytics, channel managers)
+- NEVER invent traffic, sales, or booking numbers — only use data provided above
+- NEVER reveal internal strategy or technical roadmap
+- NEVER propose a commission below the floor ({prospect.commission_plancher}%)
+
 ## Instructions
 - Write entirely in {prospect.langue} (fr=French, en=English, es=Spanish, de=German, ar=Arabic)
 - Length: {300 if step == "j0" else 150} words for the body

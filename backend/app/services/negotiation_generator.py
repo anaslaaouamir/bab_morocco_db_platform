@@ -138,7 +138,9 @@ Rules:
 - If the partner requests a specific commission rate, extract it as taux_demande (float)
 - intent=contre_offre if the partner proposes different conditions
 - intent=objection if the partner raises concerns without a counter-offer
-- Be precise about the objection_type based on the actual content"""
+- Be precise about the objection_type based on the actual content
+- NEVER invent traffic, sales, or booking numbers not provided above
+- NEVER reveal internal strategy or technical roadmap"""
 
         message = await self._client.messages.create(
             model="claude-sonnet-4-6",
@@ -192,7 +194,10 @@ Rules:
 - Scenario B: Counter-propose standard commission + non-financial perks listed above
 - Scenario C: Escalate to human commercial manager
 - message_propose for each: write the actual email text to send (150-200 words)
-- Language: match the partner's country language ({prospect.langue})"""
+- Language: match the partner's country language ({prospect.langue})
+- NEVER promise features that don't exist yet (partner portal, advanced analytics, channel managers)
+- NEVER propose a commission below the floor ({prospect.commission_plancher}%)
+- NEVER invent traffic, sales, or booking numbers — only use data provided above"""
 
         message = await self._client.messages.create(
             model="claude-sonnet-4-6",
