@@ -58,6 +58,16 @@ class NegotiationService:
         self._generator = generator or MockNegotiationGenerator()
         self._sender = sender or MockEmailTransport()
 
+    def _format_history(self, messages: list[NegotiationMessage], limit: int = 6) -> str:
+        """Format recent messages as plain text for the AI prompt."""
+        recent = messages[-limit:] if len(messages) > limit else messages
+        lines = []
+        for m in recent:
+            role = "Partenaire" if m.direction == "inbound" else "Bab Morocco"
+            body = (m.corps or "")[:500]
+            lines.append(f"[{role}]: {body}")
+        return "\n\n".join(lines)
+
     async def submit_message(
         self,
         db: AsyncSession,
@@ -67,8 +77,12 @@ class NegotiationService:
         email_subject: Optional[str] = None,
     ) -> dict:
         """Analyze an inbound message, apply escalation rules, persist, return full analysis."""
+        # 0. Fetch conversation history for context
+        past_messages = await self.get_history(db, prospect.id)
+        history_text = self._format_history(past_messages)
+
         # 1. AI semantic analysis
-        analysis = await self._generator.analyze(prospect, corps)
+        analysis = await self._generator.analyze(prospect, corps, history=history_text)
 
         # 2. Extract rate from raw text (authoritative — overrides AI extraction)
         extracted_rate = extract_rate_from_text(corps)
@@ -84,7 +98,7 @@ class NegotiationService:
 
         # 4. Generate 3 scenarios
         analysis["taux_demande"] = taux_demande  # ensure it's in the dict for scenario gen
-        scenarios = await self._generator.generate_scenarios(prospect, analysis)
+        scenarios = await self._generator.generate_scenarios(prospect, analysis, history=history_text)
 
         # 5. Persist message
         msg = NegotiationMessage(

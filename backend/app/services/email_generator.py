@@ -38,13 +38,13 @@ _STEP_INSTRUCTIONS = {
 
 
 class EmailGeneratorProtocol(Protocol):
-    async def generate(self, prospect: Prospect, step: str, variant: str) -> tuple[str, str]:
+    async def generate(self, prospect: Prospect, step: str, variant: str, prior_emails: str = "") -> tuple[str, str]:
         """Return (sujet, corps)."""
         ...
 
 
 class MockEmailGenerator:
-    async def generate(self, prospect: Prospect, step: str, variant: str) -> tuple[str, str]:
+    async def generate(self, prospect: Prospect, step: str, variant: str, prior_emails: str = "") -> tuple[str, str]:
         sujet = f"[{step.upper()}-{variant}] Partnership opportunity for {prospect.nom}"
         corps = (
             f"Hello {prospect.nom},\n\n"
@@ -61,7 +61,15 @@ class ClaudeEmailGenerator:
     def __init__(self):
         self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-    async def generate(self, prospect: Prospect, step: str, variant: str) -> tuple[str, str]:
+    async def generate(self, prospect: Prospect, step: str, variant: str, prior_emails: str = "") -> tuple[str, str]:
+        prior_block = ""
+        if prior_emails:
+            prior_block = f"""
+## Previous emails already sent to this prospect
+{prior_emails}
+
+IMPORTANT: Your subject and angle MUST be clearly different from those above.
+"""
         prompt = f"""You are the Business Development AI for Bab Morocco, a premium OTA 100% dedicated to Morocco (pre-launch).
 Your mission: write a B2B partnership outreach email to a potential partner.
 
@@ -80,8 +88,7 @@ Your mission: write a B2B partnership outreach email to a potential partner.
 
 ## Sequence step — {step}
 {_STEP_INSTRUCTIONS[step]}
-
-## Bab Morocco context
+{prior_block}## Bab Morocco context
 - OTA 100% dedicated to Morocco: hotels, riads, activities, circuits, transfers
 - Target travelers: European (France, UK, Spain, Germany) and Gulf (UAE, Saudi Arabia)
 - Pre-launch phase — founding partners get: locked commission 12 months, Founding Partner Badge, co-marketing at launch, private beta access

@@ -22,13 +22,13 @@ _LOREM = (
 
 
 class NegotiationGeneratorProtocol(Protocol):
-    async def analyze(self, prospect: Prospect, message_corps: str) -> dict: ...
-    async def generate_scenarios(self, prospect: Prospect, analysis: dict) -> list[dict]: ...
+    async def analyze(self, prospect: Prospect, message_corps: str, history: str = "") -> dict: ...
+    async def generate_scenarios(self, prospect: Prospect, analysis: dict, history: str = "") -> list[dict]: ...
     async def generate_response(self, prospect: Prospect, scenario_letter: str, analysis: dict) -> str: ...
 
 
 class MockNegotiationGenerator:
-    async def analyze(self, prospect: Prospect, message_corps: str) -> dict:
+    async def analyze(self, prospect: Prospect, message_corps: str, history: str = "") -> dict:
         return {
             "intent": "contre_offre",
             "intent_score": 3,
@@ -40,7 +40,7 @@ class MockNegotiationGenerator:
             "taux_demande": None,  # extracted by service via regex on the raw message
         }
 
-    async def generate_scenarios(self, prospect: Prospect, analysis: dict) -> list[dict]:
+    async def generate_scenarios(self, prospect: Prospect, analysis: dict, history: str = "") -> list[dict]:
         taux = analysis.get("taux_demande") or prospect.commission_standard
         return [
             {
@@ -108,7 +108,14 @@ class ClaudeNegotiationGenerator:
     def __init__(self):
         self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-    async def analyze(self, prospect: Prospect, message_corps: str) -> dict:
+    async def analyze(self, prospect: Prospect, message_corps: str, history: str = "") -> dict:
+        history_block = ""
+        if history:
+            history_block = f"""
+## Conversation history (most recent last)
+{history}
+
+"""
         prompt = f"""You are the Business Development AI for Bab Morocco, an OTA dedicated to Morocco.
 
 Analyze this inbound message from a potential partner and return a structured JSON analysis.
@@ -120,8 +127,7 @@ Analyze this inbound message from a potential partner and return a structured JS
 - Commission standard: {prospect.commission_standard}%
 - Commission floor (plancher absolu): {prospect.commission_plancher}%
 - Score: {prospect.score_total}/100
-
-## Inbound message to analyze
+{history_block}## Inbound message to analyze
 \"\"\"{message_corps}\"\"\"
 
 ## Instructions
@@ -154,8 +160,15 @@ Rules:
             logger.error("ClaudeNegotiationGenerator.analyze failed | %s | raw=%.300s", exc, raw)
             raise
 
-    async def generate_scenarios(self, prospect: Prospect, analysis: dict) -> list[dict]:
+    async def generate_scenarios(self, prospect: Prospect, analysis: dict, history: str = "") -> list[dict]:
         taux = analysis.get("taux_demande") or prospect.commission_standard
+        history_block = ""
+        if history:
+            history_block = f"""
+## Conversation history (most recent last)
+{history}
+
+"""
         prompt = f"""You are the Business Development AI for Bab Morocco.
 
 Generate exactly 3 negotiation response scenarios for the following situation.
@@ -163,8 +176,7 @@ Generate exactly 3 negotiation response scenarios for the following situation.
 ## Partner profile
 - Name: {prospect.nom} | Type: {prospect.type} | Country: {prospect.pays}
 - Commission standard: {prospect.commission_standard}% | Floor: {prospect.commission_plancher}%
-
-## Analysis of their message
+{history_block}## Analysis of their message
 - Intent: {analysis.get("intent")} (score: {analysis.get("intent_score")}/5)
 - Objection type: {analysis.get("objection_type")}
 - Detail: {analysis.get("objection_detail")}
@@ -197,7 +209,8 @@ Rules:
 - Language: match the partner's country language ({prospect.langue})
 - NEVER promise features that don't exist yet (partner portal, advanced analytics, channel managers)
 - NEVER propose a commission below the floor ({prospect.commission_plancher}%)
-- NEVER invent traffic, sales, or booking numbers — only use data provided above"""
+- NEVER invent traffic, sales, or booking numbers — only use data provided above
+- If conversation history is provided, do NOT re-offer perks already proposed or contradict earlier messages"""
 
         message = await self._client.messages.create(
             model="claude-sonnet-4-6",

@@ -31,6 +31,16 @@ class OutreachService:
 
     # ── Core generation ──────────────────────────────────────────────────────
 
+    def _format_prior_emails(self, emails: list[OutreachEmail]) -> str:
+        """Format sent emails as context for follow-up generation."""
+        sent = [e for e in emails if e.statut in ("sent", "opened", "clicked")]
+        if not sent:
+            return ""
+        lines = []
+        for e in sent:
+            lines.append(f"[Step {e.sequence_step}, Variant {e.variant}]\nSubject: {e.sujet}\nBody: {e.corps[:300]}")
+        return "\n\n".join(lines)
+
     async def generate_step_variants(
         self,
         db: AsyncSession,
@@ -48,9 +58,14 @@ class OutreachService:
         offset = _STEP_OFFSETS.get(step, 0)
         planned_date = base_date + timedelta(days=offset)
 
+        prior_emails = ""
+        if step != "j0":
+            existing = await self.list_emails(db, prospect.id)
+            prior_emails = self._format_prior_emails(existing)
+
         emails = []
         for variant in ("A", "B", "C"):
-            sujet, corps = await self._generator.generate(prospect, step, variant)
+            sujet, corps = await self._generator.generate(prospect, step, variant, prior_emails=prior_emails)
             email = OutreachEmail(
                 id=uuid.uuid4(),
                 prospect_id=prospect.id,
@@ -232,7 +247,9 @@ class OutreachService:
     ) -> OutreachEmail:
         """Create a single variant email for a follow-up step (used by trigger_followups)."""
         offset = _STEP_OFFSETS[step]
-        sujet, corps = await self._generator.generate(prospect, step, variant)
+        existing = await self.list_emails(db, prospect.id)
+        prior_emails = self._format_prior_emails(existing)
+        sujet, corps = await self._generator.generate(prospect, step, variant, prior_emails=prior_emails)
         email = OutreachEmail(
             id=uuid.uuid4(),
             prospect_id=prospect.id,
