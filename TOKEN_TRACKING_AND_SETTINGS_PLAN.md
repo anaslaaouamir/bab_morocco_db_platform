@@ -533,7 +533,7 @@ Import and render the new panels above the existing content.
 - Verify the settings page renders all 3 sections without layout issues
 - Commit: `feat(api-keys): manage API keys from Settings UI with DB override`
 
-**[ ] DONE — Section 3**
+**[x] DONE — Section 3**
 
 ---
 

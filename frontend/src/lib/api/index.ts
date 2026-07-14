@@ -19,6 +19,7 @@ export type {
   ContractStatus,
   ApiUsageResponse,
   SystemSettingsMap,
+  ApiKeyInfo,
 } from "./types";
 
 import { apiFetch, apiFetchBlob } from "./base";
@@ -39,6 +40,7 @@ import type {
   RawContractListResponse,
   ApiUsageResponse,
   SystemSettingsMap,
+  ApiKeyInfo,
 } from "./types";
 import type { Prospect, PipelineStage, PartnerType, OutreachLanguage } from "@/types/prospect";
 
@@ -352,4 +354,16 @@ export const apiSettingsApi = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+
+  getKeys: (): Promise<{ keys: ApiKeyInfo[] }> =>
+    apiFetch<{ keys: ApiKeyInfo[] }>("/api-settings/keys"),
+
+  updateKey: (keyName: string, value: string): Promise<ApiKeyInfo> =>
+    apiFetch<ApiKeyInfo>(`/api-settings/keys/${keyName}`, {
+      method: "PUT",
+      body: JSON.stringify({ value }),
+    }),
+
+  deleteKey: (keyName: string): Promise<ApiKeyInfo> =>
+    apiFetch<ApiKeyInfo>(`/api-settings/keys/${keyName}`, { method: "DELETE" }),
 };

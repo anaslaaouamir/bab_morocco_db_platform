@@ -240,3 +240,13 @@ export interface ApiUsageResponse {
 }
 
 export type SystemSettingsMap = Record<string, string>;
+
+// ─── API Keys ───────────────────────────────────────────────────────────────
+
+export interface ApiKeyInfo {
+  key: string;
+  label: string;
+  masked_value: string;
+  is_set: boolean;
+  source: "database" | "env_file" | "not_set";
+}

@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from sqlalchemy import case, cast, func, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings as app_settings
 from app.database import get_session
 from app.dependencies.auth import require_admin
 from app.models.api_usage import ApiUsageLog
@@ -14,6 +15,28 @@ router = APIRouter(prefix="/api-settings", tags=["api-settings"])
 
 # Settings manageable via GET/PUT below (allow-list — prevents arbitrary key writes)
 MANAGEABLE_SETTINGS = {"monthly_token_limit"}
+
+# API keys manageable via the UI (allow-list)
+MANAGEABLE_KEYS = {
+    "anthropic_api_key": {
+        "label": "Claude AI (Anthropic)",
+        "config_attr": "ANTHROPIC_API_KEY",
+    },
+    "resend_api_key": {
+        "label": "Email (Resend)",
+        "config_attr": "RESEND_API_KEY",
+    },
+    "google_maps_api_key": {
+        "label": "Google Maps / Places",
+        "config_attr": "GOOGLE_MAPS_API_KEY",
+    },
+}
+
+
+def _mask_key(value: str) -> str:
+    if not value or len(value) < 10:
+        return "***" if value else ""
+    return value[:6] + "..." + value[-4:]
 
 
 def _period_range(period: str) -> tuple[datetime, datetime]:
@@ -131,3 +154,104 @@ async def update_settings(
 
     rows = (await db.execute(select(SystemSetting))).scalars().all()
     return {row.key: row.value for row in rows if row.key in MANAGEABLE_SETTINGS}
+
+
+# ─── API Key management ─────────────────────────────────────────────────────
+
+
+def _key_info(key_name: str, db_value: str | None) -> dict:
+    meta = MANAGEABLE_KEYS[key_name]
+    env_value = getattr(app_settings, meta["config_attr"], "") or ""
+
+    if db_value:
+        return {
+            "key": key_name,
+            "label": meta["label"],
+            "masked_value": _mask_key(db_value),
+            "is_set": True,
+            "source": "database",
+        }
+    elif env_value:
+        return {
+            "key": key_name,
+            "label": meta["label"],
+            "masked_value": _mask_key(env_value),
+            "is_set": True,
+            "source": "env_file",
+        }
+    else:
+        return {
+            "key": key_name,
+            "label": meta["label"],
+            "masked_value": "",
+            "is_set": False,
+            "source": "not_set",
+        }
+
+
+@router.get("/keys")
+async def get_keys(
+    db: AsyncSession = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
+    rows = (await db.execute(select(SystemSetting))).scalars().all()
+    db_map = {row.key: row.value for row in rows if row.key in MANAGEABLE_KEYS}
+
+    keys = []
+    for key_name in MANAGEABLE_KEYS:
+        keys.append(_key_info(key_name, db_map.get(key_name)))
+    return {"keys": keys}
+
+
+@router.put("/keys/{key_name}")
+async def update_key(
+    key_name: str = Path(...),
+    body: dict = Body(...),
+    db: AsyncSession = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
+    if key_name not in MANAGEABLE_KEYS:
+        raise HTTPException(404, f"Unknown key: {key_name}")
+
+    value = (body.get("value") or "").strip()
+    if not value:
+        raise HTTPException(400, "Value cannot be empty. Use DELETE to remove a key.")
+
+    existing = (
+        await db.execute(select(SystemSetting).where(SystemSetting.key == key_name))
+    ).scalar_one_or_none()
+    if existing:
+        existing.value = value
+        existing.updated_at = datetime.utcnow()
+    else:
+        db.add(SystemSetting(key=key_name, value=value, updated_at=datetime.utcnow()))
+    await db.commit()
+
+    config_attr = MANAGEABLE_KEYS[key_name]["config_attr"]
+    setattr(app_settings, config_attr, value)
+
+    return _key_info(key_name, value)
+
+
+@router.delete("/keys/{key_name}")
+async def delete_key(
+    key_name: str = Path(...),
+    db: AsyncSession = Depends(get_session),
+    _admin: User = Depends(require_admin),
+):
+    if key_name not in MANAGEABLE_KEYS:
+        raise HTTPException(404, f"Unknown key: {key_name}")
+
+    existing = (
+        await db.execute(select(SystemSetting).where(SystemSetting.key == key_name))
+    ).scalar_one_or_none()
+    if existing:
+        await db.delete(existing)
+        await db.commit()
+
+    import os
+    meta = MANAGEABLE_KEYS[key_name]
+    env_value = os.environ.get(meta["config_attr"], "")
+    setattr(app_settings, meta["config_attr"], env_value)
+
+    return _key_info(key_name, None)

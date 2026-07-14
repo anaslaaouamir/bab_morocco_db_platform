@@ -41,6 +41,24 @@ async def create_tables() -> None:
 
 
 @app.on_event("startup")
+async def load_db_api_keys() -> None:
+    """Override config.py Settings with API key values stored in system_settings."""
+    from app.models.system_settings import SystemSetting
+
+    key_map = {
+        "anthropic_api_key": "ANTHROPIC_API_KEY",
+        "resend_api_key": "RESEND_API_KEY",
+        "google_maps_api_key": "GOOGLE_MAPS_API_KEY",
+    }
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(SystemSetting))
+        for row in result.scalars().all():
+            attr = key_map.get(row.key)
+            if attr and row.value:
+                setattr(settings, attr, row.value)
+
+
+@app.on_event("startup")
 async def seed_first_admin() -> None:
     """Create the initial Admin account from env vars if no users exist yet."""
     if not settings.ADMIN_EMAIL or not settings.ADMIN_PASSWORD:
