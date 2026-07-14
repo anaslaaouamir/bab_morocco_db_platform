@@ -18,6 +18,7 @@ import anthropic
 
 from app.config import settings
 from app.models.prospect import Prospect
+from app.services.claude_tracker import tracked_claude_call
 from app.services.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
@@ -303,10 +304,13 @@ no extra keys, no explanation. All text values in **{lang_name}**:
 - Keep each clause self-contained and professional (150-250 words per clause).
 """
 
-        message = await self._client.messages.create(
+        message = await tracked_claude_call(
+            self._client,
             model="claude-sonnet-4-6",
             max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
+            generator="contract",
+            prospect_id=prospect.id,
         )
         raw = message.content[0].text.strip()
         try:

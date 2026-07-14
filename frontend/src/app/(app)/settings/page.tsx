@@ -21,6 +21,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { useSettings } from "@/lib/settingsStore";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 import { useAuth } from "@/contexts/AuthContext";
+import ApiUsagePanel from "@/components/settings/ApiUsagePanel";
 import UserManagementPanel from "@/components/settings/UserManagementPanel";
 
 // ─── Hour display helper ─────────────────────────────────────────────────────
@@ -94,6 +95,9 @@ export default function SettingsPage() {
           </Typography>
         </Box>
       </Box>
+
+      {/* ── API Usage ──────────────────────────────────────────────── */}
+      <ApiUsagePanel />
 
       {/* ── Scan planifié ─────────────────────────────────────────── */}
       <Paper variant="outlined" sx={{ borderRadius: 3, overflow: "hidden" }}>

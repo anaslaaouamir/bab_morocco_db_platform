@@ -5,6 +5,7 @@ import anthropic
 
 from app.config import settings
 from app.models.prospect import Prospect
+from app.services.claude_tracker import tracked_claude_call
 from app.services.contract_generator import _partner_type_description
 from app.services.json_extract import extract_json
 
@@ -149,10 +150,13 @@ Rules:
 - NEVER invent traffic, sales, or booking numbers not provided above
 - NEVER reveal internal strategy or technical roadmap"""
 
-        message = await self._client.messages.create(
+        message = await tracked_claude_call(
+            self._client,
             model="claude-sonnet-4-6",
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
+            generator="negotiation_analyze",
+            prospect_id=prospect.id,
         )
         raw = message.content[0].text.strip()
         try:
@@ -213,10 +217,13 @@ Rules:
 - NEVER invent traffic, sales, or booking numbers — only use data provided above
 - If conversation history is provided, do NOT re-offer perks already proposed or contradict earlier messages"""
 
-        message = await self._client.messages.create(
+        message = await tracked_claude_call(
+            self._client,
             model="claude-sonnet-4-6",
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
+            generator="negotiation_scenarios",
+            prospect_id=prospect.id,
         )
         raw = message.content[0].text.strip()
         try:

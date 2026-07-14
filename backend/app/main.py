@@ -4,9 +4,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
 from app.config import settings
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, Base, engine
+import app.models  # noqa — register all models with Base.metadata
 from app.models.user import User
-from app.routers import auth, health, prospects, scan, outreach, negotiation, contracts, webhooks, notifications
+from app.routers import api_settings, auth, health, prospects, scan, outreach, negotiation, contracts, webhooks, notifications
 from app.services import auth_service
 from app.services.scheduler import start_scheduler, stop_scheduler
 
@@ -22,6 +23,7 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(api_settings.router)
 app.include_router(prospects.router)
 app.include_router(scan.router)
 app.include_router(outreach.router)
@@ -29,6 +31,13 @@ app.include_router(negotiation.router)
 app.include_router(contracts.router)
 app.include_router(webhooks.router)
 app.include_router(notifications.router)
+
+
+@app.on_event("startup")
+async def create_tables() -> None:
+    """Create any new tables (additive — existing tables are untouched)."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 
 @app.on_event("startup")

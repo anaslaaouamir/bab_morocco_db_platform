@@ -5,6 +5,7 @@ import anthropic
 
 from app.config import settings
 from app.models.prospect import Prospect
+from app.services.claude_tracker import tracked_claude_call
 from app.services.contract_generator import _partner_type_description
 from app.services.json_extract import extract_json
 
@@ -143,10 +144,13 @@ Your mission: write a B2B partnership outreach email to a potential partner.
 - Return ONLY a JSON object: {{"sujet": "...", "corps": "..."}}
 - No markdown, no explanation, just the JSON"""
 
-        message = await self._client.messages.create(
+        message = await tracked_claude_call(
+            self._client,
             model="claude-sonnet-4-6",
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
+            generator="email",
+            prospect_id=prospect.id,
         )
         raw = message.content[0].text.strip()
         try:

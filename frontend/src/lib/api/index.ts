@@ -17,6 +17,7 @@ export type {
   RawContractClauses,
   RawContractListResponse,
   ContractStatus,
+  ApiUsageResponse,
 } from "./types";
 
 import { apiFetch, apiFetchBlob } from "./base";
@@ -35,6 +36,7 @@ import type {
   RawWaitingReplyItem,
   RawContract,
   RawContractListResponse,
+  ApiUsageResponse,
 } from "./types";
 import type { Prospect, PipelineStage, PartnerType, OutreachLanguage } from "@/types/prospect";
 
@@ -332,4 +334,11 @@ export const negotiationApi = {
 
   waitingReply: (): Promise<RawWaitingReplyItem[]> =>
     apiFetch<RawWaitingReplyItem[]>("/negotiation/waiting-reply"),
+};
+
+// ─── API Settings ────────────────────────────────────────────────────────────
+
+export const apiSettingsApi = {
+  usage: (period: "today" | "week" | "month" = "month"): Promise<ApiUsageResponse> =>
+    apiFetch<ApiUsageResponse>(`/api-settings/usage?period=${period}`),
 };

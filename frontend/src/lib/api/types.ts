@@ -210,3 +210,31 @@ export interface RawContractListResponse {
   items: RawContract[];
   total: number;
 }
+
+// ─── API Usage ───────────────────────────────────────────────────────────────
+
+export interface ApiUsageByGenerator {
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+export interface ApiUsageDailyEntry {
+  date: string;
+  calls: number;
+  total_tokens: number;
+}
+
+export interface ApiUsageResponse {
+  period: string;
+  period_start: string;
+  period_end: string;
+  total_tokens: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_calls: number;
+  failed_calls: number;
+  by_generator: Record<string, ApiUsageByGenerator>;
+  daily_breakdown: ApiUsageDailyEntry[];
+}
