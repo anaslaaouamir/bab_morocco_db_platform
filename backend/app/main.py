@@ -49,6 +49,7 @@ async def load_db_api_keys() -> None:
         "anthropic_api_key": "ANTHROPIC_API_KEY",
         "resend_api_key": "RESEND_API_KEY",
         "google_maps_api_key": "GOOGLE_MAPS_API_KEY",
+        "openai_api_key": "OPENAI_API_KEY",
     }
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(SystemSetting))
@@ -56,6 +57,8 @@ async def load_db_api_keys() -> None:
             attr = key_map.get(row.key)
             if attr and row.value:
                 setattr(settings, attr, row.value)
+            if row.key == "default_ai_provider" and row.value in ("claude", "openai"):
+                settings.DEFAULT_AI_PROVIDER = row.value
 
 
 @app.on_event("startup")

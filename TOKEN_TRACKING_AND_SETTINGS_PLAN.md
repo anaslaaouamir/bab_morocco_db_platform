@@ -537,14 +537,260 @@ Import and render the new panels above the existing content.
 
 ---
 
+---
+
+## Section 4 — OpenAI as fallback / alternative provider
+
+**Goal:** Add OpenAI (GPT-4o) as a second AI provider. Claude stays default, OpenAI
+acts as fallback. An admin toggle in Settings lets the user swap: OpenAI becomes
+default and Claude fallback. Token usage is tracked separately per provider but
+summed for the monthly limit.
+
+**Model:** `gpt-4o` — comparable cost and quality to `claude-sonnet-4-6`
+($2.50/M input, $10/M output vs $3/$15 for Sonnet).
+
+**Default behavior:** Claude is the default provider, OpenAI is the fallback.
+If admin toggles the switch, OpenAI becomes default and Claude becomes fallback.
+If only one key is configured, that provider is used regardless of the toggle.
+
+---
+
+### 4.1 Backend — OpenAI package & config
+
+**Changes:**
+
+1. Add `openai` to `backend/requirements.txt`
+
+2. Add to `backend/app/config.py`:
+   ```python
+   OPENAI_API_KEY: str = ""
+   DEFAULT_AI_PROVIDER: str = "claude"   # "claude" | "openai"
+   ```
+
+3. Add `openai_api_key` to `MANAGEABLE_KEYS` in `api_settings.py`:
+   ```python
+   "openai_api_key": {
+       "label": "OpenAI (GPT-4o)",
+       "config_attr": "OPENAI_API_KEY",
+   },
+   ```
+
+4. Add `default_ai_provider` to `MANAGEABLE_SETTINGS` in `api_settings.py`
+   (stored in `system_settings` table, same as `monthly_token_limit`).
+
+5. Update the startup hook in `main.py` to also load `openai_api_key` and
+   `default_ai_provider` from the DB into the settings singleton.
+
+**Commit: `feat(openai): add openai package, config key, and settings storage`**
+
+**[ ] DONE — Subsection 4.1**
+
+---
+
+### 4.2 Backend — AI tracker: add `tracked_openai_call` + `provider` column
+
+**Changes:**
+
+1. Add `provider` column to `ApiUsageLog` model:
+   ```python
+   provider = mapped_column(String(20), nullable=False, server_default="claude")
+   # values: "claude" | "openai"
+   ```
+   Uses `server_default` so existing rows get "claude" automatically (SQLite
+   `create_all` is additive — but the column needs a default for pre-existing data).
+
+2. Rename `backend/app/services/claude_tracker.py` →
+   `backend/app/services/ai_tracker.py`.
+   Update all imports across the codebase.
+
+3. Keep the existing `tracked_claude_call` function in `ai_tracker.py` — add
+   `provider="claude"` to the `ApiUsageLog` it creates.
+
+4. Add `tracked_openai_call` in the same file:
+   ```python
+   async def tracked_openai_call(
+       client,                  # openai.AsyncOpenAI instance
+       *,
+       model: str,
+       max_tokens: int,
+       messages: list,
+       generator: str,
+       db: AsyncSession | None = None,
+       prospect_id: uuid.UUID | None = None,
+   ):
+       """Wrap client.chat.completions.create, log token usage."""
+       # Monthly limit check (same as Claude — counts ALL providers)
+       # ...
+       response = await client.chat.completions.create(
+           model=model, max_tokens=max_tokens, messages=messages,
+       )
+       # Token extraction differs from Claude:
+       #   response.usage.prompt_tokens      (not input_tokens)
+       #   response.usage.completion_tokens   (not output_tokens)
+       # Log with provider="openai"
+       return response
+   ```
+
+5. The monthly limit check stays unchanged — it counts ALL tokens regardless
+   of provider (the global cap applies to total spend).
+
+6. Update the usage endpoint `GET /api-settings/usage` to include a
+   `by_provider` breakdown in the response:
+   ```json
+   {
+     "by_provider": {
+       "claude": { "calls": 40, "total_tokens": 95000 },
+       "openai": { "calls": 12, "total_tokens": 30000 }
+     }
+   }
+   ```
+
+**Commit: `feat(openai): tracked_openai_call + provider column on usage logs`**
+
+**[ ] DONE — Subsection 4.2**
+
+---
+
+### 4.3 Backend — OpenAI generator classes + fallback logic
+
+**Changes:**
+
+For each of the 3 generator files, add an OpenAI implementation class alongside
+the existing Claude class. The prompts are identical — only the API call differs.
+
+1. **Refactor prompt building first:** Extract prompt construction into standalone
+   functions (e.g. `_build_email_prompt`, `_build_scenario_prompt`) so both
+   Claude and OpenAI classes call the same prompt builder. The classes then only
+   differ in which API client + tracked call they use.
+
+2. **`email_generator.py`** — add `OpenAIEmailGenerator`:
+   ```python
+   class OpenAIEmailGenerator:
+       def __init__(self):
+           self._client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+       async def generate(self, prospect, step, variant, prior_emails="", ...):
+           prompt = _build_email_prompt(prospect, step, variant, prior_emails)
+           response = await tracked_openai_call(
+               self._client, model="gpt-4o", max_tokens=1024,
+               messages=[{"role": "user", "content": prompt}],
+               generator="email", db=db, prospect_id=prospect_id,
+           )
+           raw = response.choices[0].message.content.strip()
+           return _parse_email_response(raw)
+   ```
+
+3. **`negotiation_generator.py`** — add `OpenAINegotiationGenerator`:
+   - `analyze()` — same prompt, `model="gpt-4o"`, `max_tokens=512`
+   - `generate_scenarios()` — same prompt, `max_tokens=2048`
+   - `generate_response()` — same prompt, `max_tokens=1024`
+
+4. **`contract_generator.py`** — add `OpenAIContractGenerator`:
+   - `generate_clauses()` — same prompt, `max_tokens=8192`
+
+5. **Update factory functions** with fallback logic:
+   ```python
+   def get_email_generator() -> EmailGeneratorProtocol:
+       default = settings.DEFAULT_AI_PROVIDER  # "claude" or "openai"
+       claude_ok = bool(settings.ANTHROPIC_API_KEY) and settings.ENV == "production"
+       openai_ok = bool(settings.OPENAI_API_KEY) and settings.ENV == "production"
+
+       if default == "openai" and openai_ok:
+           return OpenAIEmailGenerator()
+       if default == "claude" and claude_ok:
+           return ClaudeEmailGenerator()
+       # Fallback: try the other provider
+       if claude_ok:
+           return ClaudeEmailGenerator()
+       if openai_ok:
+           return OpenAIEmailGenerator()
+       return MockEmailGenerator()
+   ```
+   Same pattern for all 3 factories.
+
+**Commit: `feat(openai): OpenAI generator classes with dual-provider fallback`**
+
+**[ ] DONE — Subsection 4.3**
+
+---
+
+### 4.4 Frontend — Provider toggle + OpenAI key in Settings
+
+**Changes:**
+
+1. **`ApiKeysPanel.tsx`** — the OpenAI key row appears automatically since the
+   backend now returns 4 keys instead of 3. No frontend change needed for the
+   key list itself.
+
+2. **New component or section:** `ProviderToggle` at the top of the "IA & Clés API" tab:
+   ```
+   ┌─────────────────────────────────────────────────┐
+   │  Fournisseur IA par défaut                      │
+   │                                                  │
+   │  [Claude]  ←toggle→  [OpenAI]                   │
+   │                                                  │
+   │  Le fournisseur non-sélectionné sert de          │
+   │  secours automatique si le principal échoue.     │
+   └─────────────────────────────────────────────────┘
+   ```
+   - MUI `ToggleButtonGroup` (exclusive) or styled Switch
+   - Reads current value from `GET /api-settings/settings` → `default_ai_provider`
+   - On change: `PUT /api-settings/settings { "default_ai_provider": "openai" }`
+   - Show a warning chip if the selected provider's key is not set
+
+3. **Rename tab** "Claude & Clés API" → "IA & Clés API" (since it now covers both).
+
+**Commit: `feat(openai): provider toggle + OpenAI key management in Settings UI`**
+
+**[ ] DONE — Subsection 4.4**
+
+---
+
+### 4.5 Frontend — Per-provider usage breakdown in ApiUsagePanel
+
+**Changes:**
+
+1. Update `ApiUsagePanel.tsx` to display the `by_provider` data:
+   - Add a row of 2 small stat cards:
+     ```
+     ┌──────────────┐  ┌──────────────┐
+     │  Claude       │  │  OpenAI      │
+     │  95 000 tk    │  │  30 000 tk   │
+     │  40 appels    │  │  12 appels   │
+     └──────────────┘  └──────────────┘
+     ```
+   - Provider colors: Claude = primary/blue, OpenAI = green
+
+2. Total summary cards stay the same (already show combined total).
+
+3. Daily breakdown chart: optionally show stacked bars (Claude + OpenAI per day).
+   Keep it simple — two-color inline SVG bars, no chart library.
+
+4. Update `ApiUsageResponse` type:
+   ```typescript
+   by_provider: Record<string, { calls: number; total_tokens: number }>;
+   ```
+
+**Commit: `feat(openai): per-provider usage breakdown in dashboard`**
+
+**[ ] DONE — Subsection 4.5**
+
+---
+
 ## Implementation order
 
 1. **Section 1** first — token tracking is foundational, Section 2 depends on it
 2. **Section 2** — limit check uses the usage data from Section 1 + the SystemSetting
    model that Section 3 also needs
 3. **Section 3** — key management reuses the SystemSetting model from Section 2
+4. **Section 4** (subsections 4.1 → 4.5 in order):
+   - 4.1 — config + package install (no behavior change)
+   - 4.2 — tracker + DB column + usage endpoint update
+   - 4.3 — generator classes + fallback (backend complete)
+   - 4.4 — settings UI: toggle + key management (admin can configure)
+   - 4.5 — usage dashboard: per-provider breakdown (visibility)
 
-Each section: implement backend → implement frontend → test → commit → mark done.
+Each subsection: implement → test → commit → mark done.
 
 ---
 

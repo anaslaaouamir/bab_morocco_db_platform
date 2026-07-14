@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./bab_morocco.db"
     ANTHROPIC_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    DEFAULT_AI_PROVIDER: str = "claude"
     GOOGLE_MAPS_API_KEY: str = ""
     APIFY_API_TOKEN: str = ""
     MAILGUN_API_KEY: str = ""

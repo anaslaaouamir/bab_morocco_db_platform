@@ -14,7 +14,7 @@ from app.models.user import User
 router = APIRouter(prefix="/api-settings", tags=["api-settings"])
 
 # Settings manageable via GET/PUT below (allow-list — prevents arbitrary key writes)
-MANAGEABLE_SETTINGS = {"monthly_token_limit"}
+MANAGEABLE_SETTINGS = {"monthly_token_limit", "default_ai_provider"}
 
 # API keys manageable via the UI (allow-list)
 MANAGEABLE_KEYS = {
@@ -29,6 +29,10 @@ MANAGEABLE_KEYS = {
     "google_maps_api_key": {
         "label": "Google Maps / Places",
         "config_attr": "GOOGLE_MAPS_API_KEY",
+    },
+    "openai_api_key": {
+        "label": "OpenAI (GPT-4o)",
+        "config_attr": "OPENAI_API_KEY",
     },
 }
 
@@ -142,14 +146,17 @@ async def update_settings(
     for key, value in data.items():
         if key not in MANAGEABLE_SETTINGS:
             continue
+        str_value = str(value)
         existing = (
             await db.execute(select(SystemSetting).where(SystemSetting.key == key))
         ).scalar_one_or_none()
         if existing:
-            existing.value = str(value)
+            existing.value = str_value
             existing.updated_at = datetime.utcnow()
         else:
-            db.add(SystemSetting(key=key, value=str(value), updated_at=datetime.utcnow()))
+            db.add(SystemSetting(key=key, value=str_value, updated_at=datetime.utcnow()))
+        if key == "default_ai_provider" and str_value in ("claude", "openai"):
+            app_settings.DEFAULT_AI_PROVIDER = str_value
     await db.commit()
 
     rows = (await db.execute(select(SystemSetting))).scalars().all()
