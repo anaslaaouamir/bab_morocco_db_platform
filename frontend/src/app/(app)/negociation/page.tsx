@@ -1035,7 +1035,8 @@ export default function NegociationPage() {
     setConfirming(true);
     try {
       const edited = confirmMessage.trim() !== confirmScenario.message_propose.trim() ? confirmMessage : undefined;
-      const msg = await negotiationApi.respond(selectedId, confirmScenario.scenario as "A" | "B" | "C", edited);
+      const needsOverride = analysis?.requires_human ?? false;
+      const msg = await negotiationApi.respond(selectedId, confirmScenario.scenario as "A" | "B" | "C", edited, needsOverride);
       handleRespondDone(selectedId, { scenarioChosen: confirmScenario.scenario, sentMessage: msg.corps, isEscalation: false, sentAt: new Date().toISOString() });
       showSnackbar({ message: `Scénario ${confirmScenario.scenario} envoyé à ${selectedProspect?.nom}.`, severity: "success", duration: 5000 });
       setConfirmScenario(null);
@@ -1055,7 +1056,7 @@ export default function NegociationPage() {
     if (!escaladeScenario || !selectedId) return;
     setEscalading(true);
     try {
-      const msg = await negotiationApi.respond(selectedId, "C", message);
+      const msg = await negotiationApi.respond(selectedId, "C", message, true);
       handleRespondDone(selectedId, { scenarioChosen: "C", sentMessage: msg.corps, isEscalation: true, sentAt: new Date().toISOString() });
       showSnackbar({ message: "Escalade confirmée — Responsable commercial en charge.", severity: "warning", duration: 6000 });
       setEscaladeScenario(null);
@@ -1528,9 +1529,9 @@ export default function NegociationPage() {
                 disabled={confirming}
                 sx={{ "& .MuiInputBase-root": { fontSize: "0.8125rem", fontFamily: "inherit" } }}
               />
-              {analysis?.requires_human && confirmScenario.scenario === "A" && (
+              {analysis?.requires_human && (
                 <Typography variant="bodySmall" color="error.main" sx={{ fontWeight: 600, mt: 1 }}>
-                  ⚠ Validation humaine obligatoire avant toute réponse au partenaire.
+                  ⚠ Commission demandée sous le plancher — en confirmant, vous validez cet envoi en tant que responsable.
                 </Typography>
               )}
             </Box>

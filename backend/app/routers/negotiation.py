@@ -158,6 +158,6 @@ async def respond(
     if not last_analysis:
         raise HTTPException(status_code=404, detail="No analysis found — submit a message first")
     try:
-        return await svc.respond(db, prospect, body.scenario, last_analysis, body.custom_message)
+        return await svc.respond(db, prospect, body.scenario, last_analysis, body.custom_message, body.human_validated)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))

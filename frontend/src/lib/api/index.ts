@@ -321,10 +321,10 @@ export const negotiationApi = {
   history: (prospectId: string): Promise<RawNegotiationMessage[]> =>
     apiFetch<RawNegotiationMessage[]>(`/negotiation/${prospectId}/history`),
 
-  respond: (prospectId: string, scenario: "A" | "B" | "C", customMessage?: string): Promise<RawNegotiationMessage> =>
+  respond: (prospectId: string, scenario: "A" | "B" | "C", customMessage?: string, humanValidated?: boolean): Promise<RawNegotiationMessage> =>
     apiFetch<RawNegotiationMessage>(`/negotiation/${prospectId}/respond`, {
       method: "POST",
-      body: JSON.stringify({ scenario, custom_message: customMessage ?? null }),
+      body: JSON.stringify({ scenario, custom_message: customMessage ?? null, human_validated: humanValidated ?? false }),
     }),
 
   simulateReply: (prospectId: string): Promise<RawMessageAnalysis> =>

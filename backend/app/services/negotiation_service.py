@@ -203,11 +203,12 @@ class NegotiationService:
         scenario_letter: str,
         last_analysis: dict,
         custom_message: Optional[str] = None,
+        human_validated: bool = False,
     ) -> NegotiationMessage:
         """Validate chosen scenario, persist outbound message."""
         # Scenario C (escalation) is always allowed — it IS the human-override path.
-        # A and B are blocked when requires_human is True.
-        if last_analysis["requires_human"] and scenario_letter != "C":
+        # A and B are blocked when requires_human is True, unless the admin explicitly overrides.
+        if last_analysis["requires_human"] and scenario_letter != "C" and not human_validated:
             raise PermissionError("Human validation required before responding")
 
         if custom_message:

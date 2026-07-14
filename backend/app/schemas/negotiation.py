@@ -12,6 +12,7 @@ class MessageSubmitRequest(BaseModel):
 class RespondRequest(BaseModel):
     scenario: str  # "A", "B", or "C"
     custom_message: Optional[str] = None  # used for scenario C (human writes the message)
+    human_validated: bool = False
 
 
 class ScenarioSchema(BaseModel):
