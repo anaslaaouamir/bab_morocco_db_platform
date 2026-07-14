@@ -15,6 +15,7 @@ import LinearProgress from "@mui/material/LinearProgress";
 import Skeleton from "@mui/material/Skeleton";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
+import Pagination from "@mui/material/Pagination";
 import { alpha, useTheme } from "@mui/material/styles";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -775,6 +776,8 @@ export default function NegociationPage() {
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage]             = useState(1);
+  const PAGE_SIZE = 10;
 
   // P3-01 — perdu prospects
   const [perduProspects, setPerduProspects] = useState<Prospect[]>([]);
@@ -1111,6 +1114,12 @@ export default function NegociationPage() {
     [analysisCache],
   );
 
+  const pageCount = Math.max(1, Math.ceil(prospects.length / PAGE_SIZE));
+  const visiblePage = Math.min(page, pageCount);
+  const pagedProspects = prospects.slice((visiblePage - 1) * PAGE_SIZE, visiblePage * PAGE_SIZE);
+
+  useEffect(() => { setPage(1); }, [prospects.length]);
+
   // ─────────────────────────────────────────────────────────────────
 
   return (
@@ -1168,15 +1177,26 @@ export default function NegociationPage() {
               <Typography variant="bodyMedium">Aucun prospect en négociation</Typography>
             </Box>
           ) : (
-            prospects.map((p) => (
-              <NegotiationProspectCard
-                key={p.id}
-                prospect={p}
-                selected={selectedId === p.id}
-                state={prospectState(p)}
-                onSelect={() => setSelectedId(p.id)}
-              />
-            ))
+            <>
+              {pagedProspects.map((p) => (
+                <NegotiationProspectCard
+                  key={p.id}
+                  prospect={p}
+                  selected={selectedId === p.id}
+                  state={prospectState(p)}
+                  onSelect={() => setSelectedId(p.id)}
+                />
+              ))}
+              {pageCount > 1 && (
+                <Pagination
+                  count={pageCount}
+                  page={visiblePage}
+                  onChange={(_, v) => setPage(v)}
+                  size="small"
+                  sx={{ alignSelf: "center", mt: 0.5 }}
+                />
+              )}
+            </>
           )}
 
           {/* P3-01 — Perdus section */}

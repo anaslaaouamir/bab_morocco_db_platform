@@ -15,6 +15,7 @@ import Alert from "@mui/material/Alert";
 import Skeleton from "@mui/material/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
+import Pagination from "@mui/material/Pagination";
 import { alpha, useTheme } from "@mui/material/styles";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
@@ -1067,6 +1068,8 @@ export default function OutreachPage() {
   const [fetchError, setFetchError]     = useState<string | null>(null);
   const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [stepFilter, setStepFilter]     = useState<string>("all");
+  const [page, setPage]                 = useState(1);
+  const PAGE_SIZE = 10;
 
   const [emailsCache, setEmailsCache]   = useState<Record<string, RawOutreachEmail[]>>({});
 
@@ -1219,6 +1222,15 @@ export default function OutreachPage() {
     );
   }, [prospects, emailsCache, stepFilter]);
 
+  const pageCount = Math.max(1, Math.ceil(filteredProspects.length / PAGE_SIZE));
+  const visiblePage = Math.min(page, pageCount);
+  const pagedProspects = filteredProspects.slice(
+    (visiblePage - 1) * PAGE_SIZE,
+    visiblePage * PAGE_SIZE,
+  );
+
+  useEffect(() => { setPage(1); }, [stepFilter]);
+
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       {/* Page header */}
@@ -1362,16 +1374,27 @@ export default function OutreachPage() {
               <Typography variant="bodyMedium">Aucun prospect à cette étape</Typography>
             </Box>
           ) : (
-            filteredProspects.map((p) => (
-              <OutreachProspectCard
-                key={p.id}
-                prospect={p}
-                emails={emailsCache[p.id] ?? []}
-                selected={selectedId === p.id}
-                onSelect={() => setSelectedId(p.id)}
-                onSimulateReply={handleSimulateReply}
-              />
-            ))
+            <>
+              {pagedProspects.map((p) => (
+                <OutreachProspectCard
+                  key={p.id}
+                  prospect={p}
+                  emails={emailsCache[p.id] ?? []}
+                  selected={selectedId === p.id}
+                  onSelect={() => setSelectedId(p.id)}
+                  onSimulateReply={handleSimulateReply}
+                />
+              ))}
+              {pageCount > 1 && (
+                <Pagination
+                  count={pageCount}
+                  page={visiblePage}
+                  onChange={(_, v) => setPage(v)}
+                  size="small"
+                  sx={{ alignSelf: "center", mt: 0.5 }}
+                />
+              )}
+            </>
           )}
         </Box>
 

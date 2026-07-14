@@ -11,6 +11,7 @@ import Button from "@mui/material/Button";
 import Alert from "@mui/material/Alert";
 import Tooltip from "@mui/material/Tooltip";
 import Skeleton from "@mui/material/Skeleton";
+import Pagination from "@mui/material/Pagination";
 import { alpha, useTheme } from "@mui/material/styles";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
@@ -367,6 +368,8 @@ export default function ContratsPage() {
   const [prospectsMap, setProspectsMap] = useState<Record<string, Prospect>>({});
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   // Fiche drawer
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
@@ -469,9 +472,13 @@ export default function ContratsPage() {
     [contracts, prospectsMap],
   );
 
-  const signed    = enriched.filter(({ contract: c }) => c.status === "signed");
-  const inProgress = enriched.filter(({ contract: c }) => ["draft", "generated", "sent_to_partner"].includes(c.status));
-  const declined  = enriched.filter(({ contract: c }) => c.status === "declined");
+  const pageCount = Math.max(1, Math.ceil(enriched.length / PAGE_SIZE));
+  const visiblePage = Math.min(page, pageCount);
+  const pagedEnriched = enriched.slice((visiblePage - 1) * PAGE_SIZE, visiblePage * PAGE_SIZE);
+
+  const signed    = pagedEnriched.filter(({ contract: c }) => c.status === "signed");
+  const inProgress = pagedEnriched.filter(({ contract: c }) => ["draft", "generated", "sent_to_partner"].includes(c.status));
+  const declined  = pagedEnriched.filter(({ contract: c }) => c.status === "declined");
 
   const avgCommission = enriched.length
     ? Math.round(enriched.reduce((s, { contract: c }) => s + c.commission, 0) / enriched.length * 10) / 10
@@ -610,6 +617,18 @@ export default function ContratsPage() {
               />
             ))}
           </Box>
+        </Box>
+      )}
+
+      {/* Pagination */}
+      {!loading && pageCount > 1 && (
+        <Box sx={{ display: "flex", justifyContent: "center" }}>
+          <Pagination
+            count={pageCount}
+            page={visiblePage}
+            onChange={(_, v) => setPage(v)}
+            size="small"
+          />
         </Box>
       )}
 
