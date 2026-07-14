@@ -5,7 +5,7 @@ import anthropic
 
 from app.config import settings
 from app.models.prospect import Prospect
-from app.services.claude_tracker import tracked_claude_call
+from app.services.ai_tracker import tracked_claude_call
 from app.services.contract_generator import _partner_type_description
 from app.services.json_extract import extract_json
 

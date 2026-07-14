@@ -583,7 +583,7 @@ If only one key is configured, that provider is used regardless of the toggle.
 
 **Commit: `feat(openai): add openai package, config key, and settings storage`**
 
-**[ ] DONE — Subsection 4.1**
+**[x] DONE — Subsection 4.1**
 
 ---
 
@@ -647,7 +647,7 @@ If only one key is configured, that provider is used regardless of the toggle.
 
 **Commit: `feat(openai): tracked_openai_call + provider column on usage logs`**
 
-**[ ] DONE — Subsection 4.2**
+**[x] DONE — Subsection 4.2**
 
 ---
 

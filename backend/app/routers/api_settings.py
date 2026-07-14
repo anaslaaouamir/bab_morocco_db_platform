@@ -114,6 +114,21 @@ async def get_usage(
         for d in daily_rows.all()
     ]
 
+    # By provider
+    by_provider_rows = await db.execute(
+        select(
+            ApiUsageLog.provider,
+            func.count(ApiUsageLog.id).label("calls"),
+            func.coalesce(func.sum(ApiUsageLog.total_tokens), 0).label("total_tokens"),
+        )
+        .where(ApiUsageLog.timestamp >= start, ApiUsageLog.timestamp <= end)
+        .group_by(ApiUsageLog.provider)
+    )
+    by_provider = {
+        p.provider: {"calls": p.calls, "total_tokens": p.total_tokens}
+        for p in by_provider_rows.all()
+    }
+
     return {
         "period": period,
         "period_start": start.isoformat(),
@@ -124,6 +139,7 @@ async def get_usage(
         "total_calls": row.total_calls,
         "failed_calls": row.failed_calls or 0,
         "by_generator": by_generator,
+        "by_provider": by_provider,
         "daily_breakdown": daily_breakdown,
     }
 
