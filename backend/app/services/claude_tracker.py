@@ -3,10 +3,50 @@ import time
 import uuid
 from datetime import datetime
 
+from sqlalchemy import func, select
+
 from app.database import AsyncSessionLocal
 from app.models.api_usage import ApiUsageLog
+from app.models.system_settings import SystemSetting
 
 logger = logging.getLogger(__name__)
+
+MONTHLY_LIMIT_KEY = "monthly_token_limit"
+
+
+async def _check_monthly_limit() -> None:
+    """Raise ValueError if the configured monthly token cap is already reached.
+
+    No row / value <= 0 in system_settings means unlimited — the default until
+    an admin sets a cap in Settings.
+    """
+    async with AsyncSessionLocal() as db:
+        setting = (
+            await db.execute(select(SystemSetting).where(SystemSetting.key == MONTHLY_LIMIT_KEY))
+        ).scalar_one_or_none()
+        if not setting or not setting.value:
+            return
+        try:
+            limit = int(setting.value)
+        except ValueError:
+            return
+        if limit <= 0:
+            return
+
+        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        current_total = (
+            await db.execute(
+                select(func.coalesce(func.sum(ApiUsageLog.total_tokens), 0)).where(
+                    ApiUsageLog.timestamp >= month_start
+                )
+            )
+        ).scalar_one()
+
+        if current_total >= limit:
+            raise ValueError(
+                f"Monthly token limit reached ({current_total} / {limit} tokens). "
+                "Increase the limit in Settings or wait until next month."
+            )
 
 
 async def tracked_claude_call(
@@ -23,6 +63,8 @@ async def tracked_claude_call(
     Uses its own DB session so callers don't need to thread one through.
     Returns the Anthropic Message object unchanged.
     """
+    await _check_monthly_limit()
+
     start = time.monotonic()
     success = True
     error_msg = None

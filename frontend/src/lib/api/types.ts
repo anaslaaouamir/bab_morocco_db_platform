@@ -238,3 +238,5 @@ export interface ApiUsageResponse {
   by_generator: Record<string, ApiUsageByGenerator>;
   daily_breakdown: ApiUsageDailyEntry[];
 }
+
+export type SystemSettingsMap = Record<string, string>;

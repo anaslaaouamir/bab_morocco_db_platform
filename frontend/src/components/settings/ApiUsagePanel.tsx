@@ -13,10 +13,16 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Skeleton from "@mui/material/Skeleton";
 import Alert from "@mui/material/Alert";
+import TextField from "@mui/material/TextField";
+import Button from "@mui/material/Button";
+import LinearProgress from "@mui/material/LinearProgress";
 import DataUsageRoundedIcon from "@mui/icons-material/DataUsageRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
+import SpeedRoundedIcon from "@mui/icons-material/SpeedRounded";
 
 import { apiSettingsApi, type ApiUsageResponse } from "@/lib/api";
+
+const MONTHLY_LIMIT_KEY = "monthly_token_limit";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -100,12 +106,22 @@ export default function ApiUsagePanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Monthly limit — independent of the period selector above, always tied to the
+  // current calendar month (matches the backend's monthly cap semantics).
+  const [monthTotal, setMonthTotal] = useState(0);
+  const [limit, setLimit] = useState<number | null>(null);
+  const [limitInput, setLimitInput] = useState("");
+  const [limitLoading, setLimitLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [limitError, setLimitError] = useState<string | null>(null);
+
   const load = useCallback(async (p: Period) => {
     setLoading(true);
     setError(null);
     try {
       const res = await apiSettingsApi.usage(p);
       setData(res);
+      if (p === "month") setMonthTotal(res.total_tokens);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur inconnue");
     } finally {
@@ -113,9 +129,52 @@ export default function ApiUsagePanel() {
     }
   }, []);
 
+  const loadLimit = useCallback(async () => {
+    setLimitLoading(true);
+    try {
+      const [settings, monthUsage] = await Promise.all([
+        apiSettingsApi.getSettings(),
+        apiSettingsApi.usage("month"),
+      ]);
+      const raw = settings[MONTHLY_LIMIT_KEY];
+      const parsed = raw ? parseInt(raw, 10) : 0;
+      setLimit(parsed > 0 ? parsed : null);
+      setLimitInput(parsed > 0 ? String(parsed) : "");
+      setMonthTotal(monthUsage.total_tokens);
+    } catch {
+      // Limit is a nice-to-have — silently degrade to "unlimited" display on failure.
+    } finally {
+      setLimitLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     load(period);
   }, [period, load]);
+
+  useEffect(() => {
+    loadLimit();
+  }, [loadLimit]);
+
+  async function handleSaveLimit() {
+    setSaving(true);
+    setLimitError(null);
+    try {
+      const value = limitInput.trim() === "" ? 0 : parseInt(limitInput, 10);
+      const res = await apiSettingsApi.updateSettings({ [MONTHLY_LIMIT_KEY]: value });
+      const raw = res[MONTHLY_LIMIT_KEY];
+      const parsed = raw ? parseInt(raw, 10) : 0;
+      setLimit(parsed > 0 ? parsed : null);
+      setLimitInput(parsed > 0 ? String(parsed) : "");
+    } catch (e: unknown) {
+      setLimitError(e instanceof Error ? e.message : "Erreur lors de l'enregistrement.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const limitPct = limit ? Math.min(100, (monthTotal / limit) * 100) : 0;
+  const limitColor = limitPct >= 95 ? "error" : limitPct >= 80 ? "warning" : "primary";
 
   const generatorRows = data
     ? Object.entries(data.by_generator).sort(([, a], [, b]) => b.total_tokens - a.total_tokens)
@@ -256,6 +315,89 @@ export default function ApiUsagePanel() {
               Tokens par jour
             </Typography>
             <DailyChart data={data.daily_breakdown} />
+          </>
+        )}
+
+        {/* Monthly limit */}
+        <Divider sx={{ my: 2.5 }} />
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
+          <SpeedRoundedIcon sx={{ color: "primary.main", fontSize: 20 }} />
+          <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>
+            Limite mensuelle
+          </Typography>
+          {!limitLoading && (
+            <Chip
+              label={limit ? "Limite active" : "Illimité"}
+              size="small"
+              color={limit ? "primary" : "default"}
+              variant={limit ? "filled" : "outlined"}
+              sx={{ ml: "auto" }}
+            />
+          )}
+        </Box>
+
+        {limitLoading ? (
+          <Skeleton variant="rounded" height={56} />
+        ) : (
+          <>
+            {limit && (
+              <Box sx={{ mb: 2 }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
+                  <Typography variant="bodySmall" color="text.secondary">
+                    {fmtNum(monthTotal)} / {fmtNum(limit)} tokens utilisés ce mois
+                  </Typography>
+                  <Typography variant="bodySmall" sx={{ fontWeight: 700 }} color={`${limitColor}.main`}>
+                    {limitPct.toFixed(0)}%
+                  </Typography>
+                </Box>
+                <LinearProgress
+                  variant="determinate"
+                  value={limitPct}
+                  color={limitColor}
+                  sx={{ height: 8, borderRadius: 4 }}
+                />
+              </Box>
+            )}
+
+            {limitError && (
+              <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+                {limitError}
+              </Alert>
+            )}
+
+            <Box sx={{ display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
+              <TextField
+                size="small"
+                type="number"
+                label="Limite (tokens / mois)"
+                placeholder="Illimité"
+                value={limitInput}
+                onChange={(e) => setLimitInput(e.target.value)}
+                disabled={saving}
+                sx={{ maxWidth: 220 }}
+              />
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleSaveLimit}
+                disabled={saving}
+                sx={{ fontWeight: 700, textTransform: "none" }}
+              >
+                {saving ? "Enregistrement…" : "Enregistrer"}
+              </Button>
+              {limit && (
+                <Button
+                  variant="text"
+                  size="small"
+                  color="inherit"
+                  disabled={saving}
+                  onClick={() => { setLimitInput(""); }}
+                  sx={{ textTransform: "none" }}
+                >
+                  Laisser vide + Enregistrer = illimité
+                </Button>
+              )}
+            </Box>
           </>
         )}
       </Box>

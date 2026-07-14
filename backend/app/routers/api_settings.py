@@ -1,15 +1,19 @@
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import case, cast, func, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
 from app.dependencies.auth import require_admin
 from app.models.api_usage import ApiUsageLog
+from app.models.system_settings import SystemSetting
 from app.models.user import User
 
 router = APIRouter(prefix="/api-settings", tags=["api-settings"])
+
+# Settings manageable via GET/PUT below (allow-list — prevents arbitrary key writes)
+MANAGEABLE_SETTINGS = {"monthly_token_limit"}
 
 
 def _period_range(period: str) -> tuple[datetime, datetime]:
@@ -95,3 +99,35 @@ async def get_usage(
         "by_generator": by_generator,
         "daily_breakdown": daily_breakdown,
     }
+
+
+@router.get("/settings")
+async def get_settings(
+    db: AsyncSession = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, str]:
+    rows = (await db.execute(select(SystemSetting))).scalars().all()
+    return {row.key: row.value for row in rows if row.key in MANAGEABLE_SETTINGS}
+
+
+@router.put("/settings")
+async def update_settings(
+    data: dict[str, object] = Body(...),
+    db: AsyncSession = Depends(get_session),
+    _admin: User = Depends(require_admin),
+) -> dict[str, str]:
+    for key, value in data.items():
+        if key not in MANAGEABLE_SETTINGS:
+            continue
+        existing = (
+            await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+        ).scalar_one_or_none()
+        if existing:
+            existing.value = str(value)
+            existing.updated_at = datetime.utcnow()
+        else:
+            db.add(SystemSetting(key=key, value=str(value), updated_at=datetime.utcnow()))
+    await db.commit()
+
+    rows = (await db.execute(select(SystemSetting))).scalars().all()
+    return {row.key: row.value for row in rows if row.key in MANAGEABLE_SETTINGS}

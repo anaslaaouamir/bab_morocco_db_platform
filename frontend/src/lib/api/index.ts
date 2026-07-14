@@ -18,6 +18,7 @@ export type {
   RawContractListResponse,
   ContractStatus,
   ApiUsageResponse,
+  SystemSettingsMap,
 } from "./types";
 
 import { apiFetch, apiFetchBlob } from "./base";
@@ -37,6 +38,7 @@ import type {
   RawContract,
   RawContractListResponse,
   ApiUsageResponse,
+  SystemSettingsMap,
 } from "./types";
 import type { Prospect, PipelineStage, PartnerType, OutreachLanguage } from "@/types/prospect";
 
@@ -341,4 +343,13 @@ export const negotiationApi = {
 export const apiSettingsApi = {
   usage: (period: "today" | "week" | "month" = "month"): Promise<ApiUsageResponse> =>
     apiFetch<ApiUsageResponse>(`/api-settings/usage?period=${period}`),
+
+  getSettings: (): Promise<SystemSettingsMap> =>
+    apiFetch<SystemSettingsMap>("/api-settings/settings"),
+
+  updateSettings: (data: Record<string, unknown>): Promise<SystemSettingsMap> =>
+    apiFetch<SystemSettingsMap>("/api-settings/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
 };
