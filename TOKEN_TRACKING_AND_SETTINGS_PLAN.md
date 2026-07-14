@@ -381,7 +381,7 @@ export const apiSettingsApi = {
 - Verify the frontend shows the limit, progress bar, and save works
 - Commit: `feat(api-limits): monthly token cap with admin-configurable limit`
 
-**[ ] DONE — Section 2**
+**[x] DONE — Section 2**
 
 ---
 
