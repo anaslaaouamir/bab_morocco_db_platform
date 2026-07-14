@@ -383,7 +383,7 @@ export default function ContratsPage() {
     setFetchError(null);
     try {
       const [contractsRes, closingRes, activationRes] = await Promise.all([
-        contractsApi.list(),
+        contractsApi.list({ pageSize: 100 }),
         prospectsApi.list({ stage: "closing", pageSize: 100 }),
         prospectsApi.list({ stage: "activation_ota", pageSize: 100 }),
       ]);

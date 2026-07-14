@@ -34,6 +34,7 @@ import type {
   RawOutreachEmail,
   RawNextStepResponse,
   RawTriggerFollowupsResponse,
+  RawOutreachQueueResponse,
   RawNegotiationMessage,
   RawMessageAnalysis,
   RawWaitingReplyItem,
@@ -249,6 +250,33 @@ export const outreachApi = {
     apiFetch<RawTriggerFollowupsResponse>("/outreach/trigger-followups", {
       method: "POST",
     }),
+
+  /** Prospects in the "outreach" stage + their next-step email data, in a single batched call. */
+  queue: async (params: { page?: number; pageSize?: number } = {}): Promise<{
+    items: { prospect: Prospect; nextStep: string | null; reason: string; emails: RawOutreachEmail[] }[];
+    total: number;
+    page: number;
+    pageSize: number;
+    pages: number;
+  }> => {
+    const qs = new URLSearchParams();
+    if (params.page)     qs.set("page",      String(params.page));
+    if (params.pageSize) qs.set("page_size", String(params.pageSize));
+    const query = qs.toString();
+    const raw = await apiFetch<RawOutreachQueueResponse>(`/outreach/queue${query ? `?${query}` : ""}`);
+    return {
+      items: raw.items.map((it) => ({
+        prospect: rawToProspect(it.prospect),
+        nextStep: it.next_step,
+        reason: it.reason,
+        emails: it.emails,
+      })),
+      total:    raw.total,
+      page:     raw.page,
+      pageSize: raw.page_size,
+      pages:    raw.pages,
+    };
+  },
 };
 
 // ─── Negotiation ──────────────────────────────────────────────────────────────
@@ -256,8 +284,13 @@ export const outreachApi = {
 // ─── Contracts ────────────────────────────────────────────────────────────────
 
 export const contractsApi = {
-  list: (): Promise<RawContractListResponse> =>
-    apiFetch<RawContractListResponse>("/contracts"),
+  list: (params: { page?: number; pageSize?: number } = {}): Promise<RawContractListResponse> => {
+    const qs = new URLSearchParams();
+    if (params.page)     qs.set("page",      String(params.page));
+    if (params.pageSize) qs.set("page_size", String(params.pageSize));
+    const query = qs.toString();
+    return apiFetch<RawContractListResponse>(`/contracts${query ? `?${query}` : ""}`);
+  },
 
   create: (prospectId: string, estimatedAnnualValue?: number): Promise<RawContract> =>
     apiFetch<RawContract>("/contracts", {

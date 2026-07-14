@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -176,24 +176,43 @@ class NegotiationService:
         prospects = (
             await db.execute(select(Prospect).where(Prospect.stage == "negociation"))
         ).scalars().all()
+        if not prospects:
+            return []
+        prospect_by_id = {p.id: p for p in prospects}
+
+        # One grouped query for the latest message per prospect instead of one query per prospect.
+        latest_subq = (
+            select(
+                NegotiationMessage.prospect_id.label("prospect_id"),
+                func.max(NegotiationMessage.date_message).label("max_date"),
+            )
+            .where(NegotiationMessage.prospect_id.in_(prospect_by_id.keys()))
+            .group_by(NegotiationMessage.prospect_id)
+            .subquery()
+        )
+        last_messages = (
+            await db.execute(
+                select(NegotiationMessage).join(
+                    latest_subq,
+                    (NegotiationMessage.prospect_id == latest_subq.c.prospect_id)
+                    & (NegotiationMessage.date_message == latest_subq.c.max_date),
+                )
+            )
+        ).scalars().all()
 
         waiting: list[dict] = []
-        for prospect in prospects:
-            last_msg = (
-                await db.execute(
-                    select(NegotiationMessage)
-                    .where(NegotiationMessage.prospect_id == prospect.id)
-                    .order_by(NegotiationMessage.date_message.desc())
-                    .limit(1)
-                )
-            ).scalars().first()
-            if last_msg and last_msg.direction == "inbound":
-                waiting.append({
-                    "prospect_id": prospect.id,
-                    "prospect_nom": prospect.nom,
-                    "assigned_to": prospect.assigned_to,
-                    "last_message_at": last_msg.date_message,
-                })
+        for last_msg in last_messages:
+            if last_msg.direction != "inbound":
+                continue
+            prospect = prospect_by_id.get(last_msg.prospect_id)
+            if not prospect:
+                continue
+            waiting.append({
+                "prospect_id": prospect.id,
+                "prospect_nom": prospect.nom,
+                "assigned_to": prospect.assigned_to,
+                "last_message_at": last_msg.date_message,
+            })
         return waiting
 
     async def respond(

@@ -59,3 +59,6 @@ class ContractResponse(BaseModel):
 class ContractListResponse(BaseModel):
     items: list[ContractResponse]
     total: int
+    page: int
+    page_size: int
+    pages: int

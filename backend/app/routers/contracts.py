@@ -1,7 +1,8 @@
+import math
 import uuid
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,19 +60,16 @@ async def _get_contract_with_access(
 
 @router.get("", response_model=ContractListResponse)
 async def list_contracts(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_session),
     svc: ContractService = Depends(get_contract_service),
     user: User = Depends(get_current_user),
 ):
-    items = await svc.list_contracts(db)
-    if user.role == "commercial":
-        owned = []
-        for c in items:
-            prospect = await db.get(Prospect, c.prospect_id)
-            if prospect and prospect.assigned_to == user.id:
-                owned.append(c)
-        items = owned
-    return ContractListResponse(items=items, total=len(items))
+    assigned_to = user.id if user.role == "commercial" else None
+    items, total = await svc.list_contracts(db, page=page, page_size=page_size, assigned_to=assigned_to)
+    pages = max(1, math.ceil(total / page_size))
+    return ContractListResponse(items=items, total=total, page=page, page_size=page_size, pages=pages)
 
 
 @router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)

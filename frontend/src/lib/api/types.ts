@@ -120,6 +120,21 @@ export interface RawTriggerFollowupsResponse {
   details: Record<string, unknown>[];
 }
 
+export interface RawProspectWithNextStep {
+  prospect: RawProspect;
+  next_step: string | null;
+  reason: string;
+  emails: RawOutreachEmail[];
+}
+
+export interface RawOutreachQueueResponse {
+  items: RawProspectWithNextStep[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
 // ─── Negotiation ──────────────────────────────────────────────────────────────
 
 export interface RawNegotiationMessage {
@@ -209,6 +224,9 @@ export interface RawContract {
 export interface RawContractListResponse {
   items: RawContract[];
   total: number;
+  page: number;
+  page_size: number;
+  pages: number;
 }
 
 // ─── API Usage ───────────────────────────────────────────────────────────────

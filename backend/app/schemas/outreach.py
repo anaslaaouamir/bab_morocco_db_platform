@@ -5,6 +5,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.prospect import ProspectResponse
+
 
 class SequenceStepEnum(str, Enum):
     j0 = "j0"
@@ -58,3 +60,18 @@ class NextStepResponse(BaseModel):
 class TriggerFollowupsResponse(BaseModel):
     created: int
     details: list[dict]
+
+
+class ProspectWithNextStep(BaseModel):
+    prospect: ProspectResponse
+    next_step: Optional[str]
+    reason: str
+    emails: list[OutreachEmailResponse]
+
+
+class OutreachQueueResponse(BaseModel):
+    items: list[ProspectWithNextStep]
+    total: int
+    page: int
+    page_size: int
+    pages: int

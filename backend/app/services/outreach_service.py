@@ -166,8 +166,7 @@ class OutreachService:
         )
         return list(result.scalars().all())
 
-    async def next_step(self, db: AsyncSession, prospect_id: uuid.UUID) -> dict:
-        emails = await self.list_emails(db, prospect_id)
+    def _compute_next_step(self, emails: list[OutreachEmail]) -> dict:
         if not emails:
             return {"next_step": "j0", "reason": "No emails yet — start with J0", "emails": []}
         sent = [e for e in emails if e.statut in ("sent", "opened", "clicked")]
@@ -188,6 +187,33 @@ class OutreachService:
                 "emails": emails,
             }
         return {"next_step": None, "reason": "Sequence complete", "emails": emails}
+
+    async def next_step(self, db: AsyncSession, prospect_id: uuid.UUID) -> dict:
+        emails = await self.list_emails(db, prospect_id)
+        return self._compute_next_step(emails)
+
+    async def list_emails_for_prospects(
+        self, db: AsyncSession, prospect_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[OutreachEmail]]:
+        """Single grouped query for all emails of many prospects, keyed by prospect_id."""
+        grouped: dict[uuid.UUID, list[OutreachEmail]] = {pid: [] for pid in prospect_ids}
+        if not prospect_ids:
+            return grouped
+        result = await db.execute(
+            select(OutreachEmail)
+            .where(OutreachEmail.prospect_id.in_(prospect_ids))
+            .order_by(OutreachEmail.date_envoi_prevu, OutreachEmail.variant)
+        )
+        for e in result.scalars().all():
+            grouped.setdefault(e.prospect_id, []).append(e)
+        return grouped
+
+    async def next_step_batch(
+        self, db: AsyncSession, prospect_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, dict]:
+        """Batched equivalent of next_step() for many prospects — one query instead of N."""
+        grouped = await self.list_emails_for_prospects(db, prospect_ids)
+        return {pid: self._compute_next_step(emails) for pid, emails in grouped.items()}
 
     # ── Validate / Send ───────────────────────────────────────────────────────
 

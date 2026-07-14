@@ -1074,17 +1074,10 @@ export default function OutreachPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      const result = await prospectsApi.list({ stage: "outreach", pageSize: 100 });
-      setProspects(result.items);
-
-      const emailFetches = result.items.map((p) =>
-        outreachApi.nextStep(p.id)
-          .then((r) => ({ id: p.id, emails: r.emails }))
-          .catch(() => ({ id: p.id, emails: [] })),
-      );
-      const allEmails = await Promise.all(emailFetches);
+      const result = await outreachApi.queue({ pageSize: 100 });
+      setProspects(result.items.map((it) => it.prospect));
       setEmailsCache(
-        Object.fromEntries(allEmails.map(({ id, emails }) => [id, emails])),
+        Object.fromEntries(result.items.map((it) => [it.prospect.id, it.emails])),
       );
     } catch (err) {
       setFetchError(err instanceof ApiError ? err.detail : "Impossible de charger les prospects.");

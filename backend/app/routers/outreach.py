@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -13,8 +13,11 @@ from app.schemas.outreach import (
     NextStepResponse,
     OutreachEmailResponse,
     OutreachEmailUpdate,
+    OutreachQueueResponse,
+    ProspectWithNextStep,
     TriggerFollowupsResponse,
 )
+from app.services import prospect_service
 from app.services.email_generator import EmailGeneratorProtocol, get_email_generator
 from app.services.email_transport import EmailTransportProtocol, get_email_transport
 from app.services.outreach_service import OutreachService
@@ -40,6 +43,39 @@ async def _get_prospect_for_email(email_id: uuid.UUID, user: User, db: AsyncSess
     if user.role == "commercial" and prospect.assigned_to != user.id:
         raise HTTPException(status_code=403, detail="Vous n'avez pas accès à ce prospect.")
     return prospect
+
+
+@router.get("/queue", response_model=OutreachQueueResponse)
+async def outreach_queue(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+    db: AsyncSession = Depends(get_session),
+    svc: OutreachService = Depends(get_outreach_service),
+    user: User = Depends(get_current_user),
+):
+    """Prospects in the 'outreach' stage together with their next-step email data,
+    batched in a single grouped query instead of one HTTP/SQL round-trip per prospect."""
+    assigned_to = user.id if user.role == "commercial" else None
+    prospect_page = await prospect_service.list_prospects(
+        db, page=page, page_size=page_size, stage="outreach", assigned_to=assigned_to,
+    )
+    next_steps = await svc.next_step_batch(db, [p.id for p in prospect_page.items])
+    items = [
+        ProspectWithNextStep(
+            prospect=p,
+            next_step=next_steps[p.id]["next_step"],
+            reason=next_steps[p.id]["reason"],
+            emails=[OutreachEmailResponse.model_validate(e) for e in next_steps[p.id]["emails"]],
+        )
+        for p in prospect_page.items
+    ]
+    return OutreachQueueResponse(
+        items=items,
+        total=prospect_page.total,
+        page=prospect_page.page,
+        page_size=prospect_page.page_size,
+        pages=prospect_page.pages,
+    )
 
 
 @router.post("/{prospect_id}/generate", response_model=list[OutreachEmailResponse], status_code=status.HTTP_201_CREATED)

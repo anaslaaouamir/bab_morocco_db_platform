@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -373,11 +373,27 @@ class ContractService:
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
-    async def list_contracts(self, db: AsyncSession) -> list[ContractResponse]:
-        result = await db.execute(
-            select(Contract).order_by(Contract.created_at.desc())
-        )
-        return [_contract_to_response(c) for c in result.scalars().all()]
+    async def list_contracts(
+        self,
+        db: AsyncSession,
+        page: int = 1,
+        page_size: int = 20,
+        assigned_to: Optional[uuid.UUID] = None,
+    ) -> tuple[list[ContractResponse], int]:
+        stmt = select(Contract)
+        if assigned_to is not None:
+            stmt = stmt.join(Prospect, Prospect.id == Contract.prospect_id).where(
+                Prospect.assigned_to == assigned_to
+            )
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await db.execute(count_stmt)).scalar_one()
+
+        offset = (page - 1) * page_size
+        stmt = stmt.order_by(Contract.created_at.desc()).offset(offset).limit(page_size)
+        result = await db.execute(stmt)
+        items = [_contract_to_response(c) for c in result.scalars().all()]
+        return items, total
 
     async def get_contract(self, db: AsyncSession, contract_id: uuid.UUID) -> Optional[Contract]:
         return await db.get(Contract, contract_id)
