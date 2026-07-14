@@ -294,7 +294,7 @@ Add types to `frontend/src/lib/api/types.ts`.
 - Start the frontend dev server, navigate to Settings, verify the panel renders
 - Commit with message: `feat(api-tracking): log token usage for all Claude calls + usage dashboard`
 
-**[ ] DONE — Section 1**
+**[x] DONE — Section 1**
 
 ---
 
