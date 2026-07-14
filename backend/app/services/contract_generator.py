@@ -15,10 +15,11 @@ import logging
 from typing import Protocol
 
 import anthropic
+import openai
 
 from app.config import settings
 from app.models.prospect import Prospect
-from app.services.ai_tracker import tracked_claude_call
+from app.services.ai_tracker import tracked_claude_call, tracked_openai_call
 from app.services.json_extract import extract_json
 
 logger = logging.getLogger(__name__)
@@ -241,25 +242,19 @@ class MockContractGenerator:
 
 # ─── Claude generator ─────────────────────────────────────────────────────────
 
-class ClaudeContractGenerator:
-    """Generates all 9 contract clauses via Claude in the partner's language."""
+def _build_contract_prompt(prospect: Prospect) -> str:
+    law, city = _get_jurisdiction(prospect.pays)
+    gdpr = _get_gdpr_clause_label(prospect.pays)
+    type_desc = _partner_type_description(prospect.type, prospect.langue)
+    floor = COMMISSION_FLOORS.get(prospect.type, 8.0)
 
-    def __init__(self) -> None:
-        self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    lang_names = {
+        "fr": "French", "en": "English", "es": "Spanish",
+        "de": "German", "ar": "Arabic",
+    }
+    lang_name = lang_names.get(prospect.langue, "French")
 
-    async def generate_clauses(self, prospect: Prospect) -> dict:
-        law, city = _get_jurisdiction(prospect.pays)
-        gdpr = _get_gdpr_clause_label(prospect.pays)
-        type_desc = _partner_type_description(prospect.type, prospect.langue)
-        floor = COMMISSION_FLOORS.get(prospect.type, 8.0)
-
-        lang_names = {
-            "fr": "French", "en": "English", "es": "Spanish",
-            "de": "German", "ar": "Arabic",
-        }
-        lang_name = lang_names.get(prospect.langue, "French")
-
-        prompt = f"""You are a senior B2B contract writer for Bab Morocco, a Morocco-dedicated OTA.
+    return f"""You are a senior B2B contract writer for Bab Morocco, a Morocco-dedicated OTA.
 
 Generate a complete, professional partnership contract in **{lang_name}** for the following partner.
 
@@ -304,6 +299,23 @@ no extra keys, no explanation. All text values in **{lang_name}**:
 - Keep each clause self-contained and professional (150-250 words per clause).
 """
 
+
+def _parse_contract_response(raw: str, source: str) -> dict:
+    try:
+        return extract_json(raw)
+    except ValueError as exc:
+        logger.error("%s.generate_clauses failed | %s | raw=%.300s", source, exc, raw)
+        raise
+
+
+class ClaudeContractGenerator:
+    """Generates all 9 contract clauses via Claude in the partner's language."""
+
+    def __init__(self) -> None:
+        self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    async def generate_clauses(self, prospect: Prospect) -> dict:
+        prompt = _build_contract_prompt(prospect)
         message = await tracked_claude_call(
             self._client,
             model="claude-sonnet-4-6",
@@ -313,16 +325,42 @@ no extra keys, no explanation. All text values in **{lang_name}**:
             prospect_id=prospect.id,
         )
         raw = message.content[0].text.strip()
-        try:
-            return extract_json(raw)
-        except ValueError as exc:
-            logger.error("ClaudeContractGenerator.generate_clauses failed | %s | raw=%.300s", exc, raw)
-            raise
+        return _parse_contract_response(raw, "ClaudeContractGenerator")
+
+
+class OpenAIContractGenerator:
+    """Generates all 9 contract clauses via OpenAI (GPT-4o) in the partner's language."""
+
+    def __init__(self) -> None:
+        self._client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    async def generate_clauses(self, prospect: Prospect) -> dict:
+        prompt = _build_contract_prompt(prospect)
+        response = await tracked_openai_call(
+            self._client,
+            model="gpt-4o",
+            max_tokens=8192,
+            messages=[{"role": "user", "content": prompt}],
+            generator="contract",
+            prospect_id=prospect.id,
+        )
+        raw = response.choices[0].message.content.strip()
+        return _parse_contract_response(raw, "OpenAIContractGenerator")
 
 
 # ─── DI factory ──────────────────────────────────────────────────────────────
 
 def get_contract_generator() -> ContractGeneratorProtocol:
-    if settings.ANTHROPIC_API_KEY and settings.ENV == "production":
+    default = settings.DEFAULT_AI_PROVIDER
+    claude_ok = bool(settings.ANTHROPIC_API_KEY) and settings.ENV == "production"
+    openai_ok = bool(settings.OPENAI_API_KEY) and settings.ENV == "production"
+
+    if default == "openai" and openai_ok:
+        return OpenAIContractGenerator()
+    if default == "claude" and claude_ok:
         return ClaudeContractGenerator()
+    if claude_ok:
+        return ClaudeContractGenerator()
+    if openai_ok:
+        return OpenAIContractGenerator()
     return MockContractGenerator()

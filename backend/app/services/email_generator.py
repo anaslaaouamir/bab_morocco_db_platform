@@ -2,10 +2,11 @@ import logging
 from typing import Protocol
 
 import anthropic
+import openai
 
 from app.config import settings
 from app.models.prospect import Prospect
-from app.services.ai_tracker import tracked_claude_call
+from app.services.ai_tracker import tracked_claude_call, tracked_openai_call
 from app.services.contract_generator import _partner_type_description
 from app.services.json_extract import extract_json
 
@@ -70,44 +71,40 @@ class MockEmailGenerator:
         return sujet, corps
 
 
-class ClaudeEmailGenerator:
-    def __init__(self):
-        self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-
-    async def generate(self, prospect: Prospect, step: str, variant: str, prior_emails: str = "") -> tuple[str, str]:
-        prior_block = ""
-        if prior_emails:
-            prior_block = f"""
+def _build_email_prompt(prospect: Prospect, step: str, variant: str, prior_emails: str = "") -> str:
+    prior_block = ""
+    if prior_emails:
+        prior_block = f"""
 ## Previous emails already sent to this prospect
 {prior_emails}
 
 IMPORTANT: Your subject and angle MUST be clearly different from those above.
 """
-        _GENERIC_NAMES = {"responsable", "dg", "directeur", "directrice", "gérant", "gérante", "manager", ""}
-        contact_name = prospect.nom_contact.strip()
-        is_generic = contact_name.lower() in _GENERIC_NAMES
-        contact_line = (
-            f"- Contact: {contact_name} ({prospect.poste_contact})"
-            if not is_generic
-            else "- Contact name: unknown — use a neutral greeting (e.g. 'Madame, Monsieur,' in French)"
-        )
+    _GENERIC_NAMES = {"responsable", "dg", "directeur", "directrice", "gérant", "gérante", "manager", ""}
+    contact_name = prospect.nom_contact.strip()
+    is_generic = contact_name.lower() in _GENERIC_NAMES
+    contact_line = (
+        f"- Contact: {contact_name} ({prospect.poste_contact})"
+        if not is_generic
+        else "- Contact name: unknown — use a neutral greeting (e.g. 'Madame, Monsieur,' in French)"
+    )
 
-        google_lines = ""
-        if prospect.note_google:
-            google_lines += f"\n- Google rating: {prospect.note_google}/5"
-        if prospect.nb_avis_google:
-            google_lines += f"\n- Google reviews: {prospect.nb_avis_google}"
-        if prospect.langues_disponibles:
-            google_lines += f"\n- Languages on their site: {prospect.langues_disponibles}"
-        google_instruction = ""
-        if google_lines:
-            google_instruction = "\n- Use the Google rating / review count as a credibility argument when they are high; do not invent data if absent"
+    google_lines = ""
+    if prospect.note_google:
+        google_lines += f"\n- Google rating: {prospect.note_google}/5"
+    if prospect.nb_avis_google:
+        google_lines += f"\n- Google reviews: {prospect.nb_avis_google}"
+    if prospect.langues_disponibles:
+        google_lines += f"\n- Languages on their site: {prospect.langues_disponibles}"
+    google_instruction = ""
+    if google_lines:
+        google_instruction = "\n- Use the Google rating / review count as a credibility argument when they are high; do not invent data if absent"
 
-        type_label = _partner_type_description(prospect.type, prospect.langue)
-        type_angle = _TYPE_ANGLES.get(prospect.type, "")
-        angle_line = f"\n- Key selling angle for this partner type: {type_angle}" if type_angle else ""
+    type_label = _partner_type_description(prospect.type, prospect.langue)
+    type_angle = _TYPE_ANGLES.get(prospect.type, "")
+    angle_line = f"\n- Key selling angle for this partner type: {type_angle}" if type_angle else ""
 
-        prompt = f"""You are the Business Development AI for Bab Morocco, a premium OTA 100% dedicated to Morocco (pre-launch).
+    return f"""You are the Business Development AI for Bab Morocco, a premium OTA 100% dedicated to Morocco (pre-launch).
 Your mission: write a B2B partnership outreach email to a potential partner.
 
 ## Partner profile
@@ -144,6 +141,22 @@ Your mission: write a B2B partnership outreach email to a potential partner.
 - Return ONLY a JSON object: {{"sujet": "...", "corps": "..."}}
 - No markdown, no explanation, just the JSON"""
 
+
+def _parse_email_response(raw: str, source: str) -> tuple[str, str]:
+    try:
+        data = extract_json(raw)
+        return data["sujet"], data["corps"]
+    except (ValueError, KeyError) as exc:
+        logger.error("%s invalid response | error=%s | raw=%.300s", source, exc, raw)
+        raise ValueError(f"Email generation failed — {source} returned unexpected output: {exc}") from exc
+
+
+class ClaudeEmailGenerator:
+    def __init__(self):
+        self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    async def generate(self, prospect: Prospect, step: str, variant: str, prior_emails: str = "") -> tuple[str, str]:
+        prompt = _build_email_prompt(prospect, step, variant, prior_emails)
         message = await tracked_claude_call(
             self._client,
             model="claude-sonnet-4-6",
@@ -153,15 +166,38 @@ Your mission: write a B2B partnership outreach email to a potential partner.
             prospect_id=prospect.id,
         )
         raw = message.content[0].text.strip()
-        try:
-            data = extract_json(raw)
-            return data["sujet"], data["corps"]
-        except (ValueError, KeyError) as exc:
-            logger.error("ClaudeEmailGenerator invalid response | error=%s | raw=%.300s", exc, raw)
-            raise ValueError(f"Email generation failed — Claude returned unexpected output: {exc}") from exc
+        return _parse_email_response(raw, "ClaudeEmailGenerator")
+
+
+class OpenAIEmailGenerator:
+    def __init__(self):
+        self._client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    async def generate(self, prospect: Prospect, step: str, variant: str, prior_emails: str = "") -> tuple[str, str]:
+        prompt = _build_email_prompt(prospect, step, variant, prior_emails)
+        response = await tracked_openai_call(
+            self._client,
+            model="gpt-4o",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+            generator="email",
+            prospect_id=prospect.id,
+        )
+        raw = response.choices[0].message.content.strip()
+        return _parse_email_response(raw, "OpenAIEmailGenerator")
 
 
 def get_email_generator() -> EmailGeneratorProtocol:
-    if settings.ANTHROPIC_API_KEY and settings.ENV == "production":
+    default = settings.DEFAULT_AI_PROVIDER
+    claude_ok = bool(settings.ANTHROPIC_API_KEY) and settings.ENV == "production"
+    openai_ok = bool(settings.OPENAI_API_KEY) and settings.ENV == "production"
+
+    if default == "openai" and openai_ok:
+        return OpenAIEmailGenerator()
+    if default == "claude" and claude_ok:
         return ClaudeEmailGenerator()
+    if claude_ok:
+        return ClaudeEmailGenerator()
+    if openai_ok:
+        return OpenAIEmailGenerator()
     return MockEmailGenerator()

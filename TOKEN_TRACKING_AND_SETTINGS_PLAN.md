@@ -710,7 +710,7 @@ the existing Claude class. The prompts are identical — only the API call diffe
 
 **Commit: `feat(openai): OpenAI generator classes with dual-provider fallback`**
 
-**[ ] DONE — Subsection 4.3**
+**[x] DONE — Subsection 4.3**
 
 ---
 

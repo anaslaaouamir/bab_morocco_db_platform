@@ -2,10 +2,11 @@ import logging
 from typing import Protocol
 
 import anthropic
+import openai
 
 from app.config import settings
 from app.models.prospect import Prospect
-from app.services.ai_tracker import tracked_claude_call
+from app.services.ai_tracker import tracked_claude_call, tracked_openai_call
 from app.services.contract_generator import _partner_type_description
 from app.services.json_extract import extract_json
 
@@ -106,19 +107,15 @@ class MockNegotiationGenerator:
         )
 
 
-class ClaudeNegotiationGenerator:
-    def __init__(self):
-        self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-
-    async def analyze(self, prospect: Prospect, message_corps: str, history: str = "") -> dict:
-        history_block = ""
-        if history:
-            history_block = f"""
+def _build_negotiation_analyze_prompt(prospect: Prospect, message_corps: str, history: str = "") -> str:
+    history_block = ""
+    if history:
+        history_block = f"""
 ## Conversation history (most recent last)
 {history}
 
 """
-        prompt = f"""You are the Business Development AI for Bab Morocco, an OTA dedicated to Morocco.
+    return f"""You are the Business Development AI for Bab Morocco, an OTA dedicated to Morocco.
 
 Analyze this inbound message from a potential partner and return a structured JSON analysis.
 
@@ -150,31 +147,25 @@ Rules:
 - NEVER invent traffic, sales, or booking numbers not provided above
 - NEVER reveal internal strategy or technical roadmap"""
 
-        message = await tracked_claude_call(
-            self._client,
-            model="claude-sonnet-4-6",
-            max_tokens=512,
-            messages=[{"role": "user", "content": prompt}],
-            generator="negotiation_analyze",
-            prospect_id=prospect.id,
-        )
-        raw = message.content[0].text.strip()
-        try:
-            return extract_json(raw)
-        except ValueError as exc:
-            logger.error("ClaudeNegotiationGenerator.analyze failed | %s | raw=%.300s", exc, raw)
-            raise
 
-    async def generate_scenarios(self, prospect: Prospect, analysis: dict, history: str = "") -> list[dict]:
-        taux = analysis.get("taux_demande") or prospect.commission_standard
-        history_block = ""
-        if history:
-            history_block = f"""
+def _parse_negotiation_json(raw: str, source: str) -> dict | list:
+    try:
+        return extract_json(raw)
+    except ValueError as exc:
+        logger.error("%s failed | %s | raw=%.300s", source, exc, raw)
+        raise
+
+
+def _build_negotiation_scenarios_prompt(prospect: Prospect, analysis: dict, history: str = "") -> str:
+    taux = analysis.get("taux_demande") or prospect.commission_standard
+    history_block = ""
+    if history:
+        history_block = f"""
 ## Conversation history (most recent last)
 {history}
 
 """
-        prompt = f"""You are the Business Development AI for Bab Morocco.
+    return f"""You are the Business Development AI for Bab Morocco.
 
 Generate exactly 3 negotiation response scenarios for the following situation.
 
@@ -217,6 +208,26 @@ Rules:
 - NEVER invent traffic, sales, or booking numbers — only use data provided above
 - If conversation history is provided, do NOT re-offer perks already proposed or contradict earlier messages"""
 
+
+class ClaudeNegotiationGenerator:
+    def __init__(self):
+        self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    async def analyze(self, prospect: Prospect, message_corps: str, history: str = "") -> dict:
+        prompt = _build_negotiation_analyze_prompt(prospect, message_corps, history)
+        message = await tracked_claude_call(
+            self._client,
+            model="claude-sonnet-4-6",
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+            generator="negotiation_analyze",
+            prospect_id=prospect.id,
+        )
+        raw = message.content[0].text.strip()
+        return _parse_negotiation_json(raw, "ClaudeNegotiationGenerator.analyze")
+
+    async def generate_scenarios(self, prospect: Prospect, analysis: dict, history: str = "") -> list[dict]:
+        prompt = _build_negotiation_scenarios_prompt(prospect, analysis, history)
         message = await tracked_claude_call(
             self._client,
             model="claude-sonnet-4-6",
@@ -226,11 +237,45 @@ Rules:
             prospect_id=prospect.id,
         )
         raw = message.content[0].text.strip()
-        try:
-            return extract_json(raw)
-        except ValueError as exc:
-            logger.error("ClaudeNegotiationGenerator.generate_scenarios failed | %s | raw=%.300s", exc, raw)
-            raise
+        return _parse_negotiation_json(raw, "ClaudeNegotiationGenerator.generate_scenarios")
+
+    async def generate_response(self, prospect: Prospect, scenario_letter: str, analysis: dict) -> str:
+        scenarios = await self.generate_scenarios(prospect, analysis)
+        for s in scenarios:
+            if s["scenario"] == scenario_letter:
+                return s["message_propose"]
+        return ""
+
+
+class OpenAINegotiationGenerator:
+    def __init__(self):
+        self._client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    async def analyze(self, prospect: Prospect, message_corps: str, history: str = "") -> dict:
+        prompt = _build_negotiation_analyze_prompt(prospect, message_corps, history)
+        response = await tracked_openai_call(
+            self._client,
+            model="gpt-4o",
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+            generator="negotiation_analyze",
+            prospect_id=prospect.id,
+        )
+        raw = response.choices[0].message.content.strip()
+        return _parse_negotiation_json(raw, "OpenAINegotiationGenerator.analyze")
+
+    async def generate_scenarios(self, prospect: Prospect, analysis: dict, history: str = "") -> list[dict]:
+        prompt = _build_negotiation_scenarios_prompt(prospect, analysis, history)
+        response = await tracked_openai_call(
+            self._client,
+            model="gpt-4o",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+            generator="negotiation_scenarios",
+            prospect_id=prospect.id,
+        )
+        raw = response.choices[0].message.content.strip()
+        return _parse_negotiation_json(raw, "OpenAINegotiationGenerator.generate_scenarios")
 
     async def generate_response(self, prospect: Prospect, scenario_letter: str, analysis: dict) -> str:
         scenarios = await self.generate_scenarios(prospect, analysis)
@@ -241,6 +286,16 @@ Rules:
 
 
 def get_negotiation_generator() -> NegotiationGeneratorProtocol:
-    if settings.ANTHROPIC_API_KEY and settings.ENV == "production":
+    default = settings.DEFAULT_AI_PROVIDER
+    claude_ok = bool(settings.ANTHROPIC_API_KEY) and settings.ENV == "production"
+    openai_ok = bool(settings.OPENAI_API_KEY) and settings.ENV == "production"
+
+    if default == "openai" and openai_ok:
+        return OpenAINegotiationGenerator()
+    if default == "claude" and claude_ok:
         return ClaudeNegotiationGenerator()
+    if claude_ok:
+        return ClaudeNegotiationGenerator()
+    if openai_ok:
+        return OpenAINegotiationGenerator()
     return MockNegotiationGenerator()
