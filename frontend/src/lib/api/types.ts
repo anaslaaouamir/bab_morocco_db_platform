@@ -226,6 +226,11 @@ export interface ApiUsageDailyEntry {
   total_tokens: number;
 }
 
+export interface ApiUsageByProvider {
+  calls: number;
+  total_tokens: number;
+}
+
 export interface ApiUsageResponse {
   period: string;
   period_start: string;
@@ -236,6 +241,7 @@ export interface ApiUsageResponse {
   total_calls: number;
   failed_calls: number;
   by_generator: Record<string, ApiUsageByGenerator>;
+  by_provider: Record<string, ApiUsageByProvider>;
   daily_breakdown: ApiUsageDailyEntry[];
 }
 

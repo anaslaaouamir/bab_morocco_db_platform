@@ -18,6 +18,7 @@ export type {
   RawContractListResponse,
   ContractStatus,
   ApiUsageResponse,
+  ApiUsageByProvider,
   SystemSettingsMap,
   ApiKeyInfo,
 } from "./types";
@@ -39,6 +40,7 @@ import type {
   RawContract,
   RawContractListResponse,
   ApiUsageResponse,
+  ApiUsageByProvider,
   SystemSettingsMap,
   ApiKeyInfo,
 } from "./types";

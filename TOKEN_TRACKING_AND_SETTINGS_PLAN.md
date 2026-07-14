@@ -773,7 +773,7 @@ the existing Claude class. The prompts are identical — only the API call diffe
 
 **Commit: `feat(openai): per-provider usage breakdown in dashboard`**
 
-**[ ] DONE — Subsection 4.5**
+**[x] DONE — Subsection 4.5**
 
 ---
 

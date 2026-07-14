@@ -37,6 +37,16 @@ const GENERATOR_LABELS: Record<string, string> = {
   contract: "Contrat",
 };
 
+const PROVIDER_LABELS: Record<string, string> = {
+  claude: "Claude",
+  openai: "OpenAI",
+};
+
+const PROVIDER_COLORS: Record<string, string> = {
+  claude: "var(--mui-palette-primary-main, #6750A4)",
+  openai: "var(--mui-palette-success-main, #2E7D32)",
+};
+
 type Period = "today" | "week" | "month";
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -180,13 +190,17 @@ export default function ApiUsagePanel() {
     ? Object.entries(data.by_generator).sort(([, a], [, b]) => b.total_tokens - a.total_tokens)
     : [];
 
+  const providerRows = data
+    ? Object.entries(data.by_provider).sort(([, a], [, b]) => b.total_tokens - a.total_tokens)
+    : [];
+
   return (
     <Paper variant="outlined" sx={{ borderRadius: 3, overflow: "hidden", mb: 3 }}>
       {/* Header */}
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 2.5, py: 2, bgcolor: "action.hover" }}>
         <DataUsageRoundedIcon sx={{ color: "primary.main", fontSize: 22 }} />
         <Typography variant="titleMedium" sx={{ fontWeight: 700, flex: 1 }}>
-          Consommation API Claude
+          Consommation API IA
         </Typography>
         <Box sx={{ display: "flex", gap: 0.5 }}>
           {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
@@ -271,6 +285,41 @@ export default function ApiUsagePanel() {
             </>
           ) : null}
         </Box>
+
+        {/* Per-provider breakdown */}
+        {loading ? (
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 2, mb: 2.5 }}>
+            <Skeleton variant="rounded" height={72} />
+            <Skeleton variant="rounded" height={72} />
+          </Box>
+        ) : providerRows.length > 0 ? (
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 2, mb: 2.5 }}>
+            {providerRows.map(([provider, stats]) => (
+              <Paper
+                key={provider}
+                variant="outlined"
+                sx={{
+                  px: 2,
+                  py: 1.5,
+                  borderRadius: 2,
+                  textAlign: "center",
+                  borderLeft: 4,
+                  borderLeftColor: PROVIDER_COLORS[provider] || "divider",
+                }}
+              >
+                <Typography variant="bodySmall" color="text.secondary">
+                  {PROVIDER_LABELS[provider] || provider}
+                </Typography>
+                <Typography variant="titleLarge" sx={{ fontWeight: 700 }}>
+                  {fmtNum(stats.total_tokens)} tk
+                </Typography>
+                <Typography variant="bodySmall" color="text.secondary">
+                  {fmtNum(stats.calls)} appel{stats.calls > 1 ? "s" : ""}
+                </Typography>
+              </Paper>
+            ))}
+          </Box>
+        ) : null}
 
         {/* Per-generator breakdown */}
         {loading ? (
