@@ -742,7 +742,7 @@ the existing Claude class. The prompts are identical — only the API call diffe
 
 **Commit: `feat(openai): provider toggle + OpenAI key management in Settings UI`**
 
-**[ ] DONE — Subsection 4.4**
+**[x] DONE — Subsection 4.4**
 
 ---
 

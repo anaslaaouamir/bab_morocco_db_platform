@@ -27,6 +27,7 @@ import { useSnackbar } from "@/contexts/SnackbarContext";
 import { useAuth } from "@/contexts/AuthContext";
 import ApiUsagePanel from "@/components/settings/ApiUsagePanel";
 import ApiKeysPanel from "@/components/settings/ApiKeysPanel";
+import ProviderToggle from "@/components/settings/ProviderToggle";
 import UserManagementPanel from "@/components/settings/UserManagementPanel";
 
 // ─── Hour display helper ─────────────────────────────────────────────────────
@@ -110,7 +111,7 @@ export default function SettingsPage() {
           <Tab
             icon={<SmartToyRoundedIcon sx={{ fontSize: 20 }} />}
             iconPosition="start"
-            label="Claude & Clés API"
+            label="IA & Clés API"
           />
           <Tab
             icon={<TuneRoundedIcon sx={{ fontSize: 20 }} />}
@@ -120,9 +121,10 @@ export default function SettingsPage() {
         </Tabs>
       </Paper>
 
-      {/* ── Tab 0: Claude & API Keys ─────────────────────────────── */}
+      {/* ── Tab 0: IA & API Keys ──────────────────────────────────── */}
       {activeTab === 0 && (
         <>
+          <ProviderToggle />
           <ApiUsagePanel />
           <ApiKeysPanel />
         </>
