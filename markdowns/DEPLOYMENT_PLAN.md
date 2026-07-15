@@ -28,31 +28,43 @@ Connect: `ssh -i ~/.ssh/bab_deploy deploy-bab@13.140.187.6`
 
 **Goal:** a working copy of the repo at `/var/www/bab/backend` and `/var/www/bab/frontend`.
 
-- [ ] **A.1** — Decide method: `git clone` (if pushed to GitHub/GitLab) vs. direct copy from local machine
-  Status: Not started
-- [ ] **A.2** — Code present on server, both `backend/` and `frontend/` folders exist
-  Status: Not started
+> Note: actual path ended up as `/var/www/bab/bab_morocco_db_platform/{backend,frontend}` —
+> cloned into a subfolder instead of directly into home, since home already had account files
+> (`.bashrc`, `DB_CREDENTIALS.txt`, etc.). Doc's example paths adjusted accordingly for all
+> later phases.
+
+- [x] **A.1** — Method: `git clone` via SSH deploy key (repo is private; HTTPS password auth
+  doesn't work on GitHub, so a dedicated read-only deploy key was generated on the server —
+  `~/.ssh/github_deploy_key` — and added to the repo's Deploy Keys)
+  Status: Done
+- [x] **A.2** — Code present on server: `backend/`, `frontend/`, `markdowns/` all confirmed via `ls`
+  Status: Done
 
 ---
 
 ## Phase B — Backend (FastAPI)
 
-- [ ] **B.1** — Create Python virtual environment (`python3 -m venv venv`)
-  Status: Not started
-- [ ] **B.2** — Install dependencies (`pip install -r requirements.txt`)
-  Status: Not started
-- [ ] **B.3** — Install Playwright's Chromium (`playwright install chromium`) — flag if system libs are missing (needs `sudo`, would require asking Abderrahim)
-  Status: Not started
-- [ ] **B.4** — Create production `.env` (copy from `.env.example` and fill in):
-  - `DATABASE_URL` — from `DB_CREDENTIALS.txt`
-  - `SECRET_KEY` — generate a fresh random value
-  - `ENV=production`
-  - `ANTHROPIC_API_KEY`
-  - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — creates the first admin account on startup
-  - `RESEND_API_KEY` (optional, for real emails — otherwise mock mode)
-  Status: Not started
-- [ ] **B.5** — Run database migrations (`alembic upgrade head`)
-  Status: Not started
+- [x] **B.1** — Create Python virtual environment (`python3 -m venv venv`)
+  Status: Done
+- [x] **B.2** — Install dependencies (`pip install -r requirements.txt`) — all 70+ packages installed cleanly
+  Status: Done
+- [x] **B.3** — Install Playwright's Chromium (`playwright install chromium`)
+  Status: Done
+- [x] **B.4** — Production `.env`, based on the existing local one (not built from scratch):
+  - Copy local `backend/.env` to the server as a starting point (`scp`)
+  - Change only: `DATABASE_URL` (→ dedicated server DB from `DB_CREDENTIALS.txt`), `SECRET_KEY`
+    (→ freshly generated, not the local `changeme`)
+  - Consider strengthening `ADMIN_PASSWORD` (local value is a weak placeholder, and this becomes
+    the real production admin login on first startup)
+  - Everything else (JWT settings, Resend config, `ENV=production`) reused as-is
+  - Note: `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_MAPS_API_KEY` are **not** in `.env` —
+    they're stored in the DB (`system_settings` table) via the app's own Settings UI, loaded at
+    startup (`load_db_api_keys` in `main.py`). Server DB starts empty, so these will need to be
+    re-entered through the UI after first login — not a `.env` concern.
+  Status: Done — DATABASE_URL points to dedicated `bab_platform` DB (asyncpg driver), SECRET_KEY
+  and ADMIN_PASSWORD replaced with fresh random values, rest reused from local `.env`
+- [x] **B.5** — Run database migrations (`alembic upgrade head`)
+  Status: Done — 21 migrations applied cleanly, full schema built in `bab_platform`
 - [ ] **B.6** — Start backend with pm2 on `127.0.0.1:8010`
   Status: Not started
 
