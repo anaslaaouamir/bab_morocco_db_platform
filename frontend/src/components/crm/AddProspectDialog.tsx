@@ -409,6 +409,8 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
         commissionStandard: Number(values.commissionStandard) || TYPE_COMMISSION[values.type as PartnerType].standard,
         commissionPlancher: Number(values.commissionPlancher) || TYPE_COMMISSION[values.type as PartnerType].plancher,
         langue:             values.langue,
+        presenceBooking:    false,
+        presenceExpedia:    false,
         dateAjout:          new Date().toISOString().split("T")[0],
         notes:              values.notes.trim() || undefined,
       });
