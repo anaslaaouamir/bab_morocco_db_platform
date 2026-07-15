@@ -238,7 +238,7 @@ export default function ApiUsagePanel() {
               <Skeleton variant="rounded" height={72} />
             </>
           ) : data ? (
-            {[
+            [
               { label: "Tokens totaux", value: fmtNum(data.total_tokens), icon: <TokenRoundedIcon />, color: "primary" as const },
               { label: "Appels API", value: fmtNum(data.total_calls), icon: <SyncAltRoundedIcon />, color: "info" as const },
               { label: "Appels en erreur", value: data.failed_calls, icon: <ErrorOutlineRoundedIcon />, color: data.failed_calls > 0 ? "error" as const : "grey" as const },
@@ -265,7 +265,7 @@ export default function ApiUsagePanel() {
                   </Typography>
                 </Box>
               </Paper>
-            ))}
+            ))
           ) : null}
         </Box>
 
