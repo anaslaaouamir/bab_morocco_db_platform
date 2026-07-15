@@ -12,6 +12,9 @@ import Alert from "@mui/material/Alert";
 import Tooltip from "@mui/material/Tooltip";
 import Skeleton from "@mui/material/Skeleton";
 import Pagination from "@mui/material/Pagination";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
+import Paper from "@mui/material/Paper";
 import { alpha, useTheme } from "@mui/material/styles";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
@@ -368,6 +371,7 @@ export default function ContratsPage() {
   const [prospectsMap, setProspectsMap] = useState<Record<string, Prospect>>({});
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState(0); // 0 = en attente, 1 = clôturés
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
@@ -472,13 +476,18 @@ export default function ContratsPage() {
     [contracts, prospectsMap],
   );
 
-  const pageCount = Math.max(1, Math.ceil(enriched.length / PAGE_SIZE));
-  const visiblePage = Math.min(page, pageCount);
-  const pagedEnriched = enriched.slice((visiblePage - 1) * PAGE_SIZE, visiblePage * PAGE_SIZE);
+  // Tab 0 — En attente: still moving through the funnel (draft/generated/sent, awaiting reply/signature)
+  // Tab 1 — Clôturés: terminal states (signed or declined)
+  const waiting  = enriched.filter(({ contract: c }) => ["draft", "generated", "sent_to_partner"].includes(c.status));
+  const closed   = enriched.filter(({ contract: c }) => c.status === "signed" || c.status === "declined");
+  const signed   = enriched.filter(({ contract: c }) => c.status === "signed");
 
-  const signed    = pagedEnriched.filter(({ contract: c }) => c.status === "signed");
-  const inProgress = pagedEnriched.filter(({ contract: c }) => ["draft", "generated", "sent_to_partner"].includes(c.status));
-  const declined  = pagedEnriched.filter(({ contract: c }) => c.status === "declined");
+  const currentTabItems = activeTab === 0 ? waiting : closed;
+  const pageCount = Math.max(1, Math.ceil(currentTabItems.length / PAGE_SIZE));
+  const visiblePage = Math.min(page, pageCount);
+  const pagedItems = currentTabItems.slice((visiblePage - 1) * PAGE_SIZE, visiblePage * PAGE_SIZE);
+
+  useEffect(() => { setPage(1); }, [activeTab]);
 
   const avgCommission = enriched.length
     ? Math.round(enriched.reduce((s, { contract: c }) => s + c.commission, 0) / enriched.length * 10) / 10
@@ -513,7 +522,7 @@ export default function ContratsPage() {
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", md: "repeat(4, 1fr)" }, gap: 2 }}>
         {[
           { value: loading ? "—" : enriched.length,       label: "Contrats total",        color: theme.palette.info.main,    icon: <DescriptionOutlinedIcon /> },
-          { value: loading ? "—" : inProgress.length,     label: "En cours",              color: theme.palette.warning.main, icon: <HourglassTopRoundedIcon /> },
+          { value: loading ? "—" : waiting.length,        label: "En cours",              color: theme.palette.warning.main, icon: <HourglassTopRoundedIcon /> },
           { value: loading ? "—" : signed.length,         label: "Signés & actifs",       color: theme.palette.success.main, icon: <CheckCircleRoundedIcon /> },
           { value: loading ? "—" : `${avgCommission}%`,   label: "Commission moyenne",    color: theme.palette.primary.main, icon: <DrawRoundedIcon /> },
         ].map(({ value, label, color, icon }) => (
@@ -554,70 +563,53 @@ export default function ContratsPage() {
         </Box>
       )}
 
-      {/* Signed section */}
-      {!loading && signed.length > 0 && (
-        <Box>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
-            <CheckCircleRoundedIcon sx={{ color: "success.main", fontSize: 20 }} />
-            <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>Partenaires signés & actifs</Typography>
-            <Chip label={signed.length} color="success" size="small" sx={{ fontWeight: 700 }} />
-          </Box>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {signed.map(({ contract, prospect }) => (
-              <ContractCard
-                key={contract.id}
-                contract={contract}
-                prospect={prospect}
-                onOpenFiche={handleOpenFiche}
-                onOpenDialog={handleOpenDialog}
-              />
-            ))}
-          </Box>
+      {/* Status tabs */}
+      {!loading && enriched.length > 0 && (
+        <Paper variant="outlined" sx={{ borderRadius: 3 }}>
+          <Tabs
+            value={activeTab}
+            onChange={(_, v) => setActiveTab(v)}
+            variant="fullWidth"
+            sx={{ "& .MuiTab-root": { textTransform: "none", fontWeight: 700, py: 1.5 } }}
+          >
+            <Tab
+              icon={<HourglassTopRoundedIcon sx={{ fontSize: 20 }} />}
+              iconPosition="start"
+              label={`En attente (${waiting.length})`}
+            />
+            <Tab
+              icon={<CheckCircleRoundedIcon sx={{ fontSize: 20 }} />}
+              iconPosition="start"
+              label={`Clôturés (${closed.length})`}
+            />
+          </Tabs>
+        </Paper>
+      )}
+
+      {/* Contract list for the active tab */}
+      {!loading && currentTabItems.length > 0 && (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {pagedItems.map(({ contract, prospect }) => (
+            <ContractCard
+              key={contract.id}
+              contract={contract}
+              prospect={prospect}
+              onOpenFiche={handleOpenFiche}
+              onOpenDialog={handleOpenDialog}
+            />
+          ))}
         </Box>
       )}
 
-      {/* In-progress section */}
-      {!loading && inProgress.length > 0 && (
-        <Box>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
-            <HourglassTopRoundedIcon sx={{ color: "warning.main", fontSize: 20 }} />
-            <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>Contrats en cours</Typography>
-            <Chip label={inProgress.length} color="warning" size="small" sx={{ fontWeight: 700 }} />
-          </Box>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {inProgress.map(({ contract, prospect }) => (
-              <ContractCard
-                key={contract.id}
-                contract={contract}
-                prospect={prospect}
-                onOpenFiche={handleOpenFiche}
-                onOpenDialog={handleOpenDialog}
-              />
-            ))}
-          </Box>
-        </Box>
-      )}
-
-      {/* Declined section */}
-      {!loading && declined.length > 0 && (
-        <Box>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
-            <DoNotDisturbRoundedIcon sx={{ color: "error.main", fontSize: 20 }} />
-            <Typography variant="titleMedium" sx={{ fontWeight: 700 }}>Contrats refusés</Typography>
-            <Chip label={declined.length} color="error" size="small" sx={{ fontWeight: 700 }} />
-          </Box>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {declined.map(({ contract, prospect }) => (
-              <ContractCard
-                key={contract.id}
-                contract={contract}
-                prospect={prospect}
-                onOpenFiche={handleOpenFiche}
-                onOpenDialog={handleOpenDialog}
-              />
-            ))}
-          </Box>
-        </Box>
+      {/* No results in this tab */}
+      {!loading && enriched.length > 0 && currentTabItems.length === 0 && (
+        <Card elevation={0} variant="outlined" sx={{ borderRadius: 3 }}>
+          <CardContent sx={{ py: 4, textAlign: "center" }}>
+            <Typography variant="bodyMedium" color="text.disabled">
+              {activeTab === 0 ? "Aucun contrat en attente" : "Aucun contrat clôturé"}
+            </Typography>
+          </CardContent>
+        </Card>
       )}
 
       {/* Pagination */}

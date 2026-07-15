@@ -16,6 +16,8 @@ import Skeleton from "@mui/material/Skeleton";
 import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
 import Pagination from "@mui/material/Pagination";
+import InputAdornment from "@mui/material/InputAdornment";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { alpha, useTheme } from "@mui/material/styles";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
@@ -1068,6 +1070,7 @@ export default function OutreachPage() {
   const [fetchError, setFetchError]     = useState<string | null>(null);
   const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [stepFilter, setStepFilter]     = useState<string>("all");
+  const [search, setSearch]             = useState("");
   const [page, setPage]                 = useState(1);
   const PAGE_SIZE = 10;
 
@@ -1214,13 +1217,20 @@ export default function OutreachPage() {
     return counts;
   }, [emailsCache, prospects]);
 
-  // Prospects filtered by the active step tab
+  // Prospects filtered by the active step tab, then by the search box
   const filteredProspects = useMemo(() => {
-    if (stepFilter === "all") return prospects;
-    return prospects.filter((p) =>
-      (emailsCache[p.id] ?? []).some((e) => e.sequence_step === stepFilter)
-    );
-  }, [prospects, emailsCache, stepFilter]);
+    let list = prospects;
+    if (stepFilter !== "all") {
+      list = list.filter((p) =>
+        (emailsCache[p.id] ?? []).some((e) => e.sequence_step === stepFilter)
+      );
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((p) => p.nom.toLowerCase().includes(q));
+    }
+    return list;
+  }, [prospects, emailsCache, stepFilter, search]);
 
   const pageCount = Math.max(1, Math.ceil(filteredProspects.length / PAGE_SIZE));
   const visiblePage = Math.min(page, pageCount);
@@ -1229,7 +1239,7 @@ export default function OutreachPage() {
     visiblePage * PAGE_SIZE,
   );
 
-  useEffect(() => { setPage(1); }, [stepFilter]);
+  useEffect(() => { setPage(1); }, [stepFilter, search]);
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
@@ -1312,6 +1322,24 @@ export default function OutreachPage() {
             gap: 1.5,
           }}
         >
+          {/* Search */}
+          {!loading && prospects.length > 0 && (
+            <TextField
+              size="small"
+              placeholder="Rechercher un prospect…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchRoundedIcon sx={{ fontSize: 18, color: "text.disabled" }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            />
+          )}
+
           {/* Step filter tabs */}
           {!loading && prospects.length > 0 && (
             <Tabs

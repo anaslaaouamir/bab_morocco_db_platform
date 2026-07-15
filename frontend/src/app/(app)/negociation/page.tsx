@@ -16,6 +16,8 @@ import Skeleton from "@mui/material/Skeleton";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import Pagination from "@mui/material/Pagination";
+import InputAdornment from "@mui/material/InputAdornment";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { alpha, useTheme } from "@mui/material/styles";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -776,6 +778,7 @@ export default function NegociationPage() {
   const [loading, setLoading]       = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [search, setSearch]         = useState("");
   const [page, setPage]             = useState(1);
   const PAGE_SIZE = 10;
 
@@ -1114,11 +1117,17 @@ export default function NegociationPage() {
     [analysisCache],
   );
 
-  const pageCount = Math.max(1, Math.ceil(prospects.length / PAGE_SIZE));
-  const visiblePage = Math.min(page, pageCount);
-  const pagedProspects = prospects.slice((visiblePage - 1) * PAGE_SIZE, visiblePage * PAGE_SIZE);
+  const searchedProspects = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return prospects;
+    return prospects.filter((p) => p.nom.toLowerCase().includes(q));
+  }, [prospects, search]);
 
-  useEffect(() => { setPage(1); }, [prospects.length]);
+  const pageCount = Math.max(1, Math.ceil(searchedProspects.length / PAGE_SIZE));
+  const visiblePage = Math.min(page, pageCount);
+  const pagedProspects = searchedProspects.slice((visiblePage - 1) * PAGE_SIZE, visiblePage * PAGE_SIZE);
+
+  useEffect(() => { setPage(1); }, [prospects.length, search]);
 
   // ─────────────────────────────────────────────────────────────────
 
@@ -1169,12 +1178,34 @@ export default function NegociationPage() {
 
         {/* Left: prospect list */}
         <Box sx={{ width: { md: 340 }, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1.5 }}>
+          {!loading && prospects.length > 0 && (
+            <TextField
+              size="small"
+              placeholder="Rechercher un prospect…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchRoundedIcon sx={{ fontSize: 18, color: "text.disabled" }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
+            />
+          )}
+
           {loading ? (
             [1, 2, 3].map((i) => <Skeleton key={i} variant="rounded" height={110} sx={{ borderRadius: 2.5 }} />)
           ) : prospects.length === 0 ? (
             <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", py: 6, gap: 1, color: "text.disabled" }}>
               <InboxRoundedIcon sx={{ fontSize: 40 }} />
               <Typography variant="bodyMedium">Aucun prospect en négociation</Typography>
+            </Box>
+          ) : searchedProspects.length === 0 ? (
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", py: 6, gap: 1, color: "text.disabled" }}>
+              <InboxRoundedIcon sx={{ fontSize: 36 }} />
+              <Typography variant="bodyMedium">Aucun résultat</Typography>
             </Box>
           ) : (
             <>
