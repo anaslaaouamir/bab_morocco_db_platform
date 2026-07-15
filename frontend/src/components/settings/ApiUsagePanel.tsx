@@ -240,10 +240,10 @@ export default function ApiUsagePanel() {
                 variant="outlined"
                 sx={{ px: 2, py: 1.5, borderRadius: 2, textAlign: "center" }}
               >
-                <Typography variant="bodySmall" color="text.secondary">
+                <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 0.5 }}>
                   Tokens totaux
                 </Typography>
-                <Typography variant="headlineSmall" sx={{ fontWeight: 700 }}>
+                <Typography variant="headlineSmall" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
                   {fmtNum(data.total_tokens)}
                 </Typography>
               </Paper>
@@ -251,10 +251,10 @@ export default function ApiUsagePanel() {
                 variant="outlined"
                 sx={{ px: 2, py: 1.5, borderRadius: 2, textAlign: "center" }}
               >
-                <Typography variant="bodySmall" color="text.secondary">
+                <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 0.5 }}>
                   Appels API
                 </Typography>
-                <Typography variant="headlineSmall" sx={{ fontWeight: 700 }}>
+                <Typography variant="headlineSmall" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
                   {fmtNum(data.total_calls)}
                 </Typography>
               </Paper>
@@ -268,12 +268,12 @@ export default function ApiUsagePanel() {
                   borderColor: data.failed_calls > 0 ? "error.main" : undefined,
                 }}
               >
-                <Typography variant="bodySmall" color="text.secondary">
+                <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 0.5 }}>
                   Appels en erreur
                 </Typography>
                 <Typography
                   variant="headlineSmall"
-                  sx={{ fontWeight: 700 }}
+                  sx={{ fontWeight: 700, lineHeight: 1.2 }}
                   color={data.failed_calls > 0 ? "error.main" : "text.primary"}
                 >
                   {data.failed_calls}
@@ -307,10 +307,10 @@ export default function ApiUsagePanel() {
                   borderLeftColor: PROVIDER_COLORS[provider] || "divider",
                 }}
               >
-                <Typography variant="bodySmall" color="text.secondary">
+                <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 0.5 }}>
                   {PROVIDER_LABELS[provider] || provider}
                 </Typography>
-                <Typography variant="titleLarge" sx={{ fontWeight: 700 }}>
+                <Typography variant="titleLarge" sx={{ fontWeight: 700, lineHeight: 1.2, mb: 0.25 }}>
                   {fmtNum(stats.total_tokens)} tk
                 </Typography>
                 <Typography variant="bodySmall" color="text.secondary">
