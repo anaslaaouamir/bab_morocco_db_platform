@@ -254,6 +254,12 @@ def _build_contract_prompt(prospect: Prospect, negotiation_summary: str = "") ->
     }
     lang_name = lang_names.get(prospect.langue, "French")
 
+    negotiation_block = (
+        f"\n## Negotiation context (reflect any agreed terms in the contract clauses)\n{negotiation_summary}\n"
+        if negotiation_summary
+        else ""
+    )
+
     return f"""You are a senior B2B contract writer for Bab Morocco, a Morocco-dedicated OTA.
 
 Generate a complete, professional partnership contract in **{lang_name}** for the following partner.
@@ -272,10 +278,7 @@ Generate a complete, professional partnership contract in **{lang_name}** for th
 ## Non-financial perks (ALWAYS include in post_signature_note)
 Badge Partenaire Fondateur, commission locked 12 months, co-marketing at launch,
 product influence (extranet feedback), private beta access before public launch.
-{f"""
-## Negotiation context (reflect any agreed terms in the contract clauses)
-{negotiation_summary}
-""" if negotiation_summary else ""}
+{negotiation_block}
 ## Output format
 Return ONLY a valid JSON object with exactly these 10 keys — no markdown fences,
 no extra keys, no explanation. All text values in **{lang_name}**:
