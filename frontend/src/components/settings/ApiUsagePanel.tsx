@@ -19,6 +19,9 @@ import LinearProgress from "@mui/material/LinearProgress";
 import DataUsageRoundedIcon from "@mui/icons-material/DataUsageRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import SpeedRoundedIcon from "@mui/icons-material/SpeedRounded";
+import TokenRoundedIcon from "@mui/icons-material/TokenRounded";
+import SyncAltRoundedIcon from "@mui/icons-material/SyncAltRounded";
+import { alpha } from "@mui/material/styles";
 
 import { apiSettingsApi, type ApiUsageResponse } from "@/lib/api";
 
@@ -235,54 +238,34 @@ export default function ApiUsagePanel() {
               <Skeleton variant="rounded" height={72} />
             </>
           ) : data ? (
-            <>
+            {[
+              { label: "Tokens totaux", value: fmtNum(data.total_tokens), icon: <TokenRoundedIcon />, color: "primary" as const },
+              { label: "Appels API", value: fmtNum(data.total_calls), icon: <SyncAltRoundedIcon />, color: "info" as const },
+              { label: "Appels en erreur", value: data.failed_calls, icon: <ErrorOutlineRoundedIcon />, color: data.failed_calls > 0 ? "error" as const : "grey" as const },
+            ].map(({ label, value, icon, color }) => (
               <Paper
+                key={label}
                 variant="outlined"
-                sx={{ px: 2, py: 1.5, borderRadius: 2, textAlign: "center" }}
+                sx={{ px: 2.5, py: 2, borderRadius: 3, display: "flex", alignItems: "center", gap: 2 }}
               >
-                <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Tokens totaux
-                </Typography>
-                <Typography variant="headlineSmall" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                  {fmtNum(data.total_tokens)}
-                </Typography>
+                <Box sx={(t) => ({
+                  width: 44, height: 44, borderRadius: 2,
+                  bgcolor: color === "grey" ? alpha(t.palette.text.secondary, 0.1) : alpha(t.palette[color].main, 0.12),
+                  color: color === "grey" ? "text.secondary" : `${color}.main`,
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                })}>
+                  {React.cloneElement(icon, { sx: { fontSize: 22 } })}
+                </Box>
+                <Box>
+                  <Typography sx={{ fontSize: "1.5rem", fontWeight: 800, lineHeight: 1, color: color === "grey" ? "text.primary" : `${color}.main` }}>
+                    {value}
+                  </Typography>
+                  <Typography variant="bodySmall" color="text.secondary" sx={{ mt: 0.5 }}>
+                    {label}
+                  </Typography>
+                </Box>
               </Paper>
-              <Paper
-                variant="outlined"
-                sx={{ px: 2, py: 1.5, borderRadius: 2, textAlign: "center" }}
-              >
-                <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Appels API
-                </Typography>
-                <Typography variant="headlineSmall" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-                  {fmtNum(data.total_calls)}
-                </Typography>
-              </Paper>
-              <Paper
-                variant="outlined"
-                sx={{
-                  px: 2,
-                  py: 1.5,
-                  borderRadius: 2,
-                  textAlign: "center",
-                  borderColor: data.failed_calls > 0 ? "error.main" : undefined,
-                }}
-              >
-                <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 0.5 }}>
-                  Appels en erreur
-                </Typography>
-                <Typography
-                  variant="headlineSmall"
-                  sx={{ fontWeight: 700, lineHeight: 1.2 }}
-                  color={data.failed_calls > 0 ? "error.main" : "text.primary"}
-                >
-                  {data.failed_calls}
-                  {data.failed_calls > 0 && (
-                    <ErrorOutlineRoundedIcon sx={{ fontSize: 18, ml: 0.5, verticalAlign: "text-top" }} />
-                  )}
-                </Typography>
-              </Paper>
-            </>
+            ))}
           ) : null}
         </Box>
 
@@ -294,30 +277,45 @@ export default function ApiUsagePanel() {
           </Box>
         ) : providerRows.length > 0 ? (
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 2, mb: 2.5 }}>
-            {providerRows.map(([provider, stats]) => (
-              <Paper
-                key={provider}
-                variant="outlined"
-                sx={{
-                  px: 2,
-                  py: 1.5,
-                  borderRadius: 2,
-                  textAlign: "center",
-                  borderLeft: 4,
-                  borderLeftColor: PROVIDER_COLORS[provider] || "divider",
-                }}
-              >
-                <Typography variant="bodySmall" color="text.secondary" sx={{ mb: 0.5 }}>
-                  {PROVIDER_LABELS[provider] || provider}
-                </Typography>
-                <Typography variant="titleLarge" sx={{ fontWeight: 700, lineHeight: 1.2, mb: 0.25 }}>
-                  {fmtNum(stats.total_tokens)} tk
-                </Typography>
-                <Typography variant="bodySmall" color="text.secondary">
-                  {fmtNum(stats.calls)} appel{stats.calls > 1 ? "s" : ""}
-                </Typography>
-              </Paper>
-            ))}
+            {providerRows.map(([provider, stats]) => {
+              const provColor = PROVIDER_COLORS[provider] || "var(--mui-palette-text-primary)";
+              return (
+                <Paper
+                  key={provider}
+                  variant="outlined"
+                  sx={{
+                    px: 2.5,
+                    py: 2,
+                    borderRadius: 3,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                    borderLeft: 4,
+                    borderLeftColor: provColor,
+                  }}
+                >
+                  <Box>
+                    <Typography variant="labelMedium" color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
+                      {PROVIDER_LABELS[provider] || provider}
+                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+                      <Typography sx={{ fontSize: "1.35rem", fontWeight: 800, lineHeight: 1, color: provColor }}>
+                        {fmtNum(stats.total_tokens)}
+                      </Typography>
+                      <Typography variant="bodySmall" color="text.disabled">tokens</Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75, mt: 0.5 }}>
+                      <Typography sx={{ fontSize: "0.9rem", fontWeight: 700, lineHeight: 1, color: provColor }}>
+                        {fmtNum(stats.calls)}
+                      </Typography>
+                      <Typography variant="bodySmall" color="text.disabled">
+                        appel{stats.calls > 1 ? "s" : ""}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Paper>
+              );
+            })}
           </Box>
         ) : null}
 
