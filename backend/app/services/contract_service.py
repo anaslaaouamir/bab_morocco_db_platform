@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.contract import Contract
+from app.models.negotiation import NegotiationMessage
 from app.models.prospect import Prospect
 from app.schemas.contract import ContractClauses, ContractResponse, PartnerReplySubmit
 from app.services.contract_generator import (
@@ -192,9 +193,29 @@ class ContractService:
         if contract.status not in ("draft", "generated"):
             raise ValueError(f"Cannot generate PDF for contract in status '{contract.status}'")
 
+        # Build compact negotiation summary (last 4 messages, ~100 words each)
+        neg_result = await db.execute(
+            select(NegotiationMessage)
+            .where(NegotiationMessage.prospect_id == prospect.id)
+            .order_by(NegotiationMessage.date_message.desc())
+            .limit(4)
+        )
+        neg_msgs = list(reversed(neg_result.scalars().all()))
+        negotiation_summary = ""
+        if neg_msgs:
+            lines = []
+            for m in neg_msgs:
+                role = "Partner" if m.direction == "inbound" else "Bab Morocco"
+                body = (m.corps or "")[:300]
+                lines.append(f"[{role}]: {body}")
+            negotiation_summary = "\n".join(lines)
+
+        # Sync contract commission with prospect (may have changed during negotiation)
+        contract.commission = prospect.commission_standard
+
         # Generate clause text
         try:
-            clauses = await self._generator.generate_clauses(prospect)
+            clauses = await self._generator.generate_clauses(prospect, negotiation_summary)
         except ValueError as exc:
             raise ValueError(f"Clause generation failed: {exc}") from exc
 

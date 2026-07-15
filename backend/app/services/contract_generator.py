@@ -80,7 +80,7 @@ def _get_gdpr_clause_label(country: str) -> str:
 # ─── Protocol ────────────────────────────────────────────────────────────────
 
 class ContractGeneratorProtocol(Protocol):
-    async def generate_clauses(self, prospect: Prospect) -> dict: ...
+    async def generate_clauses(self, prospect: Prospect, negotiation_summary: str = "") -> dict: ...
 
 
 # ─── Mock generator ──────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ class MockContractGenerator:
     ClaudeContractGenerator handles proper multilingual output.
     """
 
-    async def generate_clauses(self, prospect: Prospect) -> dict:
+    async def generate_clauses(self, prospect: Prospect, negotiation_summary: str = "") -> dict:
         law, city = _get_jurisdiction(prospect.pays)
         gdpr = _get_gdpr_clause_label(prospect.pays)
         type_desc = _partner_type_description(prospect.type, "fr")
@@ -242,7 +242,7 @@ class MockContractGenerator:
 
 # ─── Claude generator ─────────────────────────────────────────────────────────
 
-def _build_contract_prompt(prospect: Prospect) -> str:
+def _build_contract_prompt(prospect: Prospect, negotiation_summary: str = "") -> str:
     law, city = _get_jurisdiction(prospect.pays)
     gdpr = _get_gdpr_clause_label(prospect.pays)
     type_desc = _partner_type_description(prospect.type, prospect.langue)
@@ -272,7 +272,10 @@ Generate a complete, professional partnership contract in **{lang_name}** for th
 ## Non-financial perks (ALWAYS include in post_signature_note)
 Badge Partenaire Fondateur, commission locked 12 months, co-marketing at launch,
 product influence (extranet feedback), private beta access before public launch.
-
+{f"""
+## Negotiation context (reflect any agreed terms in the contract clauses)
+{negotiation_summary}
+""" if negotiation_summary else ""}
 ## Output format
 Return ONLY a valid JSON object with exactly these 10 keys — no markdown fences,
 no extra keys, no explanation. All text values in **{lang_name}**:
@@ -314,8 +317,8 @@ class ClaudeContractGenerator:
     def __init__(self) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
-    async def generate_clauses(self, prospect: Prospect) -> dict:
-        prompt = _build_contract_prompt(prospect)
+    async def generate_clauses(self, prospect: Prospect, negotiation_summary: str = "") -> dict:
+        prompt = _build_contract_prompt(prospect, negotiation_summary)
         message = await tracked_claude_call(
             self._client,
             model="claude-sonnet-4-6",
@@ -334,8 +337,8 @@ class OpenAIContractGenerator:
     def __init__(self) -> None:
         self._client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-    async def generate_clauses(self, prospect: Prospect) -> dict:
-        prompt = _build_contract_prompt(prospect)
+    async def generate_clauses(self, prospect: Prospect, negotiation_summary: str = "") -> dict:
+        prompt = _build_contract_prompt(prospect, negotiation_summary)
         response = await tracked_openai_call(
             self._client,
             model="gpt-4o",

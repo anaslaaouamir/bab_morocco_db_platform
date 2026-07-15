@@ -273,6 +273,16 @@ class NegotiationService:
             headers=headers,
         )
 
+        # Persist the rate mentioned in our outbound message to the prospect
+        outbound_rate = extract_rate_from_text(response_text)
+        if outbound_rate is not None and outbound_rate != prospect.commission_standard:
+            logger.info(
+                "[NEGOTIATION] Updating commission_standard %s%% → %s%% for prospect=%s",
+                prospect.commission_standard, outbound_rate, prospect.id,
+            )
+            prospect.commission_standard = outbound_rate
+            prospect.updated_at = datetime.utcnow()
+
         msg = NegotiationMessage(
             id=uuid.uuid4(),
             prospect_id=prospect.id,
