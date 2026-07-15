@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "sqlite+aiosqlite:///./bab_morocco.db"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:anas@localhost:5432/bab_morocco"
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     DEFAULT_AI_PROVIDER: str = "claude"

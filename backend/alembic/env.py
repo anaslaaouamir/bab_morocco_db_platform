@@ -8,6 +8,7 @@ from alembic import context
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.database import Base
+from app.config import settings
 import app.models  # noqa — registers all models
 
 config = context.config
@@ -15,6 +16,17 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+
+def _get_sync_url() -> str:
+    """Convert the async DATABASE_URL from settings to a sync driver URL for Alembic."""
+    url = settings.DATABASE_URL
+    url = url.replace("postgresql+asyncpg://", "postgresql://")
+    url = url.replace("sqlite+aiosqlite://", "sqlite://")
+    return url
+
+
+config.set_main_option("sqlalchemy.url", _get_sync_url())
 
 
 def run_migrations_offline() -> None:
