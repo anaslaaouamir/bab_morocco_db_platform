@@ -328,6 +328,13 @@ class ContractService:
         prospect.stage = "negociation"
         prospect.updated_at = datetime.utcnow()
 
+        if contract.partner_reply:
+            db.add(NegotiationMessage(
+                prospect_id=prospect.id,
+                direction="inbound",
+                corps=contract.partner_reply,
+            ))
+
         await db.commit()
         await db.refresh(contract)
 
