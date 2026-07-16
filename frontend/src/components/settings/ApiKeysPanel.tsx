@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
@@ -71,6 +71,16 @@ export default function ApiKeysPanel() {
     load();
   }, [load]);
 
+  const grouped = useMemo(() => {
+    const map = new Map<string, ApiKeyInfo[]>();
+    for (const k of keys) {
+      const g = k.group || "Autre";
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(k);
+    }
+    return Array.from(map.entries());
+  }, [keys]);
+
   function startEdit(keyName: string) {
     setEditingKey(keyName);
     setEditValue("");
@@ -85,7 +95,7 @@ export default function ApiKeysPanel() {
 
   async function handleSave(keyName: string) {
     if (!editValue.trim()) {
-      showSnackbar({ message: "La clé ne peut pas être vide.", severity: "warning", duration: 3000 });
+      showSnackbar({ message: "La valeur ne peut pas être vide.", severity: "warning", duration: 3000 });
       return;
     }
     setSaving(true);
@@ -94,7 +104,7 @@ export default function ApiKeysPanel() {
       setKeys((prev) => prev.map((k) => (k.key === keyName ? updated : k)));
       setEditingKey(null);
       setEditValue("");
-      showSnackbar({ message: "Clé API enregistrée.", severity: "success", duration: 3000 });
+      showSnackbar({ message: "Valeur enregistrée.", severity: "success", duration: 3000 });
     } catch (e: unknown) {
       showSnackbar({
         message: e instanceof Error ? e.message : "Erreur lors de l'enregistrement.",
@@ -111,7 +121,7 @@ export default function ApiKeysPanel() {
     try {
       const updated = await apiSettingsApi.deleteKey(keyName);
       setKeys((prev) => prev.map((k) => (k.key === keyName ? updated : k)));
-      showSnackbar({ message: "Clé supprimée de la base. Retour au fichier .env si disponible.", severity: "info", duration: 4000 });
+      showSnackbar({ message: "Valeur supprimée. Retour au fichier .env si disponible.", severity: "info", duration: 4000 });
     } catch (e: unknown) {
       showSnackbar({
         message: e instanceof Error ? e.message : "Erreur lors de la suppression.",
@@ -128,7 +138,7 @@ export default function ApiKeysPanel() {
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 2.5, py: 2, bgcolor: "action.hover" }}>
         <VpnKeyRoundedIcon sx={{ color: "primary.main", fontSize: 22 }} />
         <Typography variant="titleMedium" sx={{ fontWeight: 700, flex: 1 }}>
-          Clés API
+          Clés API & Configuration
         </Typography>
       </Box>
 
@@ -148,107 +158,127 @@ export default function ApiKeysPanel() {
             ))}
           </Box>
         ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-            {keys.map((k) => (
-              <Paper
-                key={k.key}
-                variant="outlined"
-                sx={{ px: 2, py: 1.5, borderRadius: 2 }}
-              >
-                {editingKey === k.key ? (
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-                    <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
-                      {k.label}
-                    </Typography>
-                    <TextField
-                      size="small"
-                      type={showValue ? "text" : "password"}
-                      placeholder="Coller la nouvelle clé…"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      disabled={saving}
-                      fullWidth
-                      autoFocus
-                      slotProps={{
-                        input: {
-                          endAdornment: (
-                            <InputAdornment position="end">
-                              <IconButton
-                                size="small"
-                                onClick={() => setShowValue(!showValue)}
-                                edge="end"
-                              >
-                                {showValue ? <VisibilityOffRoundedIcon fontSize="small" /> : <VisibilityRoundedIcon fontSize="small" />}
-                              </IconButton>
-                            </InputAdornment>
-                          ),
-                        },
-                      }}
-                    />
-                    <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
-                      <Button
-                        size="small"
-                        onClick={cancelEdit}
-                        disabled={saving}
-                        startIcon={<CloseRoundedIcon />}
-                        sx={{ textTransform: "none" }}
-                      >
-                        Annuler
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        disableElevation
-                        onClick={() => handleSave(k.key)}
-                        disabled={saving || !editValue.trim()}
-                        startIcon={<CheckRoundedIcon />}
-                        sx={{ textTransform: "none", fontWeight: 700 }}
-                      >
-                        {saving ? "Enregistrement…" : "Enregistrer"}
-                      </Button>
-                    </Box>
-                  </Box>
-                ) : (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
-                    <Typography variant="bodySmall" sx={{ fontWeight: 700, minWidth: 160 }}>
-                      {k.label}
-                    </Typography>
-                    <Typography
-                      variant="bodySmall"
-                      sx={{
-                        flex: 1,
-                        fontFamily: "monospace",
-                        color: k.is_set ? "text.secondary" : "text.disabled",
-                        minWidth: 100,
-                      }}
-                    >
-                      {k.is_set ? k.masked_value : "Non configurée"}
-                    </Typography>
-                    <Chip
-                      icon={SOURCE_ICONS[k.source] as React.ReactElement | undefined}
-                      label={SOURCE_LABELS[k.source]}
-                      size="small"
-                      color={SOURCE_COLORS[k.source]}
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2.5 }}>
+            {grouped.map(([group, items], gi) => (
+              <Box key={group}>
+                {gi > 0 && <Divider sx={{ mb: 2 }} />}
+                <Typography
+                  variant="bodySmall"
+                  sx={{
+                    fontWeight: 700,
+                    color: "text.secondary",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    fontSize: "0.7rem",
+                    mb: 1,
+                  }}
+                >
+                  {group}
+                </Typography>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {items.map((k) => (
+                    <Paper
+                      key={k.key}
                       variant="outlined"
-                      sx={{ fontSize: "0.6875rem" }}
-                    />
-                    <IconButton size="small" onClick={() => startEdit(k.key)} title="Modifier">
-                      <EditRoundedIcon fontSize="small" />
-                    </IconButton>
-                    {k.source === "database" && (
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDelete(k.key)}
-                        disabled={saving}
-                        title="Supprimer (retour au .env)"
-                        color="error"
-                      >
-                        <DeleteOutlineRoundedIcon fontSize="small" />
-                      </IconButton>
-                    )}
-                  </Box>
-                )}
-              </Paper>
+                      sx={{ px: 2, py: 1.5, borderRadius: 2 }}
+                    >
+                      {editingKey === k.key ? (
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                          <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
+                            {k.label}
+                          </Typography>
+                          <TextField
+                            size="small"
+                            type={showValue ? "text" : "password"}
+                            placeholder="Coller la nouvelle valeur…"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            disabled={saving}
+                            fullWidth
+                            autoFocus
+                            slotProps={{
+                              input: {
+                                endAdornment: (
+                                  <InputAdornment position="end">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => setShowValue(!showValue)}
+                                      edge="end"
+                                    >
+                                      {showValue ? <VisibilityOffRoundedIcon fontSize="small" /> : <VisibilityRoundedIcon fontSize="small" />}
+                                    </IconButton>
+                                  </InputAdornment>
+                                ),
+                              },
+                            }}
+                          />
+                          <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
+                            <Button
+                              size="small"
+                              onClick={cancelEdit}
+                              disabled={saving}
+                              startIcon={<CloseRoundedIcon />}
+                              sx={{ textTransform: "none" }}
+                            >
+                              Annuler
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              disableElevation
+                              onClick={() => handleSave(k.key)}
+                              disabled={saving || !editValue.trim()}
+                              startIcon={<CheckRoundedIcon />}
+                              sx={{ textTransform: "none", fontWeight: 700 }}
+                            >
+                              {saving ? "Enregistrement…" : "Enregistrer"}
+                            </Button>
+                          </Box>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+                          <Typography variant="bodySmall" sx={{ fontWeight: 700, minWidth: 160 }}>
+                            {k.label}
+                          </Typography>
+                          <Typography
+                            variant="bodySmall"
+                            sx={{
+                              flex: 1,
+                              fontFamily: "monospace",
+                              color: k.is_set ? "text.secondary" : "text.disabled",
+                              minWidth: 100,
+                            }}
+                          >
+                            {k.is_set ? k.masked_value : "Non configurée"}
+                          </Typography>
+                          <Chip
+                            icon={SOURCE_ICONS[k.source] as React.ReactElement | undefined}
+                            label={SOURCE_LABELS[k.source]}
+                            size="small"
+                            color={SOURCE_COLORS[k.source]}
+                            variant="outlined"
+                            sx={{ fontSize: "0.6875rem" }}
+                          />
+                          <IconButton size="small" onClick={() => startEdit(k.key)} title="Modifier">
+                            <EditRoundedIcon fontSize="small" />
+                          </IconButton>
+                          {k.source === "database" && (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDelete(k.key)}
+                              disabled={saving}
+                              title="Supprimer (retour au .env)"
+                              color="error"
+                            >
+                              <DeleteOutlineRoundedIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Box>
+                      )}
+                    </Paper>
+                  ))}
+                </Box>
+              </Box>
             ))}
           </Box>
         )}
@@ -257,7 +287,7 @@ export default function ApiKeysPanel() {
           severity="info"
           sx={{ mt: 2, borderRadius: 2, "& .MuiAlert-message": { fontSize: "0.8125rem" } }}
         >
-          Les clés enregistrées ici prennent priorité sur le fichier .env. Supprimer une clé restaure la valeur .env si elle existe.
+          Les valeurs enregistrées ici prennent priorité sur le fichier .env. Supprimer une valeur restaure celle du .env si elle existe.
         </Alert>
       </Box>
     </Paper>

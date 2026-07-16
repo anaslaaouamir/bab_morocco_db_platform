@@ -19,20 +19,41 @@ MANAGEABLE_SETTINGS = {"monthly_token_limit", "default_ai_provider"}
 # API keys manageable via the UI (allow-list)
 MANAGEABLE_KEYS = {
     "anthropic_api_key": {
-        "label": "Claude AI (Anthropic)",
+        "label": "Clé API",
         "config_attr": "ANTHROPIC_API_KEY",
-    },
-    "resend_api_key": {
-        "label": "Email (Resend)",
-        "config_attr": "RESEND_API_KEY",
-    },
-    "google_maps_api_key": {
-        "label": "Google Maps / Places",
-        "config_attr": "GOOGLE_MAPS_API_KEY",
+        "group": "Intelligence Artificielle",
     },
     "openai_api_key": {
-        "label": "OpenAI (GPT-4o)",
+        "label": "Clé API",
         "config_attr": "OPENAI_API_KEY",
+        "group": "Intelligence Artificielle",
+    },
+    "resend_api_key": {
+        "label": "Clé API",
+        "config_attr": "RESEND_API_KEY",
+        "group": "Resend (Email)",
+    },
+    "resend_from_email": {
+        "label": "Adresse expéditeur",
+        "config_attr": "RESEND_FROM_EMAIL",
+        "secret": False,
+        "group": "Resend (Email)",
+    },
+    "resend_inbound_domain": {
+        "label": "Domaine entrant",
+        "config_attr": "RESEND_INBOUND_DOMAIN",
+        "secret": False,
+        "group": "Resend (Email)",
+    },
+    "resend_webhook_secret": {
+        "label": "Secret webhook",
+        "config_attr": "RESEND_WEBHOOK_SECRET",
+        "group": "Resend (Email)",
+    },
+    "google_maps_api_key": {
+        "label": "Clé API",
+        "config_attr": "GOOGLE_MAPS_API_KEY",
+        "group": "Google Maps / Places",
     },
 }
 
@@ -182,34 +203,26 @@ async def update_settings(
 # ─── API Key management ─────────────────────────────────────────────────────
 
 
+def _display_value(value: str, is_secret: bool) -> str:
+    if is_secret:
+        return _mask_key(value)
+    return value
+
+
 def _key_info(key_name: str, db_value: str | None) -> dict:
     meta = MANAGEABLE_KEYS[key_name]
+    is_secret = meta.get("secret", True)
+    group = meta.get("group", "")
     env_value = getattr(app_settings, meta["config_attr"], "") or ""
 
+    base = {"key": key_name, "label": meta["label"], "group": group}
+
     if db_value:
-        return {
-            "key": key_name,
-            "label": meta["label"],
-            "masked_value": _mask_key(db_value),
-            "is_set": True,
-            "source": "database",
-        }
+        return {**base, "masked_value": _display_value(db_value, is_secret), "is_set": True, "source": "database"}
     elif env_value:
-        return {
-            "key": key_name,
-            "label": meta["label"],
-            "masked_value": _mask_key(env_value),
-            "is_set": True,
-            "source": "env_file",
-        }
+        return {**base, "masked_value": _display_value(env_value, is_secret), "is_set": True, "source": "env_file"}
     else:
-        return {
-            "key": key_name,
-            "label": meta["label"],
-            "masked_value": "",
-            "is_set": False,
-            "source": "not_set",
-        }
+        return {**base, "masked_value": "", "is_set": False, "source": "not_set"}
 
 
 @router.get("/keys")

@@ -277,6 +277,7 @@ export type SystemSettingsMap = Record<string, string>;
 export interface ApiKeyInfo {
   key: string;
   label: string;
+  group: string;
   masked_value: string;
   is_set: boolean;
   source: "database" | "env_file" | "not_set";
