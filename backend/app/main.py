@@ -42,15 +42,11 @@ async def create_tables() -> None:
 
 @app.on_event("startup")
 async def load_db_api_keys() -> None:
-    """Override config.py Settings with API key values stored in system_settings."""
+    """Override config.py Settings with values stored in system_settings."""
     from app.models.system_settings import SystemSetting
+    from app.routers.api_settings import MANAGEABLE_KEYS
 
-    key_map = {
-        "anthropic_api_key": "ANTHROPIC_API_KEY",
-        "resend_api_key": "RESEND_API_KEY",
-        "google_maps_api_key": "GOOGLE_MAPS_API_KEY",
-        "openai_api_key": "OPENAI_API_KEY",
-    }
+    key_map = {k: v["config_attr"] for k, v in MANAGEABLE_KEYS.items()}
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(SystemSetting))
         for row in result.scalars().all():
