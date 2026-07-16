@@ -19,12 +19,12 @@ MANAGEABLE_SETTINGS = {"monthly_token_limit", "default_ai_provider"}
 # API keys manageable via the UI (allow-list)
 MANAGEABLE_KEYS = {
     "anthropic_api_key": {
-        "label": "Clé API",
+        "label": "Claude AI (Anthropic)",
         "config_attr": "ANTHROPIC_API_KEY",
         "group": "Intelligence Artificielle",
     },
     "openai_api_key": {
-        "label": "Clé API",
+        "label": "OpenAI (GPT-4o)",
         "config_attr": "OPENAI_API_KEY",
         "group": "Intelligence Artificielle",
     },
@@ -51,7 +51,7 @@ MANAGEABLE_KEYS = {
         "group": "Resend (Email)",
     },
     "google_maps_api_key": {
-        "label": "Clé API",
+        "label": "Google Maps / Places",
         "config_attr": "GOOGLE_MAPS_API_KEY",
         "group": "Google Maps / Places",
     },
