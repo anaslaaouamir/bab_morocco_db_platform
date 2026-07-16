@@ -21,9 +21,6 @@ from app.services.prospect_service import COMMISSION_DEFAULTS, detect_langue
 
 logger = logging.getLogger(__name__)
 
-_maps_provider, _enrichment_svc = get_scan_providers()
-_USES_PLAYWRIGHT = isinstance(_enrichment_svc, RealEnrichmentService)
-
 
 async def _distribute_to_commercials(db, prospect_ids: list[uuid.UUID]) -> None:
     """
@@ -66,15 +63,13 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
             logger.error("ScanJob %s not found", job_id)
             return
 
+        maps_provider, enrichment_svc = get_scan_providers()
+        uses_playwright = isinstance(enrichment_svc, RealEnrichmentService)
+
         browser = None
         pw_ctx = None
         try:
-            # One shared Chromium instance for the whole job — Playwright's
-            # fallback fires per-prospect (see real_providers.py Section 4),
-            # and launching a fresh browser for each one would dominate scan
-            # time at 50-100 prospects/scan. Only launched when the real
-            # enrichment service is active; mocks never touch Playwright.
-            if _USES_PLAYWRIGHT:
+            if uses_playwright:
                 from playwright.async_api import async_playwright
 
                 async def _launch():
@@ -88,7 +83,7 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
             job.statut = "running"
             await db.commit()
 
-            raw_results = await _maps_provider.search(
+            raw_results = await maps_provider.search(
                 ville=job.ville,
                 pays=job.pays,
                 type_partenaire=job.type_partenaire,
@@ -102,7 +97,7 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
 
             for i, raw in enumerate(raw_results):
                 # ── Step 2: Enrichment ──────────────────────────────────────
-                enriched = await _enrichment_svc.enrich(raw, browser)
+                enriched = await enrichment_svc.enrich(raw, browser)
 
                 # ── Step 3: Scoring ─────────────────────────────────────────
                 breakdown = scoring_engine.compute_breakdown(enriched)
