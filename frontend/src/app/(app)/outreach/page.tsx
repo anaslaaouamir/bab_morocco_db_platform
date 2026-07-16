@@ -459,23 +459,24 @@ function EmailComposer({
     return map;
   }, [emails]);
 
-  // Auto-select the most actionable step when emails load or change
+  // Auto-select the most actionable step when emails load or change.
+  // Skip when initialStep is provided — the parent explicitly chose the step
+  // (e.g. prospect is in J+3 tab) and the user needs to see the generate button
+  // even if that step has no emails yet.
   useEffect(() => {
+    if (initialStep) return;
     if (emails.length === 0) return;
-    // Prefer the first step that has draft or validated emails (needs action)
     const actionable = STEP_ORDER.find((s) =>
       (emailsByStep[s] ?? []).some((e) => ["draft", "validated"].includes(e.statut))
     );
-    // Fall back to the last step that has any emails
     const lastWithEmails = [...STEP_ORDER].reverse().find((s) => (emailsByStep[s] ?? []).length > 0);
     const target = actionable ?? lastWithEmails ?? "j0";
     setSelectedStep((prev) => {
-      // Only override if the current selected step has no emails (handles manual step switching)
       if ((emailsByStep[prev] ?? []).length === 0) return target;
       return prev;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emails.length]);
+  }, [emails.length, initialStep]);
 
   const currentStepEmails = useMemo(() => emailsByStep[selectedStep] ?? [], [emailsByStep, selectedStep]);
 
@@ -516,7 +517,7 @@ function EmailComposer({
 
   useEffect(() => {
     if (initialStep) setSelectedStep(initialStep);
-  }, [initialStep]);
+  }, [initialStep, prospect.id]);
 
   // ── Handlers ─────────────────────────────────────────────────────
 
