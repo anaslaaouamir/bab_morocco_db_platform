@@ -189,7 +189,7 @@ export default function ApiKeysPanel() {
                           </Typography>
                           <TextField
                             size="small"
-                            type={showValue ? "text" : "password"}
+                            type={!k.secret || showValue ? "text" : "password"}
                             placeholder="Coller la nouvelle valeur…"
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
@@ -198,7 +198,7 @@ export default function ApiKeysPanel() {
                             autoFocus
                             slotProps={{
                               input: {
-                                endAdornment: (
+                                endAdornment: k.secret ? (
                                   <InputAdornment position="end">
                                     <IconButton
                                       size="small"
@@ -208,7 +208,7 @@ export default function ApiKeysPanel() {
                                       {showValue ? <VisibilityOffRoundedIcon fontSize="small" /> : <VisibilityRoundedIcon fontSize="small" />}
                                     </IconButton>
                                   </InputAdornment>
-                                ),
+                                ) : undefined,
                               },
                             }}
                           />

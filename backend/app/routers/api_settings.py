@@ -215,7 +215,7 @@ def _key_info(key_name: str, db_value: str | None) -> dict:
     group = meta.get("group", "")
     env_value = getattr(app_settings, meta["config_attr"], "") or ""
 
-    base = {"key": key_name, "label": meta["label"], "group": group}
+    base = {"key": key_name, "label": meta["label"], "group": group, "secret": is_secret}
 
     if db_value:
         return {**base, "masked_value": _display_value(db_value, is_secret), "is_set": True, "source": "database"}
