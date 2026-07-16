@@ -181,9 +181,23 @@ class OutreachService:
         if last_sent.statut in ("opened", "clicked"):
             return {"next_step": None, "reason": "Prospect engaged — no follow-up needed", "emails": emails}
         if current_idx < len(steps_order) - 1:
+            candidate = steps_order[current_idx + 1]
+            j0_emails = [e for e in sent if e.sequence_step == "j0"]
+            if j0_emails:
+                j0_send = max(j0_emails, key=lambda e: e.date_envoi_reel or datetime.min).date_envoi_reel
+                if j0_send:
+                    days_elapsed = (datetime.utcnow() - j0_send).days
+                    required = _STEP_OFFSETS[candidate]
+                    if days_elapsed < required:
+                        remaining = required - days_elapsed
+                        return {
+                            "next_step": None,
+                            "reason": f"{last_sent.sequence_step} sent but not opened — {candidate} dans {remaining}j",
+                            "emails": emails,
+                        }
             return {
-                "next_step": steps_order[current_idx + 1],
-                "reason": f"{last_sent.sequence_step} sent but not opened",
+                "next_step": candidate,
+                "reason": f"{last_sent.sequence_step} sent but not opened — {candidate} disponible",
                 "emails": emails,
             }
         return {"next_step": None, "reason": "Sequence complete", "emails": emails}
