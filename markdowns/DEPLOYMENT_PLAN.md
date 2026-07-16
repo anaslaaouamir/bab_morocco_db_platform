@@ -65,35 +65,35 @@ Connect: `ssh -i ~/.ssh/bab_deploy deploy-bab@13.140.187.6`
   and ADMIN_PASSWORD replaced with fresh random values, rest reused from local `.env`
 - [x] **B.5** — Run database migrations (`alembic upgrade head`)
   Status: Done — 21 migrations applied cleanly, full schema built in `bab_platform`
-- [ ] **B.6** — Start backend with pm2 on `127.0.0.1:8010`
-  Status: Not started
+- [x] **B.6** — Start backend with pm2 on `127.0.0.1:8010`
+  Status: Done — process id 0, health check returns 200 with DB connected
 
 ---
 
 ## Phase C — Frontend (Next.js)
 
-- [ ] **C.1** — Install dependencies (`npm ci`)
-  Status: Not started
-- [ ] **C.2** — Set `NEXT_PUBLIC_API_URL=https://bab.elbahi.ma/api` **before building** (baked in at build time, not runtime)
-  Status: Not started
-- [ ] **C.3** — Build production bundle (`npm run build`)
-  Status: Not started
-- [ ] **C.4** — Start frontend with pm2 on `127.0.0.1:3010`
-  Status: Not started
+- [x] **C.1** — Install dependencies (`npm ci`)
+  Status: Done — 146 packages installed
+- [x] **C.2** — Set `NEXT_PUBLIC_API_URL=https://bab.elbahi.ma/api` **before building** (baked in at build time, not runtime)
+  Status: Done — written to `.env.production`
+- [x] **C.3** — Build production bundle (`npm run build`)
+  Status: Done — all 10 routes compiled, static pages generated
+- [x] **C.4** — Start frontend with pm2 on `127.0.0.1:3010`
+  Status: Done — process id 1, online
 
 ---
 
 ## Phase D — Persist processes
 
-- [ ] **D.1** — `pm2 save` so both processes survive a server reboot
-  Status: Not started
+- [x] **D.1** — `pm2 save` so both processes survive a server reboot
+  Status: Done — saved to /var/www/bab/.pm2/dump.pm2
 
 ---
 
 ## Phase E — Verify
 
-- [ ] **E.1** — `curl localhost:8010` and `curl localhost:3010` on the server both respond
-  Status: Not started
+- [x] **E.1** — `curl localhost:8010` and `curl localhost:3010` on the server both respond
+  Status: Done — backend 200, frontend 307 (redirect to /login, expected)
 - [ ] **E.2** — `https://bab.elbahi.ma` loads in a real browser
   Status: Not started
 - [ ] **E.3** — Login with the admin account works end-to-end (frontend → backend → DB)

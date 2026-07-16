@@ -30,6 +30,7 @@ import MarkEmailReadOutlinedIcon from "@mui/icons-material/MarkEmailReadOutlined
 import CalendarTodayOutlinedIcon from "@mui/icons-material/CalendarTodayOutlined";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import NorthEastRoundedIcon from "@mui/icons-material/NorthEastRounded";
+import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 
 import type { Prospect, PipelineStage } from "@/types/prospect";
 import {
@@ -39,8 +40,8 @@ import {
   STAGE_LABELS,
   LANGUAGE_FLAGS,
 } from "@/types/prospect";
-import { prospectsApi, negotiationApi, ApiError } from "@/lib/api";
-import type { RawWaitingReplyItem } from "@/lib/api";
+import { prospectsApi, negotiationApi, contractsApi, ApiError } from "@/lib/api";
+import type { RawWaitingReplyItem, RawContractWaitingDecisionItem } from "@/lib/api";
 
 // ─── Static config ────────────────────────────────────────────────────────────
 
@@ -179,6 +180,7 @@ export default function DashboardPage() {
   // ── Remote state ──────────────────────────────────────────────────────────
   const [prospects, setProspects]     = useState<Prospect[]>([]);
   const [waitingReply, setWaitingReply] = useState<RawWaitingReplyItem[]>([]);
+  const [contractsWaiting, setContractsWaiting] = useState<RawContractWaitingDecisionItem[]>([]);
   const [loading, setLoading]         = useState(true);
   const [fetchError, setFetchError]   = useState<string | null>(null);
 
@@ -199,6 +201,7 @@ export default function DashboardPage() {
     }
     // Non-fatal: a failure here shouldn't block the rest of the dashboard.
     negotiationApi.waitingReply().then(setWaitingReply).catch(() => setWaitingReply([]));
+    contractsApi.waitingDecision().then(setContractsWaiting).catch(() => setContractsWaiting([]));
   }
 
   useEffect(() => { fetchProspects(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -462,6 +465,30 @@ export default function DashboardPage() {
                   </Alert>
                 ))}
 
+                {contractsWaiting.map((item) => (
+                  <Alert
+                    key={item.contract_id}
+                    severity="error"
+                    icon={<DescriptionOutlinedIcon fontSize="small" />}
+                    action={
+                      <Chip
+                        label="Voir"
+                        size="small"
+                        component={Link}
+                        href="/contrats"
+                        clickable
+                        sx={{ fontSize: "0.625rem" }}
+                      />
+                    }
+                    sx={{ py: 0.5, borderRadius: 2, fontSize: "0.8125rem", alignItems: "center" }}
+                  >
+                    <AlertTitle sx={{ fontSize: "0.8125rem", fontWeight: 700, mb: 0 }}>{item.prospect_nom}</AlertTitle>
+                    Contrat : réponse reçue le{" "}
+                    {new Date(item.partner_replied_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}
+                    {" "}— décision en attente
+                  </Alert>
+                ))}
+
                 {dueToday.map((p) => (
                   <Alert
                     key={p.id}
@@ -486,7 +513,7 @@ export default function DashboardPage() {
                   </Alert>
                 ))}
 
-                {waitingReply.length === 0 && dueToday.length === 0 && overdue.length === 0 && (
+                {waitingReply.length === 0 && contractsWaiting.length === 0 && dueToday.length === 0 && overdue.length === 0 && (
                   <Box sx={{ py: 3, display: "flex", flexDirection: "column", alignItems: "center", gap: 1, color: "text.disabled" }}>
                     <CheckCircleRoundedIcon sx={{ fontSize: 32 }} />
                     <Typography variant="bodySmall">Aucune alerte active</Typography>

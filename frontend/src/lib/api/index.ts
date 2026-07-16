@@ -11,6 +11,7 @@ export type {
   RawMessageAnalysis,
   RawScenario,
   RawWaitingReplyItem,
+  RawContractWaitingDecisionItem,
   RawScorePreviewResponse,
   RawProspectStats,
   RawContract,
@@ -38,6 +39,7 @@ import type {
   RawNegotiationMessage,
   RawMessageAnalysis,
   RawWaitingReplyItem,
+  RawContractWaitingDecisionItem,
   RawContract,
   RawContractListResponse,
   ApiUsageResponse,
@@ -343,6 +345,9 @@ export const contractsApi = {
 
   simulateReply: (contractId: string): Promise<RawContract> =>
     apiFetch<RawContract>(`/contracts/${contractId}/simulate-reply`, { method: "POST" }),
+
+  waitingDecision: (): Promise<RawContractWaitingDecisionItem[]> =>
+    apiFetch<RawContractWaitingDecisionItem[]>("/contracts/waiting-decision"),
 };
 
 // ─── Negotiation ──────────────────────────────────────────────────────────────

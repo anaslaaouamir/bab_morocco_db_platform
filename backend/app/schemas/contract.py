@@ -62,3 +62,10 @@ class ContractListResponse(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class ContractWaitingDecisionItem(BaseModel):
+    contract_id: uuid.UUID
+    prospect_id: uuid.UUID
+    prospect_nom: str
+    partner_replied_at: datetime

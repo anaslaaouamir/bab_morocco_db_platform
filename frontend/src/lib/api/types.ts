@@ -177,6 +177,13 @@ export interface RawWaitingReplyItem {
   last_message_at: string;
 }
 
+export interface RawContractWaitingDecisionItem {
+  contract_id: string;
+  prospect_id: string;
+  prospect_nom: string;
+  partner_replied_at: string;
+}
+
 // ─── Contracts ────────────────────────────────────────────────────────────────
 
 export interface RawContractClauses {

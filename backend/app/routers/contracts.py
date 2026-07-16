@@ -4,13 +4,15 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
 from app.dependencies.auth import get_current_user
+from app.models.contract import Contract
 from app.models.prospect import Prospect
 from app.models.user import User
-from app.schemas.contract import ContractCreate, ContractListResponse, ContractResponse, PartnerReplySubmit
+from app.schemas.contract import ContractCreate, ContractListResponse, ContractResponse, ContractWaitingDecisionItem, PartnerReplySubmit
 from app.services.contract_generator import ContractGeneratorProtocol, get_contract_generator
 from app.services.contract_service import ContractService
 from app.services.email_transport import EmailTransportProtocol, get_email_transport
@@ -57,6 +59,38 @@ async def _get_contract_with_access(
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
+
+@router.get("/waiting-decision", response_model=list[ContractWaitingDecisionItem])
+async def contracts_waiting_decision(
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    """Contracts sent to the partner who replied, but the user hasn't yet
+    decided signed/declined — powers the Dashboard's priority alerts."""
+    query = (
+        select(Contract)
+        .where(Contract.status == "sent_to_partner")
+        .where(Contract.partner_replied_at.isnot(None))
+    )
+    rows = (await db.execute(query)).scalars().all()
+
+    items = []
+    for c in rows:
+        prospect = await db.get(Prospect, c.prospect_id)
+        if not prospect:
+            continue
+        if user.role == "commercial" and prospect.assigned_to != user.id:
+            continue
+        items.append(
+            ContractWaitingDecisionItem(
+                contract_id=c.id,
+                prospect_id=c.prospect_id,
+                prospect_nom=prospect.nom,
+                partner_replied_at=c.partner_replied_at,
+            )
+        )
+    return items
+
 
 @router.get("", response_model=ContractListResponse)
 async def list_contracts(
