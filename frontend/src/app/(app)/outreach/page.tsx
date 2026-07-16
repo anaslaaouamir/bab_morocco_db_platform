@@ -509,11 +509,14 @@ function EmailComposer({
     fetchedForRef.current = prospect.id;
     setEmails([]);
     setRec(null);
-    setSelectedStep(initialStep ?? "j0");
     setVariantByStep({});
     setEditMode(false);
     fetchEmails(prospect.id);
-  }, [prospect.id, fetchEmails, initialStep]);
+  }, [prospect.id, fetchEmails]);
+
+  useEffect(() => {
+    if (initialStep) setSelectedStep(initialStep);
+  }, [initialStep]);
 
   // ── Handlers ─────────────────────────────────────────────────────
 
