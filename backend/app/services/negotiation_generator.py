@@ -33,6 +33,7 @@ class NegotiationGeneratorProtocol(Protocol):
 class MockNegotiationGenerator:
     async def analyze(self, prospect: Prospect, message_corps: str, history: str = "") -> dict:
         return {
+            "message_type": "negotiation",
             "intent": "contre_offre",
             "intent_score": 3,
             "objection_type": "prix",
@@ -40,7 +41,7 @@ class MockNegotiationGenerator:
                 f"Le partenaire ({prospect.pays}) semble demander un ajustement de commission. "
                 f"Commission standard actuelle : {prospect.commission_standard}%."
             ),
-            "taux_demande": None,  # extracted by service via regex on the raw message
+            "taux_demande": None,
         }
 
     async def generate_scenarios(self, prospect: Prospect, analysis: dict, history: str = "") -> list[dict]:
@@ -132,17 +133,25 @@ Analyze this inbound message from a potential partner and return a structured JS
 ## Instructions
 Analyze the message and return ONLY this JSON (no markdown, no explanation):
 {{
+  "message_type": "<negotiation|informational|accord|logistique>",
   "intent": "<tres_motive|interesse|contre_offre|objection|neutre>",
   "intent_score": <1-5 where 5=very motivated>,
   "objection_type": "<prix|risque|concurrence|timing|confiance|null>",
-  "objection_detail": "<one sentence describing the objection or counter-offer>",
+  "objection_detail": "<one sentence summarizing the main concern, question, or agreement>",
   "taux_demande": <float if partner explicitly requested a specific rate, else null>
 }}
+
+Rules for message_type:
+- "negotiation": the partner raises an objection, makes a counter-offer, or pushes back on terms
+- "informational": the partner asks questions (visibility, tools, process, etc.) without challenging terms
+- "accord": the partner accepts or agrees to move forward (e.g. "ok send the contract", "let's proceed", "deal")
+- "logistique": the partner discusses scheduling, documents, or practical next steps only
 
 Rules:
 - If the partner requests a specific commission rate, extract it as taux_demande (float)
 - intent=contre_offre if the partner proposes different conditions
 - intent=objection if the partner raises concerns without a counter-offer
+- intent=tres_motive or interesse if the partner shows agreement or enthusiasm
 - Be precise about the objection_type based on the actual content
 - NEVER invent traffic, sales, or booking numbers not provided above
 - NEVER reveal internal strategy or technical roadmap"""
@@ -165,22 +174,41 @@ def _build_negotiation_scenarios_prompt(prospect: Prospect, analysis: dict, hist
 {history}
 
 """
+    message_type = analysis.get("message_type", "negotiation")
+
+    if message_type == "accord":
+        scenario_rules = f"""- Scenario A: Confirm the agreement, summarize the agreed terms (commission {prospect.commission_standard}%), and announce that a partnership contract will be prepared and sent shortly
+- Scenario B: Confirm the agreement + reinforce the decision by highlighting non-financial perks: {_PERKS}
+- Scenario C: Escalate to human commercial manager for contract preparation and final validation"""
+    elif message_type == "informational":
+        scenario_rules = f"""- Scenario A: Answer every question the partner raised directly and factually, maintaining the standard commission of {prospect.commission_standard}%
+- Scenario B: Answer all questions + proactively highlight non-financial perks to strengthen the value proposition: {_PERKS}
+- Scenario C: Escalate to human commercial manager who can provide detailed answers and a personalized follow-up"""
+    elif message_type == "logistique":
+        scenario_rules = f"""- Scenario A: Address the logistical/scheduling request directly, confirm next steps, and keep momentum toward closing
+- Scenario B: Address the request + reinforce enthusiasm with non-financial perks: {_PERKS}
+- Scenario C: Escalate to human commercial manager to handle scheduling or document requests personally"""
+    else:
+        scenario_rules = f"""- Scenario A: Accept partner conditions (only if taux >= plancher {prospect.commission_plancher}%, else escalate)
+- Scenario B: Counter-propose standard commission of {prospect.commission_standard}% + non-financial perks: {_PERKS}
+- Scenario C: Escalate to human commercial manager"""
+
     return f"""You are the Business Development AI for Bab Morocco.
 
-Generate exactly 3 negotiation response scenarios for the following situation.
+Generate exactly 3 response scenarios for the following situation.
 
 ## Partner profile
 - Name: {prospect.nom} | Type: {_partner_type_description(prospect.type, prospect.langue)} | Country: {prospect.pays}
 - Commission standard: {prospect.commission_standard}% | Floor: {prospect.commission_plancher}%
 {history_block}## Analysis of their message
+- Message type: {message_type}
 - Intent: {analysis.get("intent")} (score: {analysis.get("intent_score")}/5)
 - Objection type: {analysis.get("objection_type")}
 - Detail: {analysis.get("objection_detail")}
 - Rate requested: {taux}%
 
-## Non-financial perks available (use in Scenario B)
-Badge Partenaire Fondateur, commission verrouillée 12 mois, co-marketing au lancement,
-influence produit (feedback extranet), accès bêta privé.
+## Scenario rules
+{scenario_rules}
 
 ## Instructions
 Return ONLY a JSON array of 3 objects (no markdown):
@@ -197,11 +225,9 @@ Return ONLY a JSON array of 3 objects (no markdown):
   {{ "scenario": "C", ... }}
 ]
 
-Rules:
-- Scenario A: Accept partner conditions (only if taux >= plancher, else escalate)
-- Scenario B: Counter-propose standard commission + non-financial perks listed above
-- Scenario C: Escalate to human commercial manager
+General rules:
 - message_propose for each: write the actual email text to send (150-200 words)
+- Address ALL questions or points raised in the partner's message — do not ignore any
 - Language: match the partner's country language ({prospect.langue})
 - NEVER promise features that don't exist yet (partner portal, advanced analytics, channel managers)
 - NEVER propose a commission below the floor ({prospect.commission_plancher}%)
