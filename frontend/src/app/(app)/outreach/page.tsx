@@ -492,36 +492,15 @@ function EmailComposer({
     setEmailError(null);
     try {
       const result = await outreachApi.nextStep(prospectId);
-      let allEmails = result.emails;
+      setEmails(result.emails);
       setRec(result.reason);
-
-      // Auto-trigger next due follow-up step (silent — never blocks UI)
-      try {
-        setTriggerLoading(true);
-        const triggered = await outreachApi.triggerFollowup(prospectId);
-        if (triggered.length > 0) {
-          allEmails = [...allEmails, ...triggered];
-          const stepLabel = SEQ_CONFIG.find((s) => s.key === triggered[0].sequence_step)?.label ?? triggered[0].sequence_step;
-          showSnackbar({
-            message: `${stepLabel} généré automatiquement — 3 variantes à valider.`,
-            severity: "info",
-            duration: 5000,
-          });
-        }
-      } catch {
-        // Silent — followup trigger failure must not block main email view
-      } finally {
-        setTriggerLoading(false);
-      }
-
-      setEmails(allEmails);
-      onEmailsChange(prospectId, allEmails);
+      onEmailsChange(prospectId, result.emails);
     } catch (err) {
       setEmailError(err instanceof ApiError ? err.detail : "Impossible de charger les emails.");
     } finally {
       setLoadingEmails(false);
     }
-  }, [onEmailsChange, showSnackbar]);
+  }, [onEmailsChange]);
 
   useEffect(() => {
     if (fetchedForRef.current === prospect.id) return;
@@ -536,16 +515,18 @@ function EmailComposer({
 
   // ── Handlers ─────────────────────────────────────────────────────
 
-  async function handleGenerate() {
+  async function handleGenerate(step?: string) {
+    const targetStep = step ?? "j0";
     setGenerating(true);
     try {
-      const newEmails = await outreachApi.generate(prospect.id);
-      setEmails(newEmails);
+      const newEmails = await outreachApi.generate(prospect.id, targetStep);
+      setEmails((prev) => [...prev, ...newEmails]);
       setRec("Emails générés — validation humaine requise avant envoi.");
-      setSelectedStep("j0");
+      setSelectedStep(targetStep);
       setVariantByStep({});
-      onEmailsChange(prospect.id, newEmails);
-      showSnackbar({ message: "3 variantes J0 générées avec succès.", severity: "success" });
+      onEmailsChange(prospect.id, [...emails, ...newEmails]);
+      const stepLabel = SEQ_CONFIG.find((s) => s.key === targetStep)?.label ?? targetStep;
+      showSnackbar({ message: `3 variantes ${stepLabel} générées avec succès.`, severity: "success" });
     } catch (err) {
       showSnackbar({
         message: err instanceof ApiError ? err.detail : "Erreur lors de la génération.",
@@ -696,7 +677,7 @@ function EmailComposer({
           <Button
             variant="contained"
             startIcon={generating ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeRoundedIcon />}
-            onClick={handleGenerate}
+            onClick={() => handleGenerate()}
             disabled={generating}
             sx={{ fontWeight: 700, borderRadius: 2 }}
           >
@@ -717,17 +698,9 @@ function EmailComposer({
       <Card elevation={0} variant="outlined" sx={{ borderRadius: 2.5, overflow: "hidden" }}>
         {/* Header */}
         <Box sx={{ px: 2.5, pt: 2, pb: 1.5, borderBottom: 1, borderColor: "divider" }}>
-          <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 1 }}>
-            <Typography variant="titleMedium" sx={{ fontWeight: 700, mb: 0.375 }}>
-              Composer l&apos;email — {prospect.nom}
-            </Typography>
-            {triggerLoading && (
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <AutorenewRoundedIcon sx={{ fontSize: 14, color: "text.disabled", animation: "spin 1s linear infinite", "@keyframes spin": { from: { transform: "rotate(0deg)" }, to: { transform: "rotate(360deg)" } } }} />
-                <Typography variant="labelSmall" color="text.disabled">Vérification relances…</Typography>
-              </Box>
-            )}
-          </Box>
+          <Typography variant="titleMedium" sx={{ fontWeight: 700, mb: 0.375 }}>
+            Composer l&apos;email — {prospect.nom}
+          </Typography>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
             <Typography component="span" sx={{ fontSize: "1rem" }}>{LANGUAGE_FLAGS[prospect.langue]}</Typography>
             <Typography variant="labelMedium" color="text.secondary">
@@ -978,14 +951,25 @@ function EmailComposer({
             </Box>
           </>
         ) : (
-          <Box sx={{ p: 4, display: "flex", flexDirection: "column", alignItems: "center", gap: 1.5, textAlign: "center" }}>
-            <AutorenewRoundedIcon sx={{ fontSize: 36, color: "text.disabled", opacity: 0.5 }} />
-            <Typography variant="titleSmall" color="text.secondary" sx={{ fontWeight: 600 }}>
-              {stepConfig?.label} pas encore généré
-            </Typography>
-            <Typography variant="bodySmall" color="text.disabled">
-              Cette étape sera générée automatiquement lorsque les conditions de timing seront remplies.
-            </Typography>
+          <Box sx={{ p: 4, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, textAlign: "center" }}>
+            <AutoAwesomeRoundedIcon sx={{ fontSize: 48, color: "primary.main", opacity: 0.7 }} />
+            <Box>
+              <Typography variant="titleSmall" sx={{ fontWeight: 700, mb: 0.5 }}>
+                {stepConfig?.label} — pas encore généré
+              </Typography>
+              <Typography variant="bodySmall" color="text.secondary">
+                {stepConfig?.desc}
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              startIcon={generating ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeRoundedIcon />}
+              onClick={() => handleGenerate(selectedStep)}
+              disabled={generating}
+              sx={{ fontWeight: 700, borderRadius: 2 }}
+            >
+              {generating ? "Génération en cours…" : `Générer les 3 variantes ${stepConfig?.label ?? selectedStep.toUpperCase()}`}
+            </Button>
           </Box>
         )}
       </Card>
@@ -1075,17 +1059,19 @@ export default function OutreachPage() {
   const PAGE_SIZE = 10;
 
   const [emailsCache, setEmailsCache]   = useState<Record<string, RawOutreachEmail[]>>({});
+  const [nextStepCache, setNextStepCache] = useState<Record<string, string | null>>({});
 
   async function fetchProspects() {
     setLoading(true);
     setFetchError(null);
     try {
-      // Trigger all due follow-ups in one batch before loading the list
-      await outreachApi.triggerFollowups().catch(() => {});
       const result = await outreachApi.queue({ pageSize: 100 });
       setProspects(result.items.map((it) => it.prospect));
       setEmailsCache(
         Object.fromEntries(result.items.map((it) => [it.prospect.id, it.emails])),
+      );
+      setNextStepCache(
+        Object.fromEntries(result.items.map((it) => [it.prospect.id, it.nextStep])),
       );
     } catch (err) {
       setFetchError(err instanceof ApiError ? err.detail : "Impossible de charger les prospects.");
@@ -1207,10 +1193,16 @@ export default function OutreachPage() {
     [emailsCache],
   );
 
-  // Highest (current) step per prospect — a prospect at J7 belongs in J7 only
+  // Current step per prospect — use nextStep (the due step) if available,
+  // otherwise fall back to the highest step with existing emails
   const currentStepByProspect = useMemo(() => {
     const map: Record<string, string> = {};
     for (const p of prospects) {
+      const next = nextStepCache[p.id];
+      if (next) {
+        map[p.id] = next;
+        continue;
+      }
       const emails = emailsCache[p.id] ?? [];
       let maxIdx = -1;
       for (const e of emails) {
@@ -1220,7 +1212,7 @@ export default function OutreachPage() {
       map[p.id] = maxIdx >= 0 ? STEP_ORDER[maxIdx] : "j0";
     }
     return map;
-  }, [emailsCache, prospects]);
+  }, [emailsCache, nextStepCache, prospects]);
 
   // Per-step prospect counts for tab badges
   const stepCounts = useMemo(() => {

@@ -220,8 +220,8 @@ export const scanApi = {
 // ─── Outreach ─────────────────────────────────────────────────────────────────
 
 export const outreachApi = {
-  generate: (prospectId: string): Promise<RawOutreachEmail[]> =>
-    apiFetch<RawOutreachEmail[]>(`/outreach/${prospectId}/generate`, {
+  generate: (prospectId: string, step?: string): Promise<RawOutreachEmail[]> =>
+    apiFetch<RawOutreachEmail[]>(`/outreach/${prospectId}/generate${step ? `/${step}` : ""}`, {
       method: "POST",
     }),
 

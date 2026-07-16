@@ -90,6 +90,21 @@ async def generate_j0_variants(
         raise HTTPException(status_code=502, detail=str(e))
 
 
+@router.post("/{prospect_id}/generate/{step}", response_model=list[OutreachEmailResponse], status_code=status.HTTP_201_CREATED)
+async def generate_step_variants(
+    step: str,
+    db: AsyncSession = Depends(get_session),
+    svc: OutreachService = Depends(get_outreach_service),
+    prospect: Prospect = Depends(require_own_prospect),
+):
+    if step not in ("j0", "j3", "j7", "j30"):
+        raise HTTPException(status_code=400, detail=f"Invalid step: {step}")
+    try:
+        return await svc.generate_step_variants(db, prospect, step)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @router.get("/{prospect_id}/next-step", response_model=NextStepResponse)
 async def next_step(
     db: AsyncSession = Depends(get_session),
