@@ -1080,6 +1080,8 @@ export default function OutreachPage() {
     setLoading(true);
     setFetchError(null);
     try {
+      // Trigger all due follow-ups in one batch before loading the list
+      await outreachApi.triggerFollowups().catch(() => {});
       const result = await outreachApi.queue({ pageSize: 100 });
       setProspects(result.items.map((it) => it.prospect));
       setEmailsCache(
@@ -1205,32 +1207,43 @@ export default function OutreachPage() {
     [emailsCache],
   );
 
+  // Highest (current) step per prospect — a prospect at J7 belongs in J7 only
+  const currentStepByProspect = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of prospects) {
+      const emails = emailsCache[p.id] ?? [];
+      let maxIdx = -1;
+      for (const e of emails) {
+        const idx = STEP_ORDER.indexOf(e.sequence_step);
+        if (idx > maxIdx) maxIdx = idx;
+      }
+      map[p.id] = maxIdx >= 0 ? STEP_ORDER[maxIdx] : "j0";
+    }
+    return map;
+  }, [emailsCache, prospects]);
+
   // Per-step prospect counts for tab badges
   const stepCounts = useMemo(() => {
     const counts: Record<string, number> = { j0: 0, j3: 0, j7: 0, j30: 0 };
     for (const p of prospects) {
-      const emails = emailsCache[p.id] ?? [];
-      for (const step of Object.keys(counts)) {
-        if (emails.some((e) => e.sequence_step === step)) counts[step]++;
-      }
+      const step = currentStepByProspect[p.id];
+      if (step in counts) counts[step]++;
     }
     return counts;
-  }, [emailsCache, prospects]);
+  }, [currentStepByProspect, prospects]);
 
   // Prospects filtered by the active step tab, then by the search box
   const filteredProspects = useMemo(() => {
     let list = prospects;
     if (stepFilter !== "all") {
-      list = list.filter((p) =>
-        (emailsCache[p.id] ?? []).some((e) => e.sequence_step === stepFilter)
-      );
+      list = list.filter((p) => currentStepByProspect[p.id] === stepFilter);
     }
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter((p) => p.nom.toLowerCase().includes(q));
     }
     return list;
-  }, [prospects, emailsCache, stepFilter, search]);
+  }, [prospects, currentStepByProspect, stepFilter, search]);
 
   const pageCount = Math.max(1, Math.ceil(filteredProspects.length / PAGE_SIZE));
   const visiblePage = Math.min(page, pageCount);
