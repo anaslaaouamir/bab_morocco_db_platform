@@ -421,9 +421,11 @@ function StepSelector({
 function EmailComposer({
   prospect,
   onEmailsChange,
+  initialStep,
 }: {
   prospect: Prospect;
   onEmailsChange: (prospectId: string, emails: RawOutreachEmail[]) => void;
+  initialStep?: string;
 }) {
   const { showSnackbar } = useSnackbar();
 
@@ -507,11 +509,11 @@ function EmailComposer({
     fetchedForRef.current = prospect.id;
     setEmails([]);
     setRec(null);
-    setSelectedStep("j0");
+    setSelectedStep(initialStep ?? "j0");
     setVariantByStep({});
     setEditMode(false);
     fetchEmails(prospect.id);
-  }, [prospect.id, fetchEmails]);
+  }, [prospect.id, fetchEmails, initialStep]);
 
   // ── Handlers ─────────────────────────────────────────────────────
 
@@ -1437,6 +1439,7 @@ export default function OutreachPage() {
             <EmailComposer
               prospect={selectedProspect}
               onEmailsChange={handleEmailsChange}
+              initialStep={currentStepByProspect[selectedProspect.id]}
             />
           ) : (
             !loading && <ComposerEmptyState />
