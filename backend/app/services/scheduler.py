@@ -22,13 +22,11 @@ POLL_INTERVAL_SECONDS = 60
 
 
 def is_due(scheduled_at) -> bool:
-    """A naive datetime (no tzinfo) is treated as UTC, matching how
-    scheduled_at is stored and compared everywhere in this feature."""
     if scheduled_at is None:
         return True
     now = datetime.now(timezone.utc)
     if scheduled_at.tzinfo is None:
-        return scheduled_at <= now.replace(tzinfo=None)
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
     return scheduled_at <= now
 
 

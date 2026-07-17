@@ -7,7 +7,7 @@ active Commercial users (CLAUDE.md prospect assignment logic).
 import logging
 import random
 import uuid
-from datetime import datetime, date
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -177,7 +177,7 @@ async def run_scan_pipeline(job_id: uuid.UUID, session_factory) -> None:
 
             job.statut = "done"
             job.progression = 100
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(timezone.utc)
             await db.commit()
 
         except Exception as exc:

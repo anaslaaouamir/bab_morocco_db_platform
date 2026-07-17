@@ -52,6 +52,35 @@ export function saveSettings(settings: AppSettings): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
+// ─── Morocco timezone helper ────────────────────────────────────────────────
+
+const MOROCCO_TZ = "Africa/Casablanca";
+
+function moroccoDateStr(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: MOROCCO_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function moroccoWallClockToUTC(yyyy_mm_dd: string, hour: number): Date {
+  const probe = new Date(`${yyyy_mm_dd}T${String(hour).padStart(2, "0")}:00:00Z`);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: MOROCCO_TZ,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).formatToParts(probe);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "0";
+  const moroccoAtProbe = new Date(
+    `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}Z`
+  );
+  const offsetMs = moroccoAtProbe.getTime() - probe.getTime();
+  return new Date(probe.getTime() - offsetMs);
+}
+
 // ─── Schedule builder ────────────────────────────────────────────────────────
 
 /**
@@ -95,20 +124,18 @@ export function buildScheduledJobs(params: {
     }
   }
 
-  // Compute window start timestamp
-  const windowStart = targetDate ? new Date(targetDate) : new Date();
-  windowStart.setHours(windowStartHour, 0, 0, 0);
-  if (!targetDate) {
-    const now = new Date();
-    if (windowStart <= now) {
-      // Window already started/passed today → schedule for tomorrow
-      windowStart.setDate(windowStart.getDate() + 1);
-    }
+  // Build window timestamps in Morocco time (Africa/Casablanca).
+  const anchor = targetDate ? new Date(targetDate) : new Date();
+  const todayMorocco = moroccoDateStr(anchor);
+
+  const windowStart = moroccoWallClockToUTC(todayMorocco, windowStartHour);
+  if (!targetDate && windowStart.getTime() <= Date.now()) {
+    windowStart.setTime(windowStart.getTime() + 24 * 60 * 60 * 1000);
   }
-  const windowEnd = new Date(windowStart);
-  windowEnd.setHours(windowEndHour, 0, 0, 0);
-  if (windowEnd <= windowStart) {
-    windowEnd.setDate(windowEnd.getDate() + 1);
+
+  const windowEnd = moroccoWallClockToUTC(todayMorocco, windowEndHour);
+  if (windowEnd.getTime() <= windowStart.getTime()) {
+    windowEnd.setTime(windowEnd.getTime() + 24 * 60 * 60 * 1000);
   }
 
   const windowMs = windowEnd.getTime() - windowStart.getTime();
