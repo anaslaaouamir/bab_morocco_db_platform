@@ -263,7 +263,6 @@ export default function ScanProspectDialog({ open, onClose, onBack, onScanComple
       const batches = buildScheduledJobs({
         types:           form.types,
         limiteParType:   perType,
-        batchSize:       ss.batchSize,
         windowStartHour: ss.windowStartHour,
         windowEndHour:   ss.windowEndHour,
         targetDate,

@@ -65,9 +65,8 @@ export default function SettingsPage() {
 
   const exampleTypes = 3;
   const exampleLimiteParType = Math.floor(60 / exampleTypes);
-  const exampleBatches = Math.ceil(exampleLimiteParType / draft.batchSize) * exampleTypes;
-  const exampleInterval = exampleBatches > 1
-    ? Math.round((windowDurationH * 60) / (exampleBatches - 1))
+  const exampleInterval = exampleTypes > 1
+    ? Math.round((windowDurationH * 60) / (exampleTypes - 1))
     : windowDurationH * 60;
 
   function save() {
@@ -167,7 +166,7 @@ export default function SettingsPage() {
                 sx={{ borderRadius: 2, "& .MuiAlert-message": { fontSize: "0.8125rem" } }}
               >
                 {draft.enabled
-                  ? "Les scans seront fractionnés en lots et planifiés pendant la fenêtre horaire configurée. Le navigateur doit rester ouvert pendant la fenêtre pour que les scans s'exécutent."
+                  ? "Les scans seront planifiés pendant la fenêtre horaire configurée — un lot par type de partenaire sélectionné, répartis uniformément dans la fenêtre."
                   : "Lorsque désactivé, les scans s'exécutent immédiatement (comportement par défaut)."}
               </Alert>
 
@@ -219,28 +218,15 @@ export default function SettingsPage() {
                 />
               </Box>
 
-              {/* ── Batch size ───────────────────────────────────── */}
+              {/* ── Info note ──────────────────────────────────── */}
               <Box sx={{ opacity: draft.enabled ? 1 : 0.4, pointerEvents: draft.enabled ? "auto" : "none" }}>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                  <Typography variant="bodyMedium" sx={{ fontWeight: 600 }}>Taille des lots</Typography>
-                  <Chip label={`${draft.batchSize} prospects / lot`} size="small" color="secondary" variant="outlined" />
-                </Box>
-                <Slider
-                  value={draft.batchSize}
-                  min={5} max={50} step={5}
-                  color="secondary"
-                  valueLabelDisplay="auto"
-                  marks={[
-                    { value: 5,  label: "5"  },
-                    { value: 20, label: "20" },
-                    { value: 50, label: "50" },
-                  ]}
-                  onChange={(_, v) => setDraft((d) => ({ ...d, batchSize: v as number }))}
-                  sx={{ "& .MuiSlider-markLabel": { fontSize: "0.625rem" } }}
-                />
-                <Typography variant="bodySmall" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Nombre maximum de prospects par appel API. Plus petit = moins de charge serveur.
-                </Typography>
+                <Alert
+                  severity="info"
+                  icon={<InfoOutlinedIcon fontSize="small" />}
+                  sx={{ borderRadius: 2, "& .MuiAlert-message": { fontSize: "0.8125rem" } }}
+                >
+                  Google Maps retourne au maximum ~60 résultats par type de partenaire. La limite est répartie entre les types sélectionnés (ex : 90 prospects / 3 types = 30 par type).
+                </Alert>
               </Box>
 
               {/* ── Preview ──────────────────────────────────────── */}
@@ -255,7 +241,7 @@ export default function SettingsPage() {
                   </Typography>
                   <Typography variant="bodySmall" color="text.secondary">
                     Fenêtre : {fmtHour(draft.windowStartHour)} → {fmtHour(draft.windowEndHour)} ({windowDurationH}h)
-                    · {exampleBatches} lots de {draft.batchSize} max
+                    · {exampleTypes} lots ({exampleLimiteParType} prospects / type)
                     · 1 lot toutes les ~{exampleInterval} min
                   </Typography>
                 </Alert>

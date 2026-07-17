@@ -8,7 +8,6 @@ export interface ScheduledScanSettings {
   enabled: boolean;
   windowStartHour: number; // 0-23, default 1  (01:00)
   windowEndHour: number;   // 0-23, default 5  (05:00)
-  batchSize: number;       // prospects per batch, default 20
 }
 
 export interface AppSettings {
@@ -22,7 +21,6 @@ const DEFAULTS: AppSettings = {
     enabled: false,
     windowStartHour: 1,
     windowEndHour: 5,
-    batchSize: 20,
   },
 };
 
@@ -106,23 +104,17 @@ export interface ScheduledScanBatch {
 export function buildScheduledJobs(params: {
   types: string[];
   limiteParType: number;
-  batchSize: number;
   windowStartHour: number;
   windowEndHour: number;
   targetDate?: Date; // anchor to this specific day instead of "next occurrence"
 }): ScheduledScanBatch[] {
-  const { types, limiteParType, batchSize, windowStartHour, windowEndHour, targetDate } = params;
+  const { types, limiteParType, windowStartHour, windowEndHour, targetDate } = params;
 
-  // Build flat list: for each type, ceil(limiteParType / batchSize) batches
-  const batches: { typePartenaire: string; limite: number }[] = [];
-  for (const type of types) {
-    const nbBatches = Math.max(1, Math.ceil(limiteParType / batchSize));
-    for (let b = 0; b < nbBatches; b++) {
-      const isLast = b === nbBatches - 1;
-      const effectiveLimite = isLast ? limiteParType - b * batchSize : batchSize;
-      batches.push({ typePartenaire: type, limite: Math.max(1, effectiveLimite) });
-    }
-  }
+  // One batch per type, each gets limiteParType
+  const batches: { typePartenaire: string; limite: number }[] = types.map((type) => ({
+    typePartenaire: type,
+    limite: limiteParType,
+  }));
 
   // Build window timestamps in Morocco time (Africa/Casablanca).
   const anchor = targetDate ? new Date(targetDate) : new Date();
