@@ -38,9 +38,8 @@ import {
   scoreColor,
   PARTNER_TYPE_LABELS,
   STAGE_LABELS,
-  LANGUAGE_FLAGS,
 } from "@/types/prospect";
-import { prospectsApi, negotiationApi, contractsApi, ApiError } from "@/lib/api";
+import { prospectsApi, negotiationApi, contractsApi, outreachApi, ApiError } from "@/lib/api";
 import type { RawWaitingReplyItem, RawContractWaitingDecisionItem } from "@/lib/api";
 
 // ─── Static config ────────────────────────────────────────────────────────────
@@ -59,6 +58,21 @@ const FUNNEL_COLORS: Record<string, string> = {
   closing:        "#66BB6A",
   activation_ota: "#2E7D32",
 };
+
+const COUNTRY_FLAGS: Record<string, string> = {
+  "Maroc": "🇲🇦",
+  "France": "🇫🇷",
+  "Royaume-Uni": "🇬🇧",
+  "Émirats Arabes Unis": "🇦🇪",
+  "Espagne": "🇪🇸",
+  "Allemagne": "🇩🇪",
+  "Arabie Saoudite": "🇸🇦",
+  "Qatar": "🇶🇦",
+};
+
+function countryFlag(pays: string): string {
+  return COUNTRY_FLAGS[pays] ?? "🌍";
+}
 
 // ─── Helper components ────────────────────────────────────────────────────────
 
@@ -181,6 +195,7 @@ export default function DashboardPage() {
   const [prospects, setProspects]     = useState<Prospect[]>([]);
   const [waitingReply, setWaitingReply] = useState<RawWaitingReplyItem[]>([]);
   const [contractsWaiting, setContractsWaiting] = useState<RawContractWaitingDecisionItem[]>([]);
+  const [outreachSentCount, setOutreachSentCount] = useState(0);
   const [loading, setLoading]         = useState(true);
   const [fetchError, setFetchError]   = useState<string | null>(null);
 
@@ -202,6 +217,7 @@ export default function DashboardPage() {
     // Non-fatal: a failure here shouldn't block the rest of the dashboard.
     negotiationApi.waitingReply().then(setWaitingReply).catch(() => setWaitingReply([]));
     contractsApi.waitingDecision().then(setContractsWaiting).catch(() => setContractsWaiting([]));
+    outreachApi.sentCount().then((r) => setOutreachSentCount(r.sent_count)).catch(() => setOutreachSentCount(0));
   }
 
   useEffect(() => { fetchProspects(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -244,9 +260,10 @@ export default function DashboardPage() {
   );
 
   const marketData = useMemo(() => [
-    { label: "Maroc",  color: "#1B6CA8", count: prospects.filter((p) => p.pays === "Maroc").length },
-    { label: "France", color: "#B5451B", count: prospects.filter((p) => p.pays === "France").length },
-    { label: "EAU",    color: "#2E7D32", count: prospects.filter((p) => p.pays === "Émirats Arabes Unis").length },
+    { label: "Maroc",       color: "#1B6CA8", count: prospects.filter((p) => p.pays === "Maroc").length },
+    { label: "France",      color: "#B5451B", count: prospects.filter((p) => p.pays === "France").length },
+    { label: "Royaume-Uni", color: "#1565C0", count: prospects.filter((p) => p.pays === "Royaume-Uni").length },
+    { label: "EAU",         color: "#2E7D32", count: prospects.filter((p) => p.pays === "Émirats Arabes Unis").length },
     {
       label: "Golfe", color: "#AB47BC",
       count: prospects.filter(
@@ -839,7 +856,7 @@ export default function DashboardPage() {
                               {p.ville}
                             </Typography>
                             <Typography component="span" sx={{ fontSize: "0.75rem" }}>
-                              {LANGUAGE_FLAGS[p.langue]}
+                              {countryFlag(p.pays)}
                             </Typography>
                           </Box>
                         </Box>
@@ -980,7 +997,7 @@ export default function DashboardPage() {
                   label={
                     <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                       <Typography component="span" sx={{ fontWeight: 800, fontSize: "0.8125rem", lineHeight: 1 }}>
-                        {outreachProspects.filter((p) => !!p.dateProchainContact).length}
+                        {outreachSentCount}
                       </Typography>
                       <Typography component="span" sx={{ fontSize: "0.6875rem", opacity: 0.85 }}>
                         email envoyé
@@ -1035,7 +1052,7 @@ export default function DashboardPage() {
                             </Typography>
                             <Typography variant="bodySmall" color="text.disabled" sx={{ fontSize: "0.5625rem" }}>·</Typography>
                             <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
-                              {LANGUAGE_FLAGS[p.langue]} {p.ville}
+                              {countryFlag(p.pays)} {p.ville}
                             </Typography>
                           </Box>
                         </Box>

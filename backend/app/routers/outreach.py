@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
@@ -43,6 +44,19 @@ async def _get_prospect_for_email(email_id: uuid.UUID, user: User, db: AsyncSess
     if user.role == "commercial" and prospect.assigned_to != user.id:
         raise HTTPException(status_code=403, detail="Vous n'avez pas accès à ce prospect.")
     return prospect
+
+
+@router.get("/sent-count")
+async def outreach_sent_count(
+    db: AsyncSession = Depends(get_session),
+    _user: User = Depends(get_current_user),
+):
+    """Count of distinct prospects that have at least one sent/opened email."""
+    result = await db.execute(
+        select(func.count(func.distinct(OutreachEmail.prospect_id)))
+        .where(OutreachEmail.statut.in_(["sent", "opened"]))
+    )
+    return {"sent_count": result.scalar_one()}
 
 
 @router.get("/queue", response_model=OutreachQueueResponse)
