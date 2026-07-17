@@ -53,7 +53,7 @@ async def outreach_sent_count(
 ):
     """Count of distinct prospects still in 'outreach' stage that have at least one sent/opened email."""
     result = await db.execute(
-        select(func.count(func.distinct(OutreachEmail.prospect_id)))
+        select(func.count(OutreachEmail.id))
         .join(Prospect, OutreachEmail.prospect_id == Prospect.id)
         .where(OutreachEmail.statut.in_(["sent", "opened"]))
         .where(Prospect.stage == "outreach")
