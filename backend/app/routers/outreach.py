@@ -51,10 +51,12 @@ async def outreach_sent_count(
     db: AsyncSession = Depends(get_session),
     _user: User = Depends(get_current_user),
 ):
-    """Count of distinct prospects that have at least one sent/opened email."""
+    """Count of distinct prospects still in 'outreach' stage that have at least one sent/opened email."""
     result = await db.execute(
         select(func.count(func.distinct(OutreachEmail.prospect_id)))
+        .join(Prospect, OutreachEmail.prospect_id == Prospect.id)
         .where(OutreachEmail.statut.in_(["sent", "opened"]))
+        .where(Prospect.stage == "outreach")
     )
     return {"sent_count": result.scalar_one()}
 
