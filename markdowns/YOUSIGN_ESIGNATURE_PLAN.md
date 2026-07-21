@@ -39,7 +39,7 @@ feat(contract): add Yousign configuration settings
 
 ## Section 2 — Yousign Client Service
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Create `backend/app/services/yousign_client.py` — a single service file that talks to the Yousign v3 REST API. It does 5 things in one call:
 
