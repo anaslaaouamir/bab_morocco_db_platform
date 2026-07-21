@@ -9,12 +9,14 @@ Business rules enforced (CLAUDE.md §9 / system_prompt_v2.md):
 """
 
 import base64
+import io
 import json
 import logging
 import uuid
 from datetime import datetime
 from typing import Optional
 
+from pypdf import PdfReader
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -245,6 +247,7 @@ class ContractService:
             language=prospect.langue,
             commission=contract.commission,
             clauses=clauses,
+            signing_method="manual" if isinstance(self._yousign, MockYousignClient) else "yousign",
         )
 
         contract.clauses_json = json.dumps(clauses, ensure_ascii=False)
@@ -280,6 +283,11 @@ class ContractService:
             if not contract.partner_email:
                 raise ValueError("Partner email is required to send via Yousign")
 
+            # The signature block is the PDF's last page (see pdf_generator.py's
+            # PageBreak before "SIGNATURES") — Yousign fields need that page
+            # number explicitly, it doesn't accept a "last page" sentinel.
+            last_page = len(PdfReader(io.BytesIO(contract.pdf_bytes)).pages)
+
             result = await self._yousign.create_and_send(
                 pdf_bytes=contract.pdf_bytes,
                 filename=filename,
@@ -290,6 +298,7 @@ class ContractService:
                 partner_name=contract.partner_name,
                 partner_email=contract.partner_email,
                 partner_language=contract.language,
+                page=last_page,
             )
             contract.yousign_signature_request_id = result.signature_request_id
             contract.yousign_document_id = result.document_id

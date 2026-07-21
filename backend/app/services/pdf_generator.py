@@ -145,6 +145,25 @@ _CLAUSE_ORDER = [
     "rgpd_clause", "juridiction", "post_signature_note",
 ]
 
+# Signature-block strings that differ only for the Yousign flow (no blank line
+# to hand-sign — Yousign draws its own signature box over this area of the
+# page; see yousign_client.py's `fields` coordinates, which target this block).
+_SIG_LINE_YOUSIGN: dict[str, str] = {
+    "fr": "[ Zone de signature électronique Yousign ]",
+    "en": "[ Yousign electronic signature area ]",
+    "es": "[ Zona de firma electrónica Yousign ]",
+    "de": "[ Yousign — Bereich für elektronische Unterschrift ]",
+    "ar": "[ منطقة التوقيع الإلكتروني عبر Yousign ]",
+}
+_FOOTER_YOUSIGN: dict[str, str] = {
+    "fr": "Ce document sera signé électroniquement via Yousign, conforme au règlement eIDAS — babmorocco.com",
+    "en": "This document will be signed electronically via Yousign, eIDAS-compliant — babmorocco.com",
+    "es": "Este documento se firmará electrónicamente a través de Yousign, conforme al reglamento eIDAS — babmorocco.com",
+    "de": "Dieses Dokument wird elektronisch über Yousign signiert, eIDAS-konform — babmorocco.com",
+    "ar": "سيتم توقيع هذه الوثيقة إلكترونيًا عبر Yousign، وفقًا للائحة eIDAS — babmorocco.com",
+}
+_FOOTER_MANUAL = "Signé électroniquement via YouSign (certifié eIDAS) — babmorocco.com"
+
 
 def _get_headers(language: str) -> dict[str, str]:
     return _SECTION_HEADERS.get(language, _SECTION_HEADERS["fr"])
@@ -270,6 +289,7 @@ def generate_contract_pdf(
     language: str,
     commission: float,
     clauses: dict,
+    signing_method: str = "manual",
 ) -> bytes:
     """
     Generate a professional Bab Morocco partnership contract PDF.
@@ -281,6 +301,9 @@ def generate_contract_pdf(
         language: Two-letter language code (fr/en/es/de/ar).
         commission: Agreed commission rate as float.
         clauses: Dict with all 9 clause keys (from contract_generator).
+        signing_method: "manual" (blank signature lines, current behaviour) or
+            "yousign" (signature block reflects e-signature placement — no blank
+            line to hand-sign, since Yousign draws its own signature box there).
 
     Returns:
         PDF as bytes.
@@ -369,14 +392,15 @@ def generate_contract_pdf(
     story.append(Paragraph(headers["signatures"], styles["signature_header"]))
     story.append(HRFlowable(width="100%", thickness=1, color=BAB_ORANGE, spaceAfter=20))
 
+    sig_line_text = _SIG_LINE_YOUSIGN.get(lang, _SIG_LINE_YOUSIGN["fr"]) if signing_method == "yousign" else headers["sig_line"]
     sig_data = [
         [
             Paragraph(headers["sig_bab"], styles["sig_label"]),
             Paragraph(headers["sig_partner"], styles["sig_label"]),
         ],
         [
-            Paragraph(headers["sig_line"], styles["sig_line"]),
-            Paragraph(headers["sig_line"], styles["sig_line"]),
+            Paragraph(sig_line_text, styles["sig_line"]),
+            Paragraph(sig_line_text, styles["sig_line"]),
         ],
         [
             Paragraph(f"{headers['sig_name']}", styles["sig_note"]),
@@ -397,10 +421,8 @@ def generate_contract_pdf(
     story.append(sig_table)
 
     story.append(Spacer(1, 1 * cm))
-    story.append(Paragraph(
-        "Signé électroniquement via YouSign (certifié eIDAS) — babmorocco.com",
-        styles["sig_note"],
-    ))
+    footer_text = _FOOTER_YOUSIGN.get(lang, _FOOTER_YOUSIGN["fr"]) if signing_method == "yousign" else _FOOTER_MANUAL
+    story.append(Paragraph(footer_text, styles["sig_note"]))
 
     doc.build(story, onFirstPage=_page_header_footer, onLaterPages=_page_header_footer)
     return buffer.getvalue()

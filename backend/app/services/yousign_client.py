@@ -34,8 +34,15 @@ class YousignClientProtocol(Protocol):
         partner_name: str,
         partner_email: str,
         partner_language: str,
+        page: int,
     ) -> YousignResult:
-        """Upload the PDF, add both signers (ordered), activate the request."""
+        """Upload the PDF, add both signers (ordered), activate the request.
+
+        `page` is the 1-indexed page number of the PDF's signature block
+        (its last page — see pdf_generator.py's PageBreak before the
+        signature section), needed because Yousign fields require a
+        positive page number rather than a "last page" sentinel.
+        """
         ...
 
     async def download_signed_pdf(self, signature_request_id: str, document_id: str) -> bytes:
@@ -56,6 +63,7 @@ class MockYousignClient:
         partner_name: str,
         partner_email: str,
         partner_language: str,
+        page: int,
     ) -> YousignResult:
         result = YousignResult(
             signature_request_id=f"mock-sr-{uuid.uuid4()}",
@@ -64,11 +72,12 @@ class MockYousignClient:
             signer_partner_id=f"mock-signer-{uuid.uuid4()}",
         )
         logger.info(
-            "[MOCK YOUSIGN] Signature request created → %s | doc=%s (%d bytes) | "
+            "[MOCK YOUSIGN] Signature request created → %s | doc=%s (%d bytes, page %d) | "
             "signer1=%s <%s> | signer2=%s <%s>",
             result.signature_request_id,
             filename,
             len(pdf_bytes),
+            page,
             f"{bab_first_name} {bab_last_name}",
             bab_email,
             partner_name,
@@ -102,6 +111,7 @@ class RealYousignClient:
         partner_name: str,
         partner_email: str,
         partner_language: str,
+        page: int,
     ) -> YousignResult:
         async with httpx.AsyncClient(base_url=self._base_url, headers=self._headers, timeout=30.0) as client:
             # Step 1 — create the signature request (ordered: Bab Morocco signs first)
@@ -138,15 +148,21 @@ class RealYousignClient:
                     },
                     "signature_level": "electronic_signature",
                     "signature_authentication_mode": "no_otp",
+                    # Field geometry targets the two-column signature block rendered
+                    # by pdf_generator.py (left = Bab Morocco, right = Partner), on
+                    # the PDF's last page (the PageBreak right before "SIGNATURES").
+                    # width/height must satisfy Yousign's enforced 2.3:1 ratio.
+                    # Coordinates are an initial estimate — verify visually against
+                    # a real sandbox document and adjust (see Section 7 of the plan).
                     "fields": [
                         {
                             "document_id": document_id,
                             "type": "signature",
-                            "page": -1,
-                            "x": 70,
-                            "y": 600,
-                            "width": 180,
-                            "height": 60,
+                            "page": page,
+                            "x": 90,
+                            "y": 650,
+                            "width": 170,
+                            "height": 74,
                         }
                     ],
                 },
@@ -170,11 +186,11 @@ class RealYousignClient:
                         {
                             "document_id": document_id,
                             "type": "signature",
-                            "page": -1,
-                            "x": 370,
-                            "y": 600,
-                            "width": 180,
-                            "height": 60,
+                            "page": page,
+                            "x": 320,
+                            "y": 650,
+                            "width": 170,
+                            "height": 74,
                         }
                     ],
                 },
