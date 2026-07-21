@@ -23,7 +23,7 @@ import TokenRoundedIcon from "@mui/icons-material/TokenRounded";
 import SyncAltRoundedIcon from "@mui/icons-material/SyncAltRounded";
 import { alpha } from "@mui/material/styles";
 
-import { apiSettingsApi, type ApiUsageResponse } from "@/lib/api";
+import { apiSettingsApi, type ApiUsageResponse, type ApiUsageByModel } from "@/lib/api";
 
 const MONTHLY_LIMIT_KEY = "monthly_token_limit";
 
@@ -279,6 +279,7 @@ export default function ApiUsagePanel() {
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 2, mb: 2.5 }}>
             {providerRows.map(([provider, stats]) => {
               const provColor = PROVIDER_COLORS[provider] || "var(--mui-palette-text-primary)";
+              const models: ApiUsageByModel[] = data?.by_model?.[provider] || [];
               return (
                 <Paper
                   key={provider}
@@ -287,9 +288,6 @@ export default function ApiUsagePanel() {
                     px: 2.5,
                     py: 2,
                     borderRadius: 3,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 2,
                     borderLeft: 4,
                     borderLeftColor: provColor,
                   }}
@@ -313,6 +311,36 @@ export default function ApiUsagePanel() {
                       </Typography>
                     </Box>
                   </Box>
+
+                  {models.length > 0 && (
+                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: 1, borderColor: "divider" }}>
+                      {models
+                        .sort((a, b) => b.total_tokens - a.total_tokens)
+                        .map((m) => (
+                        <Box
+                          key={m.model}
+                          sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            py: 0.5,
+                          }}
+                        >
+                          <Typography variant="bodySmall" color="text.secondary" sx={{ fontWeight: 500 }}>
+                            {m.model}
+                          </Typography>
+                          <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5 }}>
+                            <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
+                              {fmtNum(m.total_tokens)}
+                            </Typography>
+                            <Typography variant="bodySmall" color="text.disabled" sx={{ fontSize: "0.65rem" }}>
+                              ({m.calls})
+                            </Typography>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
                 </Paper>
               );
             })}

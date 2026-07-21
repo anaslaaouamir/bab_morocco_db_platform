@@ -324,7 +324,7 @@ class ClaudeContractGenerator:
         prompt = _build_contract_prompt(prospect, negotiation_summary)
         message = await tracked_claude_call(
             self._client,
-            model="claude-sonnet-4-6",
+            model=settings.DEFAULT_CLAUDE_MODEL,
             max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
             generator="contract",
@@ -344,7 +344,7 @@ class OpenAIContractGenerator:
         prompt = _build_contract_prompt(prospect, negotiation_summary)
         response = await tracked_openai_call(
             self._client,
-            model="gpt-4o",
+            model=settings.DEFAULT_OPENAI_MODEL,
             max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
             generator="contract",

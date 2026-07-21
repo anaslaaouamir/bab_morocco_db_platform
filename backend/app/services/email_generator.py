@@ -159,7 +159,7 @@ class ClaudeEmailGenerator:
         prompt = _build_email_prompt(prospect, step, variant, prior_emails)
         message = await tracked_claude_call(
             self._client,
-            model="claude-sonnet-4-6",
+            model=settings.DEFAULT_CLAUDE_MODEL,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
             generator="email",
@@ -177,7 +177,7 @@ class OpenAIEmailGenerator:
         prompt = _build_email_prompt(prospect, step, variant, prior_emails)
         response = await tracked_openai_call(
             self._client,
-            model="gpt-4o",
+            model=settings.DEFAULT_OPENAI_MODEL,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
             generator="email",

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from sqlalchemy import case, cast, func, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings as app_settings
+from app.config import MODEL_OPTIONS, settings as app_settings
 from app.database import get_session
 from app.dependencies.auth import require_admin
 from app.models.api_usage import ApiUsageLog
@@ -14,7 +14,7 @@ from app.models.user import User
 router = APIRouter(prefix="/api-settings", tags=["api-settings"])
 
 # Settings manageable via GET/PUT below (allow-list — prevents arbitrary key writes)
-MANAGEABLE_SETTINGS = {"monthly_token_limit", "default_ai_provider"}
+MANAGEABLE_SETTINGS = {"monthly_token_limit", "default_ai_provider", "default_claude_model", "default_openai_model"}
 
 # API keys manageable via the UI (allow-list)
 MANAGEABLE_KEYS = {
@@ -150,6 +150,25 @@ async def get_usage(
         for p in by_provider_rows.all()
     }
 
+    # By model (nested under provider)
+    by_model_rows = await db.execute(
+        select(
+            ApiUsageLog.provider,
+            ApiUsageLog.model,
+            func.count(ApiUsageLog.id).label("calls"),
+            func.coalesce(func.sum(ApiUsageLog.total_tokens), 0).label("total_tokens"),
+        )
+        .where(ApiUsageLog.timestamp >= start, ApiUsageLog.timestamp <= end)
+        .group_by(ApiUsageLog.provider, ApiUsageLog.model)
+    )
+    by_model: dict[str, list] = {}
+    for m in by_model_rows.all():
+        by_model.setdefault(m.provider, []).append({
+            "model": m.model,
+            "calls": m.calls,
+            "total_tokens": m.total_tokens,
+        })
+
     return {
         "period": period,
         "period_start": start.isoformat(),
@@ -161,8 +180,14 @@ async def get_usage(
         "failed_calls": row.failed_calls or 0,
         "by_generator": by_generator,
         "by_provider": by_provider,
+        "by_model": by_model,
         "daily_breakdown": daily_breakdown,
     }
+
+
+@router.get("/models")
+async def get_models(_admin: User = Depends(require_admin)):
+    return MODEL_OPTIONS
 
 
 @router.get("/settings")
@@ -194,6 +219,10 @@ async def update_settings(
             db.add(SystemSetting(key=key, value=str_value, updated_at=datetime.utcnow()))
         if key == "default_ai_provider" and str_value in ("claude", "openai"):
             app_settings.DEFAULT_AI_PROVIDER = str_value
+        if key == "default_claude_model":
+            app_settings.DEFAULT_CLAUDE_MODEL = str_value
+        if key == "default_openai_model":
+            app_settings.DEFAULT_OPENAI_MODEL = str_value
     await db.commit()
 
     rows = (await db.execute(select(SystemSetting))).scalars().all()

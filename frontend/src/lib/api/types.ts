@@ -256,6 +256,19 @@ export interface ApiUsageByProvider {
   total_tokens: number;
 }
 
+export interface ApiUsageByModel {
+  model: string;
+  calls: number;
+  total_tokens: number;
+}
+
+export interface ModelOption {
+  id: string;
+  label: string;
+  tier: "budget" | "standard" | "premium";
+  contract_warning?: boolean;
+}
+
 export interface ApiUsageResponse {
   period: string;
   period_start: string;
@@ -267,6 +280,7 @@ export interface ApiUsageResponse {
   failed_calls: number;
   by_generator: Record<string, ApiUsageByGenerator>;
   by_provider: Record<string, ApiUsageByProvider>;
+  by_model: Record<string, ApiUsageByModel[]>;
   daily_breakdown: ApiUsageDailyEntry[];
 }
 

@@ -55,6 +55,10 @@ async def load_db_api_keys() -> None:
                 setattr(settings, attr, row.value)
             if row.key == "default_ai_provider" and row.value in ("claude", "openai"):
                 settings.DEFAULT_AI_PROVIDER = row.value
+            if row.key == "default_claude_model" and row.value:
+                settings.DEFAULT_CLAUDE_MODEL = row.value
+            if row.key == "default_openai_model" and row.value:
+                settings.DEFAULT_OPENAI_MODEL = row.value
 
 
 @app.on_event("startup")

@@ -243,7 +243,7 @@ class ClaudeNegotiationGenerator:
         prompt = _build_negotiation_analyze_prompt(prospect, message_corps, history)
         message = await tracked_claude_call(
             self._client,
-            model="claude-sonnet-4-6",
+            model=settings.DEFAULT_CLAUDE_MODEL,
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
             generator="negotiation_analyze",
@@ -256,7 +256,7 @@ class ClaudeNegotiationGenerator:
         prompt = _build_negotiation_scenarios_prompt(prospect, analysis, history)
         message = await tracked_claude_call(
             self._client,
-            model="claude-sonnet-4-6",
+            model=settings.DEFAULT_CLAUDE_MODEL,
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
             generator="negotiation_scenarios",
@@ -281,7 +281,7 @@ class OpenAINegotiationGenerator:
         prompt = _build_negotiation_analyze_prompt(prospect, message_corps, history)
         response = await tracked_openai_call(
             self._client,
-            model="gpt-4o",
+            model=settings.DEFAULT_OPENAI_MODEL,
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
             generator="negotiation_analyze",
@@ -294,7 +294,7 @@ class OpenAINegotiationGenerator:
         prompt = _build_negotiation_scenarios_prompt(prospect, analysis, history)
         response = await tracked_openai_call(
             self._client,
-            model="gpt-4o",
+            model=settings.DEFAULT_OPENAI_MODEL,
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
             generator="negotiation_scenarios",

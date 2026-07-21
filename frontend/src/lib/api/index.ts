@@ -20,8 +20,10 @@ export type {
   ContractStatus,
   ApiUsageResponse,
   ApiUsageByProvider,
+  ApiUsageByModel,
   SystemSettingsMap,
   ApiKeyInfo,
+  ModelOption,
 } from "./types";
 
 import { apiFetch, apiFetchBlob } from "./base";
@@ -46,6 +48,7 @@ import type {
   ApiUsageByProvider,
   SystemSettingsMap,
   ApiKeyInfo,
+  ModelOption,
 } from "./types";
 import type { Prospect, PipelineStage, PartnerType, OutreachLanguage } from "@/types/prospect";
 
@@ -391,6 +394,9 @@ export const negotiationApi = {
 export const apiSettingsApi = {
   usage: (period: "today" | "week" | "month" = "month"): Promise<ApiUsageResponse> =>
     apiFetch<ApiUsageResponse>(`/api-settings/usage?period=${period}`),
+
+  getModels: (): Promise<Record<string, ModelOption[]>> =>
+    apiFetch<Record<string, ModelOption[]>>("/api-settings/models"),
 
   getSettings: (): Promise<SystemSettingsMap> =>
     apiFetch<SystemSettingsMap>("/api-settings/settings"),
