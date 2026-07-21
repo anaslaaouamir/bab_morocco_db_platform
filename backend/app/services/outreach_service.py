@@ -178,8 +178,6 @@ class OutreachService:
         last_sent = max(sent, key=lambda e: e.date_envoi_reel or datetime.min)
         steps_order = ["j0", "j3", "j7", "j30"]
         current_idx = steps_order.index(last_sent.sequence_step)
-        if last_sent.statut in ("opened", "clicked"):
-            return {"next_step": None, "reason": "Prospect engaged — no follow-up needed", "emails": emails}
         if current_idx < len(steps_order) - 1:
             candidate = steps_order[current_idx + 1]
             j0_emails = [e for e in sent if e.sequence_step == "j0"]
