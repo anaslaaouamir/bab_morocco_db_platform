@@ -102,6 +102,21 @@ async function downloadContractReplyPdf(
   }
 }
 
+async function downloadContractSignedPdf(
+  contract: RawContract,
+  showSnackbar: ReturnType<typeof useSnackbar>["showSnackbar"],
+) {
+  try {
+    const blob = await contractsApi.downloadSignedPdf(contract.id);
+    downloadBlob(blob, `contrat_signe_${contract.partner_name.replace(/\s+/g, "_")}.pdf`);
+  } catch (err) {
+    showSnackbar({
+      message: err instanceof ApiError ? err.detail : "Erreur lors du téléchargement du PDF signé.",
+      severity: "error",
+    });
+  }
+}
+
 function statusToStep(status: RawContract["status"]): number {
   switch (status) {
     case "draft":           return 0;
@@ -590,6 +605,64 @@ function GeneratedPanel({
   );
 }
 
+function YousignProgressPanel({ contract, prospect }: { contract: RawContract; prospect: Prospect }) {
+  const theme = useTheme();
+  const { showSnackbar } = useSnackbar();
+
+  const progressLabel = contract.yousign_signer_bab_done
+    ? `Vous avez signé — en attente de la signature de ${prospect.nom}`
+    : "En attente de votre signature";
+
+  const sentDate = contract.sent_at
+    ? new Date(contract.sent_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+    : "—";
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <Box sx={{
+        display: "flex", alignItems: "center", gap: 1.5, p: 1.5, borderRadius: 2,
+        bgcolor: alpha(theme.palette.warning.main, 0.08),
+        border: `1px solid ${alpha(theme.palette.warning.main, 0.25)}`,
+      }}>
+        <HourglassTopRoundedIcon sx={{ color: "warning.main", fontSize: 26, flexShrink: 0 }} />
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="titleSmall" sx={{ fontWeight: 700, color: "warning.dark" }}>
+            {progressLabel}
+          </Typography>
+          <Typography variant="bodySmall" color="text.secondary">
+            Envoyé pour signature électronique via Yousign le {sentDate}
+          </Typography>
+        </Box>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<DownloadRoundedIcon />}
+          onClick={() => downloadContractPdf(contract, showSnackbar)}
+          sx={{ fontWeight: 600, textTransform: "none", flexShrink: 0, fontSize: "0.75rem" }}
+        >
+          PDF
+        </Button>
+      </Box>
+
+      <Divider />
+
+      <Box sx={{
+        display: "flex", flexDirection: "column", alignItems: "center",
+        gap: 1.5, py: 3, color: "text.disabled",
+      }}>
+        <MarkEmailReadRoundedIcon sx={{ fontSize: 40, opacity: 0.4 }} />
+        <Typography variant="titleSmall" color="text.secondary" sx={{ fontWeight: 600 }}>
+          Signature 100% automatisée
+        </Typography>
+        <Typography variant="bodySmall" color="text.disabled" sx={{ textAlign: "center", maxWidth: 340 }}>
+          Dès que {prospect.nom} aura signé électroniquement, le contrat sera automatiquement
+          marqué comme signé — aucune action manuelle n&apos;est nécessaire.
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
 function SentPanel({
   contract, prospect, onMarkSigned, onMarkDeclined, onSimulateSigned, onSimulateReply, actioning, simulatingReply,
 }: {
@@ -787,6 +860,7 @@ function SentPanel({
 
 function ResultPanel({ contract }: { contract: RawContract }) {
   const theme = useTheme();
+  const { showSnackbar } = useSnackbar();
   const isSigned = contract.status === "signed";
   const color = isSigned ? theme.palette.success : theme.palette.error;
   const date = isSigned
@@ -817,12 +891,43 @@ function ResultPanel({ contract }: { contract: RawContract }) {
         </Box>
       </Box>
 
+      {isSigned && contract.has_signed_pdf && (
+        <Box sx={{
+          display: "flex", alignItems: "center", gap: 1.5, px: 1.5, py: 1.25, borderRadius: 2,
+          bgcolor: alpha(theme.palette.success.main, 0.07),
+          border: `1px solid ${alpha(theme.palette.success.main, 0.25)}`,
+        }}>
+          <PictureAsPdfRoundedIcon sx={{ color: "success.main", fontSize: 22, flexShrink: 0 }} />
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="bodySmall" sx={{ fontWeight: 700, color: "success.dark" }}>
+              Contrat signé — certifié eIDAS
+            </Typography>
+            <Typography variant="labelSmall" color="text.secondary">
+              Document officiel avec les deux signatures électroniques
+            </Typography>
+          </Box>
+          <Button
+            size="small"
+            variant="outlined"
+            color="success"
+            startIcon={<DownloadRoundedIcon />}
+            onClick={() => downloadContractSignedPdf(contract, showSnackbar)}
+            sx={{ fontWeight: 700, textTransform: "none", flexShrink: 0 }}
+          >
+            Télécharger
+          </Button>
+        </Box>
+      )}
+
       {isSigned && (
         <Alert severity="success" icon={<CloudDoneRoundedIcon />} sx={{ borderRadius: 2 }}>
           <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>Webhook OTA — Activation en cours</Typography>
           <Typography variant="bodySmall" sx={{ display: "block", mt: 0.25 }}>
             Le connecteur babmorocco.com sera déclenché automatiquement dans les 60 minutes
-            suivant la signature. (Phase 2 : activation instantanée via YouSign webhook)
+            suivant la signature.
+            {contract.signing_method === "yousign"
+              ? " Signature électronique certifiée via Yousign (eIDAS)."
+              : " (Phase 2 : activation instantanée via YouSign webhook)"}
           </Typography>
         </Alert>
       )}
@@ -1092,16 +1197,20 @@ export default function ContractGenerateDialog({
             />
           )}
           {contract.status === "sent_to_partner" && (
-            <SentPanel
-              contract={contract}
-              prospect={prospect}
-              onMarkSigned={() => setConfirmSign(true)}
-              onMarkDeclined={() => setConfirmDecline(true)}
-              onSimulateSigned={handleSimulateSigned}
-              onSimulateReply={handleSimulateReply}
-              actioning={actioning}
-              simulatingReply={simulatingReply}
-            />
+            contract.signing_method === "yousign" ? (
+              <YousignProgressPanel contract={contract} prospect={prospect} />
+            ) : (
+              <SentPanel
+                contract={contract}
+                prospect={prospect}
+                onMarkSigned={() => setConfirmSign(true)}
+                onMarkDeclined={() => setConfirmDecline(true)}
+                onSimulateSigned={handleSimulateSigned}
+                onSimulateReply={handleSimulateReply}
+                actioning={actioning}
+                simulatingReply={simulatingReply}
+              />
+            )
           )}
           {(contract.status === "signed" || contract.status === "declined") && (
             <ResultPanel contract={contract} />

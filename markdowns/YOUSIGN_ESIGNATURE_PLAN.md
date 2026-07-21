@@ -122,7 +122,7 @@ feat(contract): auto-sign/decline contracts via Yousign webhooks
 
 ## Section 5 — Frontend Updates
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Update the contract UI to reflect the Yousign signing flow.
 

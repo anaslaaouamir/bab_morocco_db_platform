@@ -334,6 +334,10 @@ export const contractsApi = {
   downloadReplyPdf: (contractId: string): Promise<Blob> =>
     apiFetchBlob(`/contracts/${contractId}/reply-pdf`),
 
+  /** Downloads the eIDAS-certified PDF signed by both parties via Yousign, if any. */
+  downloadSignedPdf: (contractId: string): Promise<Blob> =>
+    apiFetchBlob(`/contracts/${contractId}/signed-pdf`),
+
   send: (contractId: string): Promise<RawContract> =>
     apiFetch<RawContract>(`/contracts/${contractId}/send`, { method: "POST" }),
 

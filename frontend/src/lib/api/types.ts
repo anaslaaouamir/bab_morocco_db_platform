@@ -226,6 +226,10 @@ export interface RawContract {
   declined_at: string | null;
   created_at: string;
   updated_at: string;
+  signing_method: "manual" | "yousign";
+  yousign_signature_request_id: string | null;
+  yousign_signer_bab_done: boolean;
+  has_signed_pdf: boolean;
 }
 
 export interface RawContractListResponse {

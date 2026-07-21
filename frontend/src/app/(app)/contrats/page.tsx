@@ -30,6 +30,7 @@ import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import DoNotDisturbRoundedIcon from "@mui/icons-material/DoNotDisturbRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import InboxRoundedIcon from "@mui/icons-material/InboxRounded";
+import VerifiedUserRoundedIcon from "@mui/icons-material/VerifiedUserRounded";
 import Link from "next/link";
 
 import type { Prospect } from "@/types/prospect";
@@ -144,9 +145,13 @@ function ContractCard({
 
   // For sent_to_partner: show a clickable status chip instead of a button
   const sentStatusChip = contract.status === "sent_to_partner" ? (
-    contract.partner_reply
-      ? { label: "Réponse reçue", color: "success" as const }
-      : { label: "En attente de réponse", color: "warning" as const }
+    contract.signing_method === "yousign"
+      ? (contract.yousign_signer_bab_done
+          ? { label: "En attente signature partenaire", color: "warning" as const }
+          : { label: "En attente signature Bab Morocco", color: "warning" as const })
+      : contract.partner_reply
+        ? { label: "Réponse reçue", color: "success" as const }
+        : { label: "En attente de réponse", color: "warning" as const }
   ) : null;
 
   return (
@@ -195,6 +200,18 @@ function ContractCard({
                     sx={{ fontWeight: 700, fontSize: "0.6875rem" }}
                   />
                 </Tooltip>
+              )}
+              {contract.status !== "draft" && (
+                <Chip
+                  icon={contract.signing_method === "yousign"
+                    ? <VerifiedUserRoundedIcon sx={{ fontSize: "14px !important" }} />
+                    : undefined}
+                  label={contract.signing_method === "yousign" ? "Yousign" : "Manuel"}
+                  size="small"
+                  variant="outlined"
+                  color={contract.signing_method === "yousign" ? "primary" : "default"}
+                  sx={{ height: 20, fontWeight: 700, fontSize: "0.625rem", "& .MuiChip-label": { px: 0.75 } }}
+                />
               )}
             </Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
@@ -264,11 +281,17 @@ function ContractCard({
             <SendRoundedIcon sx={{ color: "warning.main", fontSize: 18, flexShrink: 0 }} />
             <Box>
               <Typography variant="labelSmall" sx={{ fontWeight: 700, color: "warning.main", display: "block" }}>
-                En attente de réponse
+                {contract.signing_method === "yousign"
+                  ? (contract.yousign_signer_bab_done
+                      ? "Vous avez signé — en attente du partenaire"
+                      : "En attente de votre signature")
+                  : "En attente de réponse"}
               </Typography>
               <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
-                {sentDate ? `Envoyé le ${sentDate}` : "Surveiller la boîte de réception"}
-                {prospect.emailContact && ` · ${prospect.emailContact}`}
+                {contract.signing_method === "yousign"
+                  ? (sentDate ? `Envoyé pour signature via Yousign le ${sentDate}` : "Signature électronique en cours")
+                  : (sentDate ? `Envoyé le ${sentDate}` : "Surveiller la boîte de réception")}
+                {contract.signing_method !== "yousign" && prospect.emailContact && ` · ${prospect.emailContact}`}
               </Typography>
             </Box>
           </Box>
