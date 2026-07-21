@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import re
@@ -22,6 +24,7 @@ from app.services.contract_service import ContractService
 from app.services.negotiation_generator import NegotiationGeneratorProtocol, get_negotiation_generator
 from app.services.negotiation_service import NegotiationService
 from app.services.notification_bus import notification_bus
+from app.services.yousign_client import YousignClientProtocol, get_yousign_client
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +59,13 @@ def _get_negotiation_service(
     return NegotiationService(generator=generator)
 
 
-def _get_contract_service() -> ContractService:
-    # submit_reply() (the only method this webhook calls) touches neither the
-    # clause generator nor the email sender, so no DI wiring is needed here.
-    return ContractService()
+def _get_contract_service(
+    yousign: Annotated[YousignClientProtocol, Depends(get_yousign_client)],
+) -> ContractService:
+    # submit_reply()/mark_signed()/mark_declined() don't need the clause
+    # generator or email sender — only the Yousign client, for downloading
+    # the signed PDF in _handle_yousign_event().
+    return ContractService(yousign=yousign)
 
 
 @router.post("/resend/inbound", status_code=status.HTTP_200_OK)
@@ -133,6 +139,176 @@ async def resend_inbound(
         logger.info("Resend inbound webhook: no handler yet for prefix '%s'", prefix)
 
     return {"status": "processed"}
+
+
+@router.post("/yousign", status_code=status.HTTP_200_OK)
+async def yousign_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    contract_svc: ContractService = Depends(_get_contract_service),
+):
+    """
+    Single entry point for all Yousign signature request events. Verifies the
+    HMAC-SHA256 signature, then dispatches by event_name. Never blocks on a
+    missing/unknown contract — Yousign retries on non-2xx, so unmatched events
+    are logged and acknowledged rather than erroring.
+    """
+    raw_body = await request.body()
+
+    signature_header = request.headers.get("x-yousign-signature-256", "")
+    expected = "sha256=" + hmac.new(
+        settings.YOUSIGN_WEBHOOK_SECRET.encode(), raw_body, hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(signature_header, expected):
+        logger.warning("Yousign webhook signature verification failed")
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    event = json.loads(raw_body.decode("utf-8"))
+    event_name = event.get("event_name")
+    data = event.get("data", {})
+    signature_request = data.get("signature_request", {})
+    signature_request_id = signature_request.get("id")
+
+    if not signature_request_id:
+        logger.warning("Yousign webhook: missing signature_request id in payload (event=%s)", event_name)
+        return {"status": "ignored", "reason": "missing signature_request id"}
+
+    contract = (
+        await db.execute(
+            select(Contract).where(Contract.yousign_signature_request_id == signature_request_id)
+        )
+    ).scalars().first()
+    if not contract:
+        logger.warning(
+            "Yousign webhook: no contract found for signature_request=%s (event=%s)",
+            signature_request_id, event_name,
+        )
+        return {"status": "ignored", "reason": "contract not found"}
+
+    prospect = await db.get(Prospect, contract.prospect_id)
+
+    if event_name == "signature_request.done":
+        await _handle_yousign_done(db, contract_svc, contract, prospect)
+    elif event_name == "signature_request.declined":
+        await _handle_yousign_declined(db, contract_svc, contract, prospect, signature_request)
+    elif event_name == "signer.done":
+        await _handle_yousign_signer_done(db, contract, prospect, data.get("signer", {}))
+    elif event_name == "signature_request.expired":
+        await _handle_yousign_expired(contract, prospect)
+    else:
+        logger.info("Yousign webhook: no handler for event_name '%s'", event_name)
+
+    return {"status": "processed"}
+
+
+async def _handle_yousign_done(
+    db: AsyncSession, contract_svc: ContractService, contract: Contract, prospect: Optional[Prospect]
+) -> None:
+    """Both signers completed — download the certified PDF and mark the contract signed."""
+    if not prospect:
+        logger.warning("Yousign webhook: prospect %s not found for contract %s", contract.prospect_id, contract.id)
+        return
+    if contract.status != "sent_to_partner":
+        logger.info(
+            "Yousign webhook: contract %s not in 'sent_to_partner' status (current: %s) — skipping",
+            contract.id, contract.status,
+        )
+        return
+
+    try:
+        signed_pdf = await contract_svc.fetch_yousign_signed_pdf(contract)
+        contract.signed_pdf_bytes = signed_pdf
+        await db.commit()
+    except Exception:
+        logger.exception(
+            "Yousign webhook: failed to download signed PDF for contract %s — "
+            "marking signed anyway, PDF can be retrieved later from Yousign",
+            contract.id,
+        )
+
+    await contract_svc.mark_signed(db, contract, prospect)
+    notification_bus.publish(
+        {
+            "type": "contract_signed",
+            "contract_id": str(contract.id),
+            "prospect_id": str(prospect.id),
+            "prospect_nom": prospect.nom,
+        },
+        prospect.assigned_to,
+    )
+
+
+async def _handle_yousign_declined(
+    db: AsyncSession,
+    contract_svc: ContractService,
+    contract: Contract,
+    prospect: Optional[Prospect],
+    signature_request: dict,
+) -> None:
+    """A signer declined — record the reason (if provided) and mark the contract declined."""
+    if not prospect:
+        logger.warning("Yousign webhook: prospect %s not found for contract %s", contract.prospect_id, contract.id)
+        return
+    if contract.status != "sent_to_partner":
+        logger.info(
+            "Yousign webhook: contract %s not in 'sent_to_partner' status (current: %s) — skipping",
+            contract.id, contract.status,
+        )
+        return
+
+    reason = signature_request.get("decline_reason") or signature_request.get("comment")
+    if reason:
+        contract.partner_reply = reason
+        contract.partner_replied_at = datetime.utcnow()
+        await db.commit()
+
+    await contract_svc.mark_declined(db, contract, prospect)
+    notification_bus.publish(
+        {
+            "type": "contract_declined",
+            "contract_id": str(contract.id),
+            "prospect_id": str(prospect.id),
+            "prospect_nom": prospect.nom,
+        },
+        prospect.assigned_to,
+    )
+
+
+async def _handle_yousign_signer_done(
+    db: AsyncSession, contract: Contract, prospect: Optional[Prospect], signer: dict
+) -> None:
+    """A single signer completed. If it's Bab Morocco (signer 1), flag it —
+    Yousign automatically emails the partner next since ordered_signers=True."""
+    signer_id = signer.get("id")
+    if signer_id and signer_id == contract.yousign_signer_bab_id and not contract.yousign_signer_bab_done:
+        contract.yousign_signer_bab_done = True
+        await db.commit()
+        if prospect:
+            notification_bus.publish(
+                {
+                    "type": "contract_bab_signed",
+                    "contract_id": str(contract.id),
+                    "prospect_id": str(prospect.id),
+                    "prospect_nom": prospect.nom,
+                },
+                prospect.assigned_to,
+            )
+
+
+async def _handle_yousign_expired(contract: Contract, prospect: Optional[Prospect]) -> None:
+    """Signing deadline passed without completion — notify only, no status change
+    (CLAUDE.md §9: leave the signed/declined decision to a human)."""
+    logger.info("Yousign webhook: signature_request expired for contract %s", contract.id)
+    if prospect:
+        notification_bus.publish(
+            {
+                "type": "contract_signature_expired",
+                "contract_id": str(contract.id),
+                "prospect_id": str(prospect.id),
+                "prospect_nom": prospect.nom,
+            },
+            prospect.assigned_to,
+        )
 
 
 async def _handle_email_opened(db: AsyncSession, email_id: str | None) -> None:

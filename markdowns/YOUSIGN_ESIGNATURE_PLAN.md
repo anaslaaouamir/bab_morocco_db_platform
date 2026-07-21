@@ -98,7 +98,7 @@ feat(contract): send contracts for e-signing via Yousign with Resend fallback
 
 ## Section 4 — Yousign Webhook
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Add a `POST /webhooks/yousign` endpoint in `backend/app/routers/webhooks.py` that Yousign calls when signing events happen. Handles:
 

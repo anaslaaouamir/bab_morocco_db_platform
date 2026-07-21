@@ -320,6 +320,12 @@ class ContractService:
         await db.refresh(contract)
         return contract
 
+    async def fetch_yousign_signed_pdf(self, contract: Contract) -> bytes:
+        """Download the eIDAS-certified PDF from Yousign once both parties have signed."""
+        return await self._yousign.download_signed_pdf(
+            contract.yousign_signature_request_id, contract.yousign_document_id
+        )
+
     # ── Mark signed ───────────────────────────────────────────────────────────
 
     async def mark_signed(self, db: AsyncSession, contract: Contract, prospect: Prospect) -> Contract:
