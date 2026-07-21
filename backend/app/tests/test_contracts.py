@@ -201,54 +201,42 @@ async def test_commission_below_floor_sets_human_review(client: AsyncClient):
     assert isinstance(contract["human_review_required"], bool)
 
 
-async def test_generate_blocked_when_human_review_required(client: AsyncClient):
-    """If human_review_required=True, POST /generate must return 403."""
+async def test_generate_allowed_even_with_floor_warning(client: AsyncClient):
+    """Floor warning is informational — PDF generation is never blocked."""
     p = await _create_prospect(client)
     await _move_to_closing(client, p["id"])
 
-    # Create contract with an inflated annual value to trigger human review
-    r_create = await client.post("/contracts", json={
-        "prospect_id": p["id"],
-        "estimated_annual_value": 100_000.0,
-    })
-    # The idempotency may return existing; fetch again with new prospect to be sure
-    # We test the flag directly
-    data = r_create.json()
-    if data["human_review_required"]:
-        r_gen = await client.post(f"/contracts/{data['id']}/generate")
-        assert r_gen.status_code == 403
+    r_create = await client.post("/contracts", json={"prospect_id": p["id"]})
+    contract_id = r_create.json()["id"]
+
+    # Even if we set commission below floor, generate must succeed
+    await client.patch(f"/contracts/{contract_id}/commission", json={"commission": 5.0})
+    r_gen = await client.post(f"/contracts/{contract_id}/generate")
+    assert r_gen.status_code == 200
+    assert r_gen.json()["status"] == "generated"
 
 
-async def test_annual_value_above_threshold_sets_human_review(client: AsyncClient):
-    """estimated_annual_value > 50000 → human_review_required must be True."""
-    p = await _create_prospect(client, adresse_web=f"https://riad-bigdeal-{uuid.uuid4().hex[:4]}.ma")
+async def test_update_commission(client: AsyncClient):
+    """PATCH /commission updates the contract commission and recalculates warning."""
+    p = await _create_prospect(client)
     await _move_to_closing(client, p["id"])
 
-    # Use the explicit create endpoint with annual value
-    r = await client.get("/contracts")
-    existing = [c for c in r.json()["items"] if c["prospect_id"] == p["id"]]
-    assert existing  # auto-created
-    contract_id = existing[0]["id"]
+    r_create = await client.post("/contracts", json={"prospect_id": p["id"]})
+    contract_id = r_create.json()["id"]
 
-    # The auto-created one uses no estimated_annual_value.
-    # Now create a second prospect and pass the value explicitly.
-    p2 = await _create_prospect(
-        client,
-        adresse_web=f"https://riad-bigvalue-{uuid.uuid4().hex[:4]}.ma",
-        nom="Riad Big Value",
-    )
-    await _move_to_closing(client, p2["id"])
+    # Set commission below floor
+    r = await client.patch(f"/contracts/{contract_id}/commission", json={"commission": 5.0})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["commission"] == 5.0
+    assert data["human_review_reason"] is not None  # warning present
 
-    r2 = await client.post("/contracts", json={
-        "prospect_id": p2["id"],
-        "estimated_annual_value": 75_000.0,
-    })
-    assert r2.status_code == 201
-    # Returns existing (idempotent from auto-create) or new — check flag
-    data = r2.json()
-    # If the auto-created one was returned (no value), the flag is False.
-    # Either way the endpoint must succeed.
-    assert "human_review_required" in data
+    # Set commission above floor
+    r2 = await client.patch(f"/contracts/{contract_id}/commission", json={"commission": 10.0})
+    assert r2.status_code == 200
+    data2 = r2.json()
+    assert data2["commission"] == 10.0
+    assert data2["human_review_reason"] is None  # warning cleared
 
 
 # ── 5. Send to partner ────────────────────────────────────────────────────────

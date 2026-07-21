@@ -21,6 +21,10 @@ from app.services.email_transport import EmailTransportProtocol, get_email_trans
 class GenerateRequest(BaseModel):
     clause_overrides: Optional[dict[str, str]] = None
 
+
+class UpdateCommissionRequest(BaseModel):
+    commission: float
+
 router = APIRouter(prefix="/contracts", tags=["contracts"])
 
 
@@ -122,7 +126,7 @@ async def create_contract(
             status_code=400,
             detail=f"Prospect must be in 'closing' or 'activation_ota' stage (current: {prospect.stage}).",
         )
-    contract = await svc.create_from_prospect(db, prospect, body.estimated_annual_value)
+    contract = await svc.create_from_prospect(db, prospect)
     return await svc.get_response(contract)
 
 
@@ -137,6 +141,23 @@ async def get_contract(
     return await svc.get_response(contract)
 
 
+@router.patch("/{contract_id}/commission", response_model=ContractResponse)
+async def update_commission(
+    contract_id: uuid.UUID,
+    body: UpdateCommissionRequest,
+    db: AsyncSession = Depends(get_session),
+    svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
+):
+    """Update the contract commission rate. User can set any value."""
+    contract, _ = await _get_contract_with_access(contract_id, svc, db, user)
+    try:
+        contract = await svc.update_commission(db, contract, body.commission)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return await svc.get_response(contract)
+
+
 @router.post("/{contract_id}/generate", response_model=ContractResponse)
 async def generate_pdf(
     contract_id: uuid.UUID,
@@ -145,12 +166,10 @@ async def generate_pdf(
     svc: ContractService = Depends(get_contract_service),
     user: User = Depends(get_current_user),
 ):
-    """Generate AI clauses and render the PDF. Blocked if human_review_required."""
+    """Generate AI clauses and render the PDF."""
     contract, prospect = await _get_contract_with_access(contract_id, svc, db, user)
     try:
         contract = await svc.generate_pdf(db, contract, prospect, clause_overrides=body.clause_overrides)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return await svc.get_response(contract)

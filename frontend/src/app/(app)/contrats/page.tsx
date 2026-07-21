@@ -180,16 +180,16 @@ function ContractCard({
                 size="small"
                 sx={{ fontWeight: 700, fontSize: "0.6875rem" }}
               />
-              {contract.human_review_required && (
+              {contract.human_review_reason && (
                 <Tooltip
-                  title={contract.human_review_reason ?? "Validation humaine requise"}
+                  title={contract.human_review_reason}
                   placement="top"
                   arrow
                 >
                   <Chip
                     icon={<WarningAmberRoundedIcon sx={{ fontSize: "14px !important" }} />}
-                    label="Validation humaine"
-                    color="error"
+                    label="Commission sous plancher"
+                    color="warning"
                     size="small"
                     variant="outlined"
                     sx={{ fontWeight: 700, fontSize: "0.6875rem" }}

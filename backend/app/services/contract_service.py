@@ -33,28 +33,18 @@ from app.services.pdf_generator import generate_contract_pdf
 
 logger = logging.getLogger(__name__)
 
-_ANNUAL_VALUE_THRESHOLD = 50_000.0  # USD (CLAUDE.md §9)
-
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def _check_human_review(prospect: Prospect, estimated_annual_value: Optional[float]) -> tuple[bool, Optional[str]]:
-    """Return (required, reason) based on hard business rules from CLAUDE.md §9."""
-    floor = COMMISSION_FLOORS.get(prospect.type, 8.0)
-
-    if prospect.commission_standard < floor:
-        return True, (
-            f"Commission {prospect.commission_standard}% est inférieure au plancher absolu "
-            f"de {floor}% pour le type « {prospect.type} » (CLAUDE.md §3)"
+def _build_floor_warning(commission: float, partner_type: str) -> Optional[str]:
+    """Return a warning string if commission is below the floor, None otherwise."""
+    floor = COMMISSION_FLOORS.get(partner_type, 8.0)
+    if commission < floor:
+        return (
+            f"Commission {commission}% est inférieure au plancher de "
+            f"{floor}% pour le type « {partner_type} » (CLAUDE.md §3)"
         )
-
-    if estimated_annual_value is not None and estimated_annual_value > _ANNUAL_VALUE_THRESHOLD:
-        return True, (
-            f"Valeur annuelle estimée {estimated_annual_value:,.0f} $ dépasse le seuil "
-            f"de {_ANNUAL_VALUE_THRESHOLD:,.0f} $ — validation commerciale requise (CLAUDE.md §9)"
-        )
-
-    return False, None
+    return None
 
 
 def _contract_to_response(contract: Contract) -> ContractResponse:
@@ -107,21 +97,39 @@ class ContractService:
 
     # ── Create ────────────────────────────────────────────────────────────────
 
+    async def _resolve_commission(self, db: AsyncSession, prospect: Prospect) -> float:
+        """Pick the best commission rate: last inbound taux_demande > prospect.commission_standard."""
+        result = await db.execute(
+            select(NegotiationMessage)
+            .where(
+                NegotiationMessage.prospect_id == prospect.id,
+                NegotiationMessage.direction == "inbound",
+                NegotiationMessage.taux_demande.isnot(None),
+            )
+            .order_by(NegotiationMessage.date_message.desc())
+            .limit(1)
+        )
+        last_inbound = result.scalars().first()
+        if last_inbound and last_inbound.taux_demande is not None:
+            return last_inbound.taux_demande
+        return prospect.commission_standard
+
     async def create_from_prospect(
         self,
         db: AsyncSession,
         prospect: Prospect,
-        estimated_annual_value: Optional[float] = None,
     ) -> Contract:
         """
         Create a draft contract for the given prospect.
         Idempotent: returns the existing contract if one already exists.
         """
+        commission = await self._resolve_commission(db, prospect)
+        warning = _build_floor_warning(commission, prospect.type)
+
         existing = await self._get_by_prospect(db, prospect.id)
         if existing:
             if existing.status != "declined":
                 return existing
-            # Prospect renegotiated and closed again — reset declined contract to fresh draft
             existing.status = "draft"
             existing.clauses_json = None
             existing.pdf_bytes = None
@@ -132,17 +140,15 @@ class ContractService:
             existing.declined_at = None
             existing.resend_email_id = None
             existing.opened_at = None
-            requires_human, reason = _check_human_review(prospect, estimated_annual_value)
-            existing.human_review_required = requires_human
-            existing.human_review_reason = reason
-            existing.commission = prospect.commission_standard
+            existing.human_review_required = False
+            existing.human_review_reason = warning
+            existing.commission = commission
+            existing.estimated_annual_value = None
             existing.updated_at = datetime.utcnow()
             await db.commit()
             await db.refresh(existing)
             logger.info("[CONTRACT] Declined contract reset to draft — prospect=%s", prospect.id)
             return existing
-
-        requires_human, reason = _check_human_review(prospect, estimated_annual_value)
 
         contract = Contract(
             id=uuid.uuid4(),
@@ -153,10 +159,10 @@ class ContractService:
             partner_email=prospect.email_contact,
             country=prospect.pays,
             language=prospect.langue,
-            commission=prospect.commission_standard,
-            estimated_annual_value=estimated_annual_value,
-            human_review_required=requires_human,
-            human_review_reason=reason,
+            commission=commission,
+            estimated_annual_value=None,
+            human_review_required=False,
+            human_review_reason=warning,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
@@ -164,10 +170,10 @@ class ContractService:
         await db.commit()
         await db.refresh(contract)
 
-        if requires_human:
+        if warning:
             logger.warning(
-                "[CONTRACT] human_review_required=True for prospect=%s | reason=%s",
-                prospect.id, reason,
+                "[CONTRACT] Commission below floor for prospect=%s | %s",
+                prospect.id, warning,
             )
 
         return contract
@@ -186,10 +192,6 @@ class ContractService:
         Blocked if human_review_required is True.
         Optional clause_overrides: non-empty values replace the AI-generated text for that key.
         """
-        if contract.human_review_required:
-            raise PermissionError(
-                f"Validation humaine requise avant génération PDF : {contract.human_review_reason}"
-            )
         if contract.status not in ("draft", "generated"):
             raise ValueError(f"Cannot generate PDF for contract in status '{contract.status}'")
 
@@ -210,9 +212,6 @@ class ContractService:
                 lines.append(f"[{role}]: {body}")
             negotiation_summary = "\n".join(lines)
 
-        # Sync contract commission with prospect (may have changed during negotiation)
-        contract.commission = prospect.commission_standard
-
         # Generate clause text
         try:
             clauses = await self._generator.generate_clauses(prospect, negotiation_summary)
@@ -231,7 +230,7 @@ class ContractService:
             partner_type=prospect.type,
             country=prospect.pays,
             language=prospect.langue,
-            commission=prospect.commission_standard,
+            commission=contract.commission,
             clauses=clauses,
         )
 
@@ -398,6 +397,32 @@ class ContractService:
             f"Direction commerciale — {contract.partner_name}"
         )
         return await self.submit_reply(db, contract, mock_reply)
+
+    # ── Update commission ──────────────────────────────────────────────────────
+
+    async def update_commission(
+        self,
+        db: AsyncSession,
+        contract: Contract,
+        commission: float,
+    ) -> Contract:
+        """Update contract commission. Recalculates floor warning."""
+        if contract.status not in ("draft", "generated"):
+            raise ValueError(f"Cannot update commission for contract in status '{contract.status}'")
+
+        contract.commission = commission
+        warning = _build_floor_warning(commission, contract.partner_type)
+        contract.human_review_reason = warning
+        contract.human_review_required = False
+        contract.updated_at = datetime.utcnow()
+        await db.commit()
+        await db.refresh(contract)
+
+        logger.info(
+            "[CONTRACT] Commission updated to %s%% for contract=%s%s",
+            commission, contract.id, f" | warning: {warning}" if warning else "",
+        )
+        return contract
 
     # ── Queries ───────────────────────────────────────────────────────────────
 

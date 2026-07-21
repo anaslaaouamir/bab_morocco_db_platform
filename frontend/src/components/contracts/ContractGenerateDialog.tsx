@@ -9,6 +9,7 @@ import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import InputAdornment from "@mui/material/InputAdornment";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Collapse from "@mui/material/Collapse";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
@@ -39,10 +40,12 @@ import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import ThumbDownRoundedIcon from "@mui/icons-material/ThumbDownRounded";
 import ThumbUpRoundedIcon from "@mui/icons-material/ThumbUpRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import ForumRoundedIcon from "@mui/icons-material/ForumRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 
-import { contractsApi, ApiError, downloadBlob } from "@/lib/api";
-import type { RawContract, RawContractClauses } from "@/lib/api";
+import { contractsApi, negotiationApi, ApiError, downloadBlob } from "@/lib/api";
+import type { RawContract, RawContractClauses, RawNegotiationMessage } from "@/lib/api";
 import { useSnackbar } from "@/contexts/SnackbarContext";
 import type { Prospect } from "@/types/prospect";
 import { PARTNER_TYPE_LABELS } from "@/types/prospect";
@@ -149,29 +152,65 @@ function ClauseAccordion({ label, text }: { label: string; text: string }) {
 // ─── Step panels ─────────────────────────────────────────────────────────────
 
 function DraftPanel({
-  contract, prospect, onGenerate, generating,
+  contract, prospect, onGenerate, onCommissionChange, generating, savingCommission,
 }: {
   contract: RawContract;
   prospect: Prospect;
   onGenerate: () => void;
+  onCommissionChange: (commission: number) => void;
   generating: boolean;
+  savingCommission: boolean;
 }) {
   const theme = useTheme();
-  // P4-01 — estimated annual value input (client-side $50k gate preview)
-  const [estimatedValue, setEstimatedValue] = useState<string>("");
-  const parsedValue = parseFloat(estimatedValue) || 0;
-  const overThreshold = parsedValue > 50000;
+  const [editingCommission, setEditingCommission] = useState(false);
+  const [commissionInput, setCommissionInput] = useState(String(contract.commission));
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<RawNegotiationMessage[] | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const belowFloor = !!contract.human_review_reason;
+
+  async function loadHistory() {
+    if (history !== null) {
+      setHistoryOpen((v) => !v);
+      return;
+    }
+    setLoadingHistory(true);
+    try {
+      const msgs = await negotiationApi.history(contract.prospect_id);
+      setHistory(msgs);
+      setHistoryOpen(true);
+    } catch {
+      setHistory([]);
+      setHistoryOpen(true);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  function handleCommissionSave() {
+    const val = parseFloat(commissionInput);
+    if (isNaN(val) || val < 0) return;
+    onCommissionChange(val);
+    setEditingCommission(false);
+  }
+
+  // Sync local input when contract updates externally
+  React.useEffect(() => {
+    setCommissionInput(String(contract.commission));
+  }, [contract.commission]);
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {contract.human_review_required && (
-        <Alert severity="error" icon={<WarningAmberRoundedIcon />} sx={{ borderRadius: 2 }}>
-          <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>Validation humaine requise</Typography>
+      {/* Floor warning (informational, not blocking) */}
+      {belowFloor && (
+        <Alert severity="warning" icon={<WarningAmberRoundedIcon />} sx={{ borderRadius: 2 }}>
+          <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>Commission sous le plancher</Typography>
           <Typography variant="bodySmall" sx={{ display: "block", mt: 0.25 }}>
             {contract.human_review_reason}
           </Typography>
           <Typography variant="bodySmall" sx={{ display: "block", mt: 0.5, fontStyle: "italic" }}>
-            La génération PDF est bloquée jusqu&apos;à validation par le responsable commercial.
+            Vous pouvez modifier la commission ci-dessous ou continuer avec ce taux.
           </Typography>
         </Alert>
       )}
@@ -186,7 +225,6 @@ function DraftPanel({
           { label: "Partenaire",  value: contract.partner_name },
           { label: "Pays",        value: contract.country },
           { label: "Type",        value: PARTNER_TYPE_LABELS[prospect.type] ?? contract.partner_type },
-          { label: "Commission",  value: `${contract.commission}%` },
           { label: "Email",       value: contract.partner_email ?? "—" },
           { label: "Langue",      value: contract.language.toUpperCase() },
         ].map(({ label, value }) => (
@@ -197,32 +235,125 @@ function DraftPanel({
         ))}
       </Box>
 
-      {/* P4-01 — Estimated annual value (§9 gate: >$50k requires human review) */}
-      <Box>
-        <TextField
-          label="Valeur annuelle estimée (USD) — optionnel"
-          size="small"
-          fullWidth
-          type="number"
-          value={estimatedValue}
-          onChange={(e) => setEstimatedValue(e.target.value)}
-          InputProps={{
-            startAdornment: <InputAdornment position="start">$</InputAdornment>,
-          }}
-          helperText="Requis si la valeur dépasse 50 000 $ — déclenche une validation humaine (Spec §9)"
-          sx={{ "& .MuiFormHelperText-root": { fontSize: "0.6875rem" } }}
-        />
-        {overThreshold && (
-          <Alert
-            severity="warning"
-            icon={<WarningAmberRoundedIcon />}
-            sx={{ mt: 1, py: 0.5, borderRadius: 2, "& .MuiAlert-message": { fontSize: "0.8125rem" } }}
+      {/* Editable commission */}
+      <Box sx={{
+        display: "flex", alignItems: "center", gap: 1.5, p: 1.5, borderRadius: 2,
+        border: `1px solid ${belowFloor ? theme.palette.warning.main : theme.palette.divider}`,
+        bgcolor: belowFloor ? alpha(theme.palette.warning.main, 0.04) : "transparent",
+      }}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="labelSmall" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
+            Commission du contrat
+          </Typography>
+          {editingCommission ? (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <TextField
+                size="small"
+                type="number"
+                value={commissionInput}
+                onChange={(e) => setCommissionInput(e.target.value)}
+                inputProps={{ min: 0, max: 100, step: 0.5 }}
+                InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                sx={{ width: 120, "& .MuiInputBase-root": { fontSize: "0.875rem" } }}
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") handleCommissionSave(); if (e.key === "Escape") { setEditingCommission(false); setCommissionInput(String(contract.commission)); } }}
+              />
+              <Button
+                size="small"
+                variant="contained"
+                disableElevation
+                onClick={handleCommissionSave}
+                disabled={savingCommission}
+                sx={{ fontWeight: 700, textTransform: "none", fontSize: "0.75rem", minWidth: 0, px: 1.5 }}
+              >
+                {savingCommission ? <CircularProgress size={14} color="inherit" /> : "OK"}
+              </Button>
+              <Button
+                size="small"
+                onClick={() => { setEditingCommission(false); setCommissionInput(String(contract.commission)); }}
+                sx={{ fontWeight: 600, textTransform: "none", fontSize: "0.75rem", minWidth: 0, px: 1 }}
+              >
+                Annuler
+              </Button>
+            </Box>
+          ) : (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              <Typography variant="bodySmall" sx={{ fontWeight: 700, fontSize: "1rem" }}>
+                {contract.commission}%
+              </Typography>
+              <Tooltip title="Modifier la commission" placement="top">
+                <IconButton size="small" onClick={() => setEditingCommission(true)} sx={{ p: 0.25 }}>
+                  <EditRoundedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          )}
+        </Box>
+
+        {/* Negotiation history toggle */}
+        <Tooltip title="Voir l'historique de négociation" placement="top">
+          <IconButton
+            size="small"
+            onClick={loadHistory}
+            disabled={loadingHistory}
+            sx={{
+              p: 0.75, borderRadius: 1.5,
+              border: `1px solid ${theme.palette.divider}`,
+              bgcolor: historyOpen ? alpha(theme.palette.primary.main, 0.08) : "transparent",
+            }}
           >
-            <strong>Valeur annuelle estimée {parsedValue.toLocaleString("fr-FR")} $</strong> — dépasse le seuil de 50 000 $.
-            La génération PDF sera bloquée et nécessitera une validation humaine.
-          </Alert>
-        )}
+            {loadingHistory ? <CircularProgress size={18} /> : <ForumRoundedIcon sx={{ fontSize: 18, color: historyOpen ? "primary.main" : "text.secondary" }} />}
+          </IconButton>
+        </Tooltip>
       </Box>
+
+      {/* Negotiation history drawer */}
+      <Collapse in={historyOpen}>
+        <Box sx={{
+          maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1,
+          p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.info.main, 0.03),
+          border: `1px solid ${alpha(theme.palette.info.main, 0.15)}`,
+        }}>
+          <Typography variant="labelSmall" sx={{ fontWeight: 700, color: "info.main", mb: 0.5 }}>
+            Historique de négociation
+          </Typography>
+          {history && history.length === 0 && (
+            <Typography variant="bodySmall" color="text.disabled">Aucun message de négociation.</Typography>
+          )}
+          {history && history.map((msg) => (
+            <Box key={msg.id} sx={{
+              p: 1.25, borderRadius: 1.5,
+              bgcolor: msg.direction === "inbound"
+                ? alpha(theme.palette.info.main, 0.06)
+                : alpha(theme.palette.primary.main, 0.06),
+              borderLeft: `3px solid ${msg.direction === "inbound" ? theme.palette.info.main : theme.palette.primary.main}`,
+            }}>
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+                <Typography variant="labelSmall" sx={{ fontWeight: 700, fontSize: "0.6875rem" }}>
+                  {msg.direction === "inbound" ? "Partenaire" : "Bab Morocco"}
+                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                  {msg.taux_demande != null && (
+                    <Chip
+                      label={`${msg.taux_demande}%`}
+                      size="small"
+                      color={msg.direction === "inbound" ? "info" : "primary"}
+                      variant="outlined"
+                      sx={{ height: 18, fontSize: "0.625rem", fontWeight: 700, "& .MuiChip-label": { px: 0.75 } }}
+                    />
+                  )}
+                  <Typography variant="labelSmall" color="text.disabled" sx={{ fontSize: "0.625rem" }}>
+                    {new Date(msg.date_message).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </Typography>
+                </Box>
+              </Box>
+              <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.75rem", lineHeight: 1.5, whiteSpace: "pre-line" }}>
+                {msg.corps.length > 300 ? msg.corps.slice(0, 300) + "…" : msg.corps}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Collapse>
 
       {/* 9-clause checklist */}
       <Box>
@@ -251,7 +382,7 @@ function DraftPanel({
           disableElevation
           startIcon={generating ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdfRoundedIcon />}
           onClick={onGenerate}
-          disabled={generating || contract.human_review_required}
+          disabled={generating}
           sx={{ fontWeight: 700, textTransform: "none", alignSelf: "flex-start" }}
         >
           {generating ? "Génération en cours…" : "Générer le PDF"}
@@ -714,13 +845,14 @@ export default function ContractGenerateDialog({
 }: Props) {
   const { showSnackbar } = useSnackbar();
 
-  const [generating, setGenerating]           = useState(false);
-  const [regenerating, setRegenerating]       = useState(false);
-  const [sending, setSending]                 = useState(false);
-  const [actioning, setActioning]             = useState(false);
-  const [simulatingReply, setSimulatingReply] = useState(false);
-  const [confirmSign, setConfirmSign]         = useState(false);
-  const [confirmDecline, setConfirmDecline]   = useState(false);
+  const [generating, setGenerating]             = useState(false);
+  const [regenerating, setRegenerating]         = useState(false);
+  const [sending, setSending]                   = useState(false);
+  const [actioning, setActioning]               = useState(false);
+  const [simulatingReply, setSimulatingReply]   = useState(false);
+  const [confirmSign, setConfirmSign]           = useState(false);
+  const [confirmDecline, setConfirmDecline]     = useState(false);
+  const [savingCommission, setSavingCommission] = useState(false);
 
   const activeStep = statusToStep(contract.status);
 
@@ -739,6 +871,24 @@ export default function ContractGenerateDialog({
       });
     } finally {
       setGenerating(false);
+    }
+  }
+
+  // ── Update commission ──────────────────────────────────────────────
+
+  async function handleCommissionChange(commission: number) {
+    setSavingCommission(true);
+    try {
+      const updated = await contractsApi.updateCommission(contract.id, commission);
+      onContractUpdate(updated);
+      showSnackbar({ message: `Commission mise à jour : ${commission}%`, severity: "success" });
+    } catch (err) {
+      showSnackbar({
+        message: err instanceof ApiError ? err.detail : "Erreur lors de la mise à jour.",
+        severity: "error",
+      });
+    } finally {
+      setSavingCommission(false);
     }
   }
 
@@ -927,7 +1077,9 @@ export default function ContractGenerateDialog({
               contract={contract}
               prospect={prospect}
               onGenerate={() => handleGenerate()}
+              onCommissionChange={handleCommissionChange}
               generating={generating}
+              savingCommission={savingCommission}
             />
           )}
           {contract.status === "generated" && (

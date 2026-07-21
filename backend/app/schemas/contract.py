@@ -7,7 +7,6 @@ from pydantic import BaseModel
 
 class ContractCreate(BaseModel):
     prospect_id: uuid.UUID
-    estimated_annual_value: Optional[float] = None
 
 
 class PartnerReplySubmit(BaseModel):

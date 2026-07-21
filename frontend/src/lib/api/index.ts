@@ -297,17 +297,20 @@ export const contractsApi = {
     return apiFetch<RawContractListResponse>(`/contracts${query ? `?${query}` : ""}`);
   },
 
-  create: (prospectId: string, estimatedAnnualValue?: number): Promise<RawContract> =>
+  create: (prospectId: string): Promise<RawContract> =>
     apiFetch<RawContract>("/contracts", {
       method: "POST",
-      body: JSON.stringify({
-        prospect_id: prospectId,
-        estimated_annual_value: estimatedAnnualValue ?? null,
-      }),
+      body: JSON.stringify({ prospect_id: prospectId }),
     }),
 
   get: (contractId: string): Promise<RawContract> =>
     apiFetch<RawContract>(`/contracts/${contractId}`),
+
+  updateCommission: (contractId: string, commission: number): Promise<RawContract> =>
+    apiFetch<RawContract>(`/contracts/${contractId}/commission`, {
+      method: "PATCH",
+      body: JSON.stringify({ commission }),
+    }),
 
   generate: (contractId: string, clauseOverrides?: Partial<Record<string, string>>): Promise<RawContract> =>
     apiFetch<RawContract>(`/contracts/${contractId}/generate`, {
