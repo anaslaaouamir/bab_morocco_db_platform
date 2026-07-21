@@ -16,6 +16,7 @@ from app.schemas.contract import ContractCreate, ContractListResponse, ContractR
 from app.services.contract_generator import ContractGeneratorProtocol, get_contract_generator
 from app.services.contract_service import ContractService
 from app.services.email_transport import EmailTransportProtocol, get_email_transport
+from app.services.yousign_client import YousignClientProtocol, get_yousign_client
 
 
 class GenerateRequest(BaseModel):
@@ -33,8 +34,9 @@ router = APIRouter(prefix="/contracts", tags=["contracts"])
 def get_contract_service(
     generator: Annotated[ContractGeneratorProtocol, Depends(get_contract_generator)],
     sender: Annotated[EmailTransportProtocol, Depends(get_email_transport)],
+    yousign: Annotated[YousignClientProtocol, Depends(get_yousign_client)],
 ) -> ContractService:
-    return ContractService(generator=generator, sender=sender)
+    return ContractService(generator=generator, sender=sender, yousign=yousign)
 
 
 async def _get_prospect_or_404(prospect_id: uuid.UUID, db: AsyncSession) -> Prospect:
@@ -211,6 +213,27 @@ async def download_reply_pdf(
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'attachment; filename="{contract.partner_reply_pdf_filename or "reponse_partenaire.pdf"}"'
+        },
+    )
+
+
+@router.get("/{contract_id}/signed-pdf")
+async def download_signed_pdf(
+    contract_id: uuid.UUID,
+    db: AsyncSession = Depends(get_session),
+    svc: ContractService = Depends(get_contract_service),
+    user: User = Depends(get_current_user),
+):
+    """Download the eIDAS-certified PDF signed by both parties via Yousign, if any."""
+    contract, _ = await _get_contract_with_access(contract_id, svc, db, user)
+    signed_pdf = await svc.get_signed_pdf_bytes(db, contract_id)
+    if not signed_pdf:
+        raise HTTPException(status_code=404, detail="Aucun PDF signé disponible.")
+    return Response(
+        content=signed_pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="contrat_signe_{contract.partner_name.replace(" ", "_")}.pdf"'
         },
     )
 

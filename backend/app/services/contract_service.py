@@ -30,6 +30,7 @@ from app.services.contract_generator import (
 )
 from app.services.email_transport import EmailTransportProtocol, MockEmailTransport
 from app.services.pdf_generator import generate_contract_pdf
+from app.services.yousign_client import MockYousignClient, YousignClientProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,10 @@ def _contract_to_response(contract: Contract) -> ContractResponse:
         declined_at=contract.declined_at,
         created_at=contract.created_at,
         updated_at=contract.updated_at,
+        signing_method="yousign" if contract.yousign_signature_request_id else "manual",
+        yousign_signature_request_id=contract.yousign_signature_request_id,
+        yousign_signer_bab_done=contract.yousign_signer_bab_done,
+        has_signed_pdf=contract.signed_pdf_bytes is not None,
     )
 
 
@@ -91,9 +96,11 @@ class ContractService:
         self,
         generator: Optional[ContractGeneratorProtocol] = None,
         sender: Optional[EmailTransportProtocol] = None,
+        yousign: Optional[YousignClientProtocol] = None,
     ) -> None:
         self._generator = generator or MockContractGenerator()
         self._sender = sender or MockEmailTransport()
+        self._yousign = yousign or MockYousignClient()
 
     # ── Create ────────────────────────────────────────────────────────────────
 
@@ -140,6 +147,12 @@ class ContractService:
             existing.declined_at = None
             existing.resend_email_id = None
             existing.opened_at = None
+            existing.yousign_signature_request_id = None
+            existing.yousign_document_id = None
+            existing.yousign_signer_bab_id = None
+            existing.yousign_signer_partner_id = None
+            existing.yousign_signer_bab_done = False
+            existing.signed_pdf_bytes = None
             existing.human_review_required = False
             existing.human_review_reason = warning
             existing.commission = commission
@@ -251,8 +264,10 @@ class ContractService:
 
     async def send_to_partner(self, db: AsyncSession, contract: Contract) -> Contract:
         """
-        Send the contract PDF to the partner via email (real Resend send, mock
-        fallback when RESEND_API_KEY is unset — see get_email_transport()).
+        Send the contract for signature: via Yousign e-signature when
+        YOUSIGN_API_KEY is set (see get_yousign_client()), otherwise via the
+        original Resend email-with-attachment flow (mock fallback when
+        RESEND_API_KEY is unset — see get_email_transport()).
         """
         if contract.status != "generated":
             raise ValueError(f"Contract must be in 'generated' status to send (current: {contract.status})")
@@ -260,23 +275,44 @@ class ContractService:
             raise ValueError("PDF must be generated before sending")
 
         filename = f"contrat_{contract.partner_name.replace(' ', '_')}.pdf"
-        body_html = (
-            f"Bonjour,<br><br>"
-            f"Veuillez trouver ci-joint le contrat de partenariat Bab Morocco pour "
-            f"{contract.partner_name}, avec une commission de {contract.commission:.1f}%.<br><br>"
-            f"Merci de nous répondre par retour d'email avec votre décision (accord et signature, "
-            f"ou questions complémentaires).<br><br>"
-            f"Cordialement,<br>L'équipe Bab Morocco"
-        )
-        email_id = await self._sender.send(
-            to=contract.partner_email,
-            subject=f"Contrat de partenariat Bab Morocco — {contract.partner_name}",
-            html=body_html,
-            reply_to=f"contract-{contract.id}@{settings.RESEND_INBOUND_DOMAIN}",
-            attachments=[{"filename": filename, "content": base64.b64encode(contract.pdf_bytes).decode()}],
-        )
 
-        contract.resend_email_id = email_id
+        if not isinstance(self._yousign, MockYousignClient):
+            if not contract.partner_email:
+                raise ValueError("Partner email is required to send via Yousign")
+
+            result = await self._yousign.create_and_send(
+                pdf_bytes=contract.pdf_bytes,
+                filename=filename,
+                request_name=f"Contrat Partenariat — {contract.partner_name}",
+                bab_email=settings.YOUSIGN_SIGNER_EMAIL,
+                bab_first_name=settings.YOUSIGN_SIGNER_FIRST_NAME,
+                bab_last_name=settings.YOUSIGN_SIGNER_LAST_NAME,
+                partner_name=contract.partner_name,
+                partner_email=contract.partner_email,
+                partner_language=contract.language,
+            )
+            contract.yousign_signature_request_id = result.signature_request_id
+            contract.yousign_document_id = result.document_id
+            contract.yousign_signer_bab_id = result.signer_bab_id
+            contract.yousign_signer_partner_id = result.signer_partner_id
+        else:
+            body_html = (
+                f"Bonjour,<br><br>"
+                f"Veuillez trouver ci-joint le contrat de partenariat Bab Morocco pour "
+                f"{contract.partner_name}, avec une commission de {contract.commission:.1f}%.<br><br>"
+                f"Merci de nous répondre par retour d'email avec votre décision (accord et signature, "
+                f"ou questions complémentaires).<br><br>"
+                f"Cordialement,<br>L'équipe Bab Morocco"
+            )
+            email_id = await self._sender.send(
+                to=contract.partner_email,
+                subject=f"Contrat de partenariat Bab Morocco — {contract.partner_name}",
+                html=body_html,
+                reply_to=f"contract-{contract.id}@{settings.RESEND_INBOUND_DOMAIN}",
+                attachments=[{"filename": filename, "content": base64.b64encode(contract.pdf_bytes).decode()}],
+            )
+            contract.resend_email_id = email_id
+
         contract.status = "sent_to_partner"
         contract.sent_at = datetime.utcnow()
         contract.updated_at = datetime.utcnow()
@@ -463,3 +499,7 @@ class ContractService:
     async def get_pdf_bytes(self, db: AsyncSession, contract_id: uuid.UUID) -> Optional[bytes]:
         contract = await db.get(Contract, contract_id)
         return contract.pdf_bytes if contract else None
+
+    async def get_signed_pdf_bytes(self, db: AsyncSession, contract_id: uuid.UUID) -> Optional[bytes]:
+        contract = await db.get(Contract, contract_id)
+        return contract.signed_pdf_bytes if contract else None

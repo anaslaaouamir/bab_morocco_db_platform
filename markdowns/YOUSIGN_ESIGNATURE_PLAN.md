@@ -64,7 +64,7 @@ feat(contract): add Yousign e-signature client with mock fallback
 
 ## Section 3 — Contract Model & Send Flow
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Wire Yousign into the contract lifecycle.
 

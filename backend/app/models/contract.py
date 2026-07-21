@@ -57,6 +57,17 @@ class Contract(Base):
     resend_email_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # Yousign e-signature tracking — populated only when send_to_partner() routes
+    # through Yousign instead of the Resend email flow (see get_yousign_client()).
+    yousign_signature_request_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    yousign_document_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    yousign_signer_bab_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    yousign_signer_partner_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    yousign_signer_bab_done: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # eIDAS-certified PDF downloaded from Yousign once both parties have signed.
+    signed_pdf_bytes: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+
     # Timestamps
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     signed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

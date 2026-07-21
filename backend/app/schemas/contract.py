@@ -51,6 +51,10 @@ class ContractResponse(BaseModel):
     declined_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+    signing_method: str
+    yousign_signature_request_id: Optional[str]
+    yousign_signer_bab_done: bool
+    has_signed_pdf: bool
 
     model_config = {"from_attributes": True}
 
