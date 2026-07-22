@@ -229,6 +229,7 @@ export interface RawContract {
   signing_method: "manual" | "yousign";
   yousign_signature_request_id: string | null;
   yousign_signer_bab_done: boolean;
+  yousign_signature_link: string | null;
   has_signed_pdf: boolean;
 }
 

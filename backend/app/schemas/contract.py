@@ -54,6 +54,7 @@ class ContractResponse(BaseModel):
     signing_method: str
     yousign_signature_request_id: Optional[str]
     yousign_signer_bab_done: bool
+    yousign_signature_link: Optional[str]
     has_signed_pdf: bool
 
     model_config = {"from_attributes": True}

@@ -37,6 +37,7 @@ import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
 import AttachFileRoundedIcon from "@mui/icons-material/AttachFileRounded";
 import InboxRoundedIcon from "@mui/icons-material/InboxRounded";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
+import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import ThumbDownRoundedIcon from "@mui/icons-material/ThumbDownRounded";
 import ThumbUpRoundedIcon from "@mui/icons-material/ThumbUpRounded";
@@ -646,19 +647,45 @@ function YousignProgressPanel({ contract, prospect }: { contract: RawContract; p
 
       <Divider />
 
-      <Box sx={{
-        display: "flex", flexDirection: "column", alignItems: "center",
-        gap: 1.5, py: 3, color: "text.disabled",
-      }}>
-        <MarkEmailReadRoundedIcon sx={{ fontSize: 40, opacity: 0.4 }} />
-        <Typography variant="titleSmall" color="text.secondary" sx={{ fontWeight: 600 }}>
-          Signature 100% automatisée
-        </Typography>
-        <Typography variant="bodySmall" color="text.disabled" sx={{ textAlign: "center", maxWidth: 340 }}>
-          Dès que {prospect.nom} aura signé électroniquement, le contrat sera automatiquement
-          marqué comme signé — aucune action manuelle n&apos;est nécessaire.
-        </Typography>
-      </Box>
+      {!contract.yousign_signer_bab_done && contract.yousign_signature_link ? (
+        <Box sx={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          gap: 1.5, py: 3,
+        }}>
+          <Typography variant="titleSmall" color="text.secondary" sx={{ fontWeight: 600 }}>
+            Signez le contrat directement
+          </Typography>
+          <Typography variant="bodySmall" color="text.disabled" sx={{ textAlign: "center", maxWidth: 340 }}>
+            Cliquez ci-dessous pour ouvrir la page de signature Yousign et signer en tant que Bab Morocco.
+          </Typography>
+          <Button
+            variant="contained"
+            disableElevation
+            color="primary"
+            startIcon={<OpenInNewRoundedIcon />}
+            href={contract.yousign_signature_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ fontWeight: 700, textTransform: "none", mt: 1 }}
+          >
+            Signer maintenant
+          </Button>
+        </Box>
+      ) : (
+        <Box sx={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          gap: 1.5, py: 3, color: "text.disabled",
+        }}>
+          <MarkEmailReadRoundedIcon sx={{ fontSize: 40, opacity: 0.4 }} />
+          <Typography variant="titleSmall" color="text.secondary" sx={{ fontWeight: 600 }}>
+            Signature 100% automatisée
+          </Typography>
+          <Typography variant="bodySmall" color="text.disabled" sx={{ textAlign: "center", maxWidth: 340 }}>
+            Dès que {prospect.nom} aura signé électroniquement, le contrat sera automatiquement
+            marqué comme signé — aucune action manuelle n&apos;est nécessaire.
+          </Typography>
+        </Box>
+      )}
     </Box>
   );
 }

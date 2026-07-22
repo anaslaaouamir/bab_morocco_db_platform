@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Optional, Protocol
@@ -19,6 +20,7 @@ class YousignResult:
     document_id: str
     signer_bab_id: str
     signer_partner_id: str
+    signer_bab_signature_link: str
 
 
 class YousignClientProtocol(Protocol):
@@ -70,6 +72,7 @@ class MockYousignClient:
             document_id=f"mock-doc-{uuid.uuid4()}",
             signer_bab_id=f"mock-signer-{uuid.uuid4()}",
             signer_partner_id=f"mock-signer-{uuid.uuid4()}",
+            signer_bab_signature_link="https://app.yousign.com/mock-signing-link",
         )
         logger.info(
             "[MOCK YOUSIGN] Signature request created → %s | doc=%s (%d bytes, page %d) | "
@@ -136,7 +139,9 @@ class RealYousignClient:
             document_id = doc_resp.json()["id"]
 
             # Step 3 — add signer 1: Bab Morocco (signs first)
-            partner_first_name, _, partner_last_name = partner_name.partition(" ")
+            # Yousign only allows letters, spaces, hyphens, apostrophes in name fields.
+            clean_name = re.sub(r"\s+", " ", re.sub(r"[^a-zA-ZÀ-ÿ\s\-']", "", partner_name)).strip()
+            partner_first_name, _, partner_last_name = clean_name.partition(" ")
             signer1_resp = await client.post(
                 f"/signature_requests/{signature_request_id}/signers",
                 json={
@@ -168,38 +173,46 @@ class RealYousignClient:
                 },
             )
             signer1_resp.raise_for_status()
-            signer_bab_id = signer1_resp.json()["id"]
+            signer1_data = signer1_resp.json()
+            signer_bab_id = signer1_data["id"]
+            signer_bab_signature_link = signer1_data.get("signature_link", "")
 
             # Step 4 — add signer 2: partner (signs second, invited only after signer 1)
+            signer2_payload = {
+                "info": {
+                    "first_name": partner_first_name or partner_name,
+                    "last_name": partner_last_name or partner_name,
+                    "email": partner_email,
+                    "locale": partner_language,
+                },
+                "signature_level": "electronic_signature",
+                "signature_authentication_mode": "no_otp",
+                "fields": [
+                    {
+                        "document_id": document_id,
+                        "type": "signature",
+                        "page": page,
+                        "x": 320,
+                        "y": 650,
+                        "width": 170,
+                        "height": 74,
+                    }
+                ],
+            }
             signer2_resp = await client.post(
                 f"/signature_requests/{signature_request_id}/signers",
-                json={
-                    "info": {
-                        "first_name": partner_first_name or partner_name,
-                        "last_name": partner_last_name or "",
-                        "email": partner_email,
-                        "locale": partner_language,
-                    },
-                    "signature_level": "electronic_signature",
-                    "signature_authentication_mode": "no_otp",
-                    "fields": [
-                        {
-                            "document_id": document_id,
-                            "type": "signature",
-                            "page": page,
-                            "x": 320,
-                            "y": 650,
-                            "width": 170,
-                            "height": 74,
-                        }
-                    ],
-                },
+                json=signer2_payload,
             )
+            if signer2_resp.status_code >= 400:
+                logger.error("Yousign signer2 error %s: %s | payload: %s",
+                             signer2_resp.status_code, signer2_resp.text, signer2_payload)
             signer2_resp.raise_for_status()
             signer_partner_id = signer2_resp.json()["id"]
 
             # Step 5 — activate (sends the invitation to signer 1)
             activate_resp = await client.post(f"/signature_requests/{signature_request_id}/activate")
+            if activate_resp.status_code >= 400:
+                logger.error("Yousign activate error %s: %s", activate_resp.status_code, activate_resp.text)
             activate_resp.raise_for_status()
 
         return YousignResult(
@@ -207,6 +220,7 @@ class RealYousignClient:
             document_id=document_id,
             signer_bab_id=signer_bab_id,
             signer_partner_id=signer_partner_id,
+            signer_bab_signature_link=signer_bab_signature_link,
         )
 
     async def download_signed_pdf(self, signature_request_id: str, document_id: str) -> bytes:

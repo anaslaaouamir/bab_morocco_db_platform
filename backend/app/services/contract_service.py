@@ -87,6 +87,7 @@ def _contract_to_response(contract: Contract) -> ContractResponse:
         signing_method="yousign" if contract.yousign_signature_request_id else "manual",
         yousign_signature_request_id=contract.yousign_signature_request_id,
         yousign_signer_bab_done=contract.yousign_signer_bab_done,
+        yousign_signature_link=contract.yousign_signature_link,
         has_signed_pdf=contract.signed_pdf_bytes is not None,
     )
 
@@ -154,6 +155,7 @@ class ContractService:
             existing.yousign_signer_bab_id = None
             existing.yousign_signer_partner_id = None
             existing.yousign_signer_bab_done = False
+            existing.yousign_signature_link = None
             existing.signed_pdf_bytes = None
             existing.human_review_required = False
             existing.human_review_reason = warning
@@ -304,6 +306,7 @@ class ContractService:
             contract.yousign_document_id = result.document_id
             contract.yousign_signer_bab_id = result.signer_bab_id
             contract.yousign_signer_partner_id = result.signer_partner_id
+            contract.yousign_signature_link = result.signer_bab_signature_link
         else:
             body_html = (
                 f"Bonjour,<br><br>"

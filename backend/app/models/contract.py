@@ -64,6 +64,7 @@ class Contract(Base):
     yousign_signer_bab_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     yousign_signer_partner_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     yousign_signer_bab_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    yousign_signature_link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # eIDAS-certified PDF downloaded from Yousign once both parties have signed.
     signed_pdf_bytes: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
