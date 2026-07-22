@@ -78,7 +78,7 @@ export interface Prospect {
   dateAjout: string;            // ISO YYYY-MM-DD
   dateProchainContact?: string; // ISO YYYY-MM-DD
   notes?: string;
-  emailBounced: boolean;
+  emailBounced?: boolean;
   assignedTo?: string | null;
   assignedToName?: string | null;
 }
