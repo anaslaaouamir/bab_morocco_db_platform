@@ -118,8 +118,14 @@ function ContractCard({
   // bearer token — fetch as a blob instead and trigger the download manually.
   async function handleDownloadPdf() {
     try {
-      const blob = await contractsApi.downloadPdf(contract.id);
-      downloadBlob(blob, `contrat_${contract.partner_name.replace(/\s+/g, "_")}.pdf`);
+      const filenameBase = contract.partner_name.replace(/\s+/g, "_");
+      if (contract.has_signed_pdf) {
+        const blob = await contractsApi.downloadSignedPdf(contract.id);
+        downloadBlob(blob, `contrat_signe_${filenameBase}.pdf`);
+      } else {
+        const blob = await contractsApi.downloadPdf(contract.id);
+        downloadBlob(blob, `contrat_${filenameBase}.pdf`);
+      }
     } catch (err) {
       showSnackbar({
         message: err instanceof ApiError ? err.detail : "Erreur lors du téléchargement du PDF.",
