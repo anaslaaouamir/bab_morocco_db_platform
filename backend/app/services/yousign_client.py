@@ -164,8 +164,8 @@ class RealYousignClient:
                             "document_id": document_id,
                             "type": "signature",
                             "page": page,
-                            "x": 90,
-                            "y": 650,
+                            "x": 100,
+                            "y": 195,
                             "width": 170,
                             "height": 74,
                         }
@@ -192,8 +192,8 @@ class RealYousignClient:
                         "document_id": document_id,
                         "type": "signature",
                         "page": page,
-                        "x": 320,
-                        "y": 650,
+                        "x": 328,
+                        "y": 195,
                         "width": 170,
                         "height": 74,
                     }
