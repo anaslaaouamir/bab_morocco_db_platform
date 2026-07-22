@@ -212,27 +212,47 @@ class RealYousignClient:
             signer2_resp.raise_for_status()
             signer_partner_id = signer2_resp.json()["id"]
 
-            # Step 4b — signer_name and signature_date fields are auto-filled by
-            # Yousign at signing time (read-only) — they overlay the "Nom et
-            # qualité :" / "Date :" labels printed just below each signature box.
+            # Step 4b — name + date fields overlaying the "Nom et qualité :" /
+            # "Date :" labels below each signature box. Bab Morocco's identity is
+            # known in advance, so it's auto-filled (signer_name, read-only). The
+            # partner's actual signatory is not known ahead of time (we only have
+            # the company name) — eIDAS ties the signature to a natural person,
+            # so instead of pre-filling with the company name, the partner types
+            # their own name + role by hand into an editable text field.
             # These types aren't accepted inline on signer creation — they need
             # the dedicated document-fields endpoint, tied to the signer via
             # signer_id.
+            name_field_specs = {
+                signer_bab_id: {"type": "signer_name"},
+                signer_partner_id: {
+                    "type": "text",
+                    "question": "Nom et qualité du signataire",
+                    "max_length": 100,
+                },
+            }
             for signer_id, x in ((signer_bab_id, 100), (signer_partner_id, 328)):
-                for field_type, y in (("signer_name", 275), ("signature_date", 297)):
+                name_field = {
+                    "signer_id": signer_id,
+                    "page": page,
+                    "x": x,
+                    "y": 275,
+                    **name_field_specs[signer_id],
+                }
+                date_field = {
+                    "type": "signature_date",
+                    "signer_id": signer_id,
+                    "page": page,
+                    "x": x,
+                    "y": 297,
+                }
+                for field_payload in (name_field, date_field):
                     field_resp = await client.post(
                         f"/signature_requests/{signature_request_id}/documents/{document_id}/fields",
-                        json={
-                            "type": field_type,
-                            "signer_id": signer_id,
-                            "page": page,
-                            "x": x,
-                            "y": y,
-                        },
+                        json=field_payload,
                     )
                     if field_resp.status_code >= 400:
-                        logger.error("Yousign %s field error %s: %s",
-                                     field_type, field_resp.status_code, field_resp.text)
+                        logger.error("Yousign %s field error %s: %s | payload: %s",
+                                     field_payload["type"], field_resp.status_code, field_resp.text, field_payload)
                     field_resp.raise_for_status()
 
             # Step 5 — activate (sends the invitation to signer 1)
