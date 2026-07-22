@@ -41,6 +41,7 @@ export interface RawProspect {
   date_ajout: string;
   date_prochain_contact: string | null;
   notes: string | null;
+  email_bounced: boolean;
   assigned_to: string | null;
   assigned_to_name: string | null;
   created_at: string;

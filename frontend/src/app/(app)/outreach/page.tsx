@@ -30,6 +30,7 @@ import InboxRoundedIcon from "@mui/icons-material/InboxRounded";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import AutorenewRoundedIcon from "@mui/icons-material/AutorenewRounded";
+import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 
 import type { Prospect, PipelineStage } from "@/types/prospect";
 import { scoreTotal, scoreColor, PARTNER_TYPE_LABELS, STAGE_LABELS, LANGUAGE_FLAGS } from "@/types/prospect";
@@ -257,6 +258,16 @@ function OutreachProspectCard({
             </Typography>
           </Box>
         </Box>
+
+        {/* Bounce warning */}
+        {prospect.emailBounced && (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: 0.75 }}>
+            <ErrorOutlineRoundedIcon sx={{ fontSize: 13, color: "error.main" }} />
+            <Typography variant="labelSmall" sx={{ color: "error.main", fontWeight: 700 }}>
+              Email invalide — rebond détecté
+            </Typography>
+          </Box>
+        )}
 
         {/* Type + location + flag */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1 }}>
@@ -718,6 +729,18 @@ function EmailComposer({
           </Box>
         </Box>
 
+        {/* Bounce warning */}
+        {prospect.emailBounced && (
+          <Alert
+            severity="error"
+            icon={<ErrorOutlineRoundedIcon fontSize="small" />}
+            sx={{ borderRadius: 0, "& .MuiAlert-message": { fontSize: "0.8125rem" } }}
+          >
+            <strong>Email invalide</strong> — L&apos;adresse <strong>{prospect.emailContact}</strong> a rebondi.
+            Corrigez l&apos;email du prospect avant de renvoyer.
+          </Alert>
+        )}
+
         {/* Validation notice */}
         <Alert
           severity="warning"
@@ -1104,6 +1127,11 @@ export default function OutreachPage() {
           .nextStep(event.prospect_id)
           .then((r) => setEmailsCache((prev) => ({ ...prev, [event.prospect_id]: r.emails })))
           .catch(() => {});
+      }
+      if (event.type === "email_bounced") {
+        setProspects((prev) =>
+          prev.map((p) => p.id === event.prospect_id ? { ...p, emailBounced: true } : p)
+        );
       }
     });
   }, [subscribe]); // eslint-disable-line react-hooks/exhaustive-deps

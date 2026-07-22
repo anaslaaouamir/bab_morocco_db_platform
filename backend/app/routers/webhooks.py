@@ -107,6 +107,10 @@ async def resend_inbound(
         await _handle_email_opened(db, data.get("email_id"))
         return {"status": "processed"}
 
+    if event_type in ("email.bounced", "email.complained"):
+        await _handle_email_bounced(db, data.get("email_id"))
+        return {"status": "processed"}
+
     if event_type != "email.received":
         return {"status": "ignored", "reason": f"unhandled event type {event_type}"}
 
@@ -386,6 +390,38 @@ async def _handle_email_opened(db: AsyncSession, email_id: str | None) -> None:
         return
 
     logger.info("Resend inbound webhook: email.opened for unknown email_id '%s' — ignored", email_id)
+
+
+async def _handle_email_bounced(db: AsyncSession, email_id: str | None) -> None:
+    """A Resend delivery failed (bounce or spam complaint) — mark the prospect's
+    email as bounced so the outreach UI warns the user and stops the sequence."""
+    if not email_id:
+        return
+
+    outreach_email = (
+        await db.execute(select(OutreachEmail).where(OutreachEmail.resend_email_id == email_id))
+    ).scalars().first()
+    if not outreach_email:
+        logger.info("Resend bounce webhook: no outreach email found for email_id '%s' — ignored", email_id)
+        return
+
+    prospect = await db.get(Prospect, outreach_email.prospect_id)
+    if not prospect:
+        logger.warning("Resend bounce webhook: prospect %s not found for email_id '%s'", outreach_email.prospect_id, email_id)
+        return
+
+    if not prospect.email_bounced:
+        prospect.email_bounced = True
+        await db.commit()
+        logger.info("Resend bounce webhook: marked prospect %s (%s) email as bounced", prospect.id, prospect.nom)
+        notification_bus.publish(
+            {
+                "type": "email_bounced",
+                "prospect_id": str(prospect.id),
+                "prospect_nom": prospect.nom,
+            },
+            prospect.assigned_to,
+        )
 
 
 async def _handle_outreach_reply(

@@ -192,6 +192,8 @@ class ProspectResponse(BaseModel):
     date_prochain_contact: Optional[date]
     notes: Optional[str]
 
+    email_bounced: bool
+
     created_at: datetime
     updated_at: datetime
 

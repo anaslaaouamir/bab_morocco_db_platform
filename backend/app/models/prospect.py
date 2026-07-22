@@ -62,6 +62,8 @@ class Prospect(Base):
     date_prochain_contact: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    email_bounced: Mapped[bool] = mapped_column(Boolean, default=False)
+
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
