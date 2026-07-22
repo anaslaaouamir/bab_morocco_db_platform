@@ -159,6 +159,9 @@ class RealYousignClient:
                     # width/height must satisfy Yousign's enforced 2.3:1 ratio.
                     # Coordinates are an initial estimate — verify visually against
                     # a real sandbox document and adjust (see Section 7 of the plan).
+                    # signer_name and signature_date are auto-filled by Yousign at
+                    # signing time (read-only) — they overlay the "Nom et qualité :"
+                    # / "Date :" labels printed just below the signature box.
                     "fields": [
                         {
                             "document_id": document_id,
@@ -168,7 +171,25 @@ class RealYousignClient:
                             "y": 195,
                             "width": 170,
                             "height": 74,
-                        }
+                        },
+                        {
+                            "document_id": document_id,
+                            "type": "signer_name",
+                            "page": page,
+                            "x": 100,
+                            "y": 275,
+                            "width": 170,
+                            "height": 18,
+                        },
+                        {
+                            "document_id": document_id,
+                            "type": "signature_date",
+                            "page": page,
+                            "x": 100,
+                            "y": 297,
+                            "width": 170,
+                            "height": 18,
+                        },
                     ],
                 },
             )
@@ -196,7 +217,25 @@ class RealYousignClient:
                         "y": 195,
                         "width": 170,
                         "height": 74,
-                    }
+                    },
+                    {
+                        "document_id": document_id,
+                        "type": "signer_name",
+                        "page": page,
+                        "x": 328,
+                        "y": 275,
+                        "width": 170,
+                        "height": 18,
+                    },
+                    {
+                        "document_id": document_id,
+                        "type": "signature_date",
+                        "page": page,
+                        "x": 328,
+                        "y": 297,
+                        "width": 170,
+                        "height": 18,
+                    },
                 ],
             }
             signer2_resp = await client.post(
