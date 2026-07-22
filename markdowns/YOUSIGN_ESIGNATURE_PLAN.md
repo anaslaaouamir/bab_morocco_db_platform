@@ -149,7 +149,7 @@ feat(contract): show Yousign signing progress in contract UI
 
 ## Section 6 — PDF Signature Block
 
-**Status:** Not started
+**Status:** Done
 
 **Goal:** Adjust the signature area in the generated PDF (`backend/app/services/pdf_generator.py`) so the Yousign signature fields land on the correct positions.
 
