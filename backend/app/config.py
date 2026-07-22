@@ -20,8 +20,6 @@ class Settings(BaseSettings):
     YOUSIGN_SANDBOX: bool = True
     YOUSIGN_WEBHOOK_SECRET: str = ""
     YOUSIGN_SIGNER_EMAIL: str = ""
-    YOUSIGN_SIGNER_FIRST_NAME: str = "Bab"
-    YOUSIGN_SIGNER_LAST_NAME: str = "Morocco"
     ENV: str = "development"
     SECRET_KEY: str = "changeme"
     APP_VERSION: str = "1.0.0"

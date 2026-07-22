@@ -295,8 +295,6 @@ class ContractService:
                 filename=filename,
                 request_name=f"Contrat Partenariat — {contract.partner_name}",
                 bab_email=settings.YOUSIGN_SIGNER_EMAIL,
-                bab_first_name=settings.YOUSIGN_SIGNER_FIRST_NAME,
-                bab_last_name=settings.YOUSIGN_SIGNER_LAST_NAME,
                 partner_name=contract.partner_name,
                 partner_email=contract.partner_email,
                 partner_language=contract.language,

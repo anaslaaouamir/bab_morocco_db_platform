@@ -31,8 +31,6 @@ class YousignClientProtocol(Protocol):
         filename: str,
         request_name: str,
         bab_email: str,
-        bab_first_name: str,
-        bab_last_name: str,
         partner_name: str,
         partner_email: str,
         partner_language: str,
@@ -60,8 +58,6 @@ class MockYousignClient:
         filename: str,
         request_name: str,
         bab_email: str,
-        bab_first_name: str,
-        bab_last_name: str,
         partner_name: str,
         partner_email: str,
         partner_language: str,
@@ -76,12 +72,11 @@ class MockYousignClient:
         )
         logger.info(
             "[MOCK YOUSIGN] Signature request created → %s | doc=%s (%d bytes, page %d) | "
-            "signer1=%s <%s> | signer2=%s <%s>",
+            "signer1=<%s> | signer2=%s <%s>",
             result.signature_request_id,
             filename,
             len(pdf_bytes),
             page,
-            f"{bab_first_name} {bab_last_name}",
             bab_email,
             partner_name,
             partner_email,
@@ -109,8 +104,6 @@ class RealYousignClient:
         filename: str,
         request_name: str,
         bab_email: str,
-        bab_first_name: str,
-        bab_last_name: str,
         partner_name: str,
         partner_email: str,
         partner_language: str,
@@ -148,10 +141,14 @@ class RealYousignClient:
             # width/height must satisfy Yousign's enforced 2.3:1 ratio.
             # Coordinates are an initial estimate — verify visually against
             # a real sandbox document and adjust (see Section 7 of the plan).
+            # first_name/last_name here are only Yousign's internal contact info
+            # for this signer (used e.g. to greet them in the invite email) —
+            # not what appears on the document, since the visible name is an
+            # editable text field the actual signatory fills in (see below).
             signer1_payload = {
                 "info": {
-                    "first_name": bab_first_name,
-                    "last_name": bab_last_name,
+                    "first_name": "Signataire",
+                    "last_name": "Bab Morocco",
                     "email": bab_email,
                     "locale": "fr",
                 },
@@ -212,18 +209,20 @@ class RealYousignClient:
             signer2_resp.raise_for_status()
             signer_partner_id = signer2_resp.json()["id"]
 
-            # Step 4b — name + date fields overlaying the "Nom et qualité :" /
-            # "Date :" labels below each signature box. Bab Morocco's identity is
-            # known in advance, so it's auto-filled (signer_name, read-only). The
-            # partner's actual signatory is not known ahead of time (we only have
-            # the company name) — eIDAS ties the signature to a natural person,
-            # so instead of pre-filling with the company name, the partner types
-            # their own name + role by hand into an editable text field.
+            # Step 4b — name + date fields overlaying the signature block below
+            # each signature box. Whoever actually clicks "sign" (on either side)
+            # isn't known ahead of time — eIDAS ties the signature to a natural
+            # person, not a company — so both signers type their own name + role
+            # by hand into an editable text field instead of a pre-filled one.
             # These types aren't accepted inline on signer creation — they need
             # the dedicated document-fields endpoint, tied to the signer via
             # signer_id.
             name_field_specs = {
-                signer_bab_id: {"type": "signer_name"},
+                signer_bab_id: {
+                    "type": "text",
+                    "question": "Nom et qualité du signataire",
+                    "max_length": 100,
+                },
                 signer_partner_id: {
                     "type": "text",
                     "question": "Nom et qualité du signataire",
