@@ -1258,7 +1258,7 @@ export default function OutreachPage() {
     return counts;
   }, [currentStepByProspect, prospects]);
 
-  // Prospects filtered by the active step tab, then by the search box
+  // Prospects filtered by the active step tab, then by the search box, sorted by score desc
   const filteredProspects = useMemo(() => {
     let list = prospects;
     if (stepFilter !== "all") {
@@ -1268,7 +1268,7 @@ export default function OutreachPage() {
     if (q) {
       list = list.filter((p) => p.nom.toLowerCase().includes(q));
     }
-    return list;
+    return [...list].sort((a, b) => scoreTotal(b.score) - scoreTotal(a.score));
   }, [prospects, currentStepByProspect, stepFilter, search]);
 
   const pageCount = Math.max(1, Math.ceil(filteredProspects.length / PAGE_SIZE));
