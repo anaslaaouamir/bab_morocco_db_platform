@@ -55,7 +55,36 @@ MANAGEABLE_KEYS = {
         "config_attr": "GOOGLE_MAPS_API_KEY",
         "group": "Google Maps / Places",
     },
+    "yousign_api_key": {
+        "label": "Clé API",
+        "config_attr": "YOUSIGN_API_KEY",
+        "group": "Yousign (Signature électronique)",
+    },
+    "yousign_sandbox": {
+        "label": "Mode Sandbox (true/false)",
+        "config_attr": "YOUSIGN_SANDBOX",
+        "secret": False,
+        "group": "Yousign (Signature électronique)",
+        "cast": "bool",
+    },
+    "yousign_webhook_secret": {
+        "label": "Secret webhook",
+        "config_attr": "YOUSIGN_WEBHOOK_SECRET",
+        "group": "Yousign (Signature électronique)",
+    },
+    "yousign_signer_email": {
+        "label": "Email signataire Bab Morocco",
+        "config_attr": "YOUSIGN_SIGNER_EMAIL",
+        "secret": False,
+        "group": "Yousign (Signature électronique)",
+    },
 }
+
+
+def _coerce(value: str, cast: str | None) -> object:
+    if cast == "bool":
+        return value.strip().lower() in ("true", "1", "yes")
+    return value
 
 
 def _mask_key(value: str) -> str:
@@ -242,7 +271,8 @@ def _key_info(key_name: str, db_value: str | None) -> dict:
     meta = MANAGEABLE_KEYS[key_name]
     is_secret = meta.get("secret", True)
     group = meta.get("group", "")
-    env_value = getattr(app_settings, meta["config_attr"], "") or ""
+    raw_env_value = getattr(app_settings, meta["config_attr"], "")
+    env_value = str(raw_env_value) if raw_env_value not in (None, "") else ""
 
     base = {"key": key_name, "label": meta["label"], "group": group, "secret": is_secret}
 
@@ -292,8 +322,8 @@ async def update_key(
         db.add(SystemSetting(key=key_name, value=value, updated_at=datetime.utcnow()))
     await db.commit()
 
-    config_attr = MANAGEABLE_KEYS[key_name]["config_attr"]
-    setattr(app_settings, config_attr, value)
+    meta = MANAGEABLE_KEYS[key_name]
+    setattr(app_settings, meta["config_attr"], _coerce(value, meta.get("cast")))
 
     return _key_info(key_name, value)
 
@@ -317,6 +347,10 @@ async def delete_key(
     import os
     meta = MANAGEABLE_KEYS[key_name]
     env_value = os.environ.get(meta["config_attr"], "")
-    setattr(app_settings, meta["config_attr"], env_value)
+    if env_value:
+        setattr(app_settings, meta["config_attr"], _coerce(env_value, meta.get("cast")))
+    else:
+        default = type(app_settings).model_fields[meta["config_attr"]].default
+        setattr(app_settings, meta["config_attr"], default)
 
     return _key_info(key_name, None)

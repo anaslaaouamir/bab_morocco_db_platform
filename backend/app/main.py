@@ -46,13 +46,16 @@ async def load_db_api_keys() -> None:
     from app.models.system_settings import SystemSetting
     from app.routers.api_settings import MANAGEABLE_KEYS
 
-    key_map = {k: v["config_attr"] for k, v in MANAGEABLE_KEYS.items()}
+    key_meta = {k: v for k, v in MANAGEABLE_KEYS.items()}
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(SystemSetting))
         for row in result.scalars().all():
-            attr = key_map.get(row.key)
-            if attr and row.value:
-                setattr(settings, attr, row.value)
+            meta = key_meta.get(row.key)
+            if meta and row.value:
+                value = row.value
+                if meta.get("cast") == "bool":
+                    value = value.strip().lower() in ("true", "1", "yes")
+                setattr(settings, meta["config_attr"], value)
             if row.key == "default_ai_provider" and row.value in ("claude", "openai"):
                 settings.DEFAULT_AI_PROVIDER = row.value
             if row.key == "default_claude_model" and row.value:
