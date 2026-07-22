@@ -95,6 +95,30 @@ const babMoroccoTheme = createTheme({
   },
   shape: { borderRadius: 12 },
   components: {
+    MuiTypography: {
+      defaultProps: {
+        variantMapping: {
+          // Display & headline → semantic heading levels
+          displayLarge:   "h1",
+          displayMedium:  "h2",
+          displaySmall:   "h3",
+          headlineLarge:  "h4",
+          headlineMedium: "h5",
+          headlineSmall:  "h6",
+          // Title & body → block paragraphs (fixes inline-concatenation bug)
+          titleLarge:     "p",
+          titleMedium:    "p",
+          titleSmall:     "p",
+          bodyLarge:      "p",
+          bodyMedium:     "p",
+          bodySmall:      "p",
+          // Label → span (intentionally inline: used inside chips and flex rows)
+          labelLarge:     "span",
+          labelMedium:    "span",
+          labelSmall:     "span",
+        },
+      },
+    },
     MuiCard: {
       styleOverrides: {
         root: { borderRadius: 12 },
