@@ -24,7 +24,8 @@ export type BmNotification =
   | { type: "contract_signed"; contract_id: string; prospect_id: string; prospect_nom: string }
   | { type: "contract_declined"; contract_id: string; prospect_id: string; prospect_nom: string }
   | { type: "contract_bab_signed"; contract_id: string; prospect_id: string; prospect_nom: string }
-  | { type: "contract_signature_expired"; contract_id: string; prospect_id: string; prospect_nom: string };
+  | { type: "contract_signature_expired"; contract_id: string; prospect_id: string; prospect_nom: string }
+  | { type: "email_bounced"; prospect_id: string; prospect_nom: string };
 
 type NotificationHandler = (event: BmNotification) => void;
 
@@ -53,6 +54,8 @@ function messageFor(event: BmNotification): string {
       return `Vous avez signé — en attente de la signature de ${event.prospect_nom}.`;
     case "contract_signature_expired":
       return `Délai de signature expiré pour ${event.prospect_nom}.`;
+    case "email_bounced":
+      return `Email invalide — l'adresse de ${event.prospect_nom} a rebondi.`;
     default:
       return "Nouvel événement.";
   }
