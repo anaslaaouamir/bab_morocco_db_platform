@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 MONTHLY_LIMIT_KEY = "monthly_token_limit"
 
 
+def extract_text(message) -> str:
+    """Extract text from a Claude API response, skipping ThinkingBlocks."""
+    for block in message.content:
+        if hasattr(block, "text"):
+            return block.text.strip()
+    return ""
+
+
 async def _check_monthly_limit() -> None:
     """Raise ValueError if the configured monthly token cap is already reached.
 

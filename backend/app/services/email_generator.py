@@ -6,7 +6,7 @@ import openai
 
 from app.config import settings
 from app.models.prospect import Prospect
-from app.services.ai_tracker import tracked_claude_call, tracked_openai_call
+from app.services.ai_tracker import extract_text, tracked_claude_call, tracked_openai_call
 from app.services.contract_generator import _partner_type_description
 from app.services.json_extract import extract_json
 
@@ -165,7 +165,7 @@ class ClaudeEmailGenerator:
             generator="email",
             prospect_id=prospect.id,
         )
-        raw = message.content[0].text.strip()
+        raw = extract_text(message)
         return _parse_email_response(raw, "ClaudeEmailGenerator")
 
 

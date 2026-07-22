@@ -6,7 +6,7 @@ import openai
 
 from app.config import settings
 from app.models.prospect import Prospect
-from app.services.ai_tracker import tracked_claude_call, tracked_openai_call
+from app.services.ai_tracker import extract_text, tracked_claude_call, tracked_openai_call
 from app.services.contract_generator import _partner_type_description
 from app.services.json_extract import extract_json
 
@@ -249,7 +249,7 @@ class ClaudeNegotiationGenerator:
             generator="negotiation_analyze",
             prospect_id=prospect.id,
         )
-        raw = message.content[0].text.strip()
+        raw = extract_text(message)
         return _parse_negotiation_json(raw, "ClaudeNegotiationGenerator.analyze")
 
     async def generate_scenarios(self, prospect: Prospect, analysis: dict, history: str = "") -> list[dict]:
@@ -262,7 +262,7 @@ class ClaudeNegotiationGenerator:
             generator="negotiation_scenarios",
             prospect_id=prospect.id,
         )
-        raw = message.content[0].text.strip()
+        raw = extract_text(message)
         return _parse_negotiation_json(raw, "ClaudeNegotiationGenerator.generate_scenarios")
 
     async def generate_response(self, prospect: Prospect, scenario_letter: str, analysis: dict) -> str:
