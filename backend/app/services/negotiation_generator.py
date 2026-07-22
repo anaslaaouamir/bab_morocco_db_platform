@@ -244,7 +244,7 @@ class ClaudeNegotiationGenerator:
         message = await tracked_claude_call(
             self._client,
             model=settings.DEFAULT_CLAUDE_MODEL,
-            max_tokens=512,
+            max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
             generator="negotiation_analyze",
             prospect_id=prospect.id,
@@ -257,7 +257,7 @@ class ClaudeNegotiationGenerator:
         message = await tracked_claude_call(
             self._client,
             model=settings.DEFAULT_CLAUDE_MODEL,
-            max_tokens=2048,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
             generator="negotiation_scenarios",
             prospect_id=prospect.id,

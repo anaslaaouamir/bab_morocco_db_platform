@@ -160,7 +160,7 @@ class ClaudeEmailGenerator:
         message = await tracked_claude_call(
             self._client,
             model=settings.DEFAULT_CLAUDE_MODEL,
-            max_tokens=1024,
+            max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
             generator="email",
             prospect_id=prospect.id,
