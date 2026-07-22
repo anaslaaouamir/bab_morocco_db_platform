@@ -274,7 +274,8 @@ def _key_info(key_name: str, db_value: str | None) -> dict:
     raw_env_value = getattr(app_settings, meta["config_attr"], "")
     env_value = str(raw_env_value) if raw_env_value not in (None, "") else ""
 
-    base = {"key": key_name, "label": meta["label"], "group": group, "secret": is_secret}
+    input_type = "bool" if meta.get("cast") == "bool" else "text"
+    base = {"key": key_name, "label": meta["label"], "group": group, "secret": is_secret, "input_type": input_type}
 
     if db_value:
         return {**base, "masked_value": _display_value(db_value, is_secret), "is_set": True, "source": "database"}

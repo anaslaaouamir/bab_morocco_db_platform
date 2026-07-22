@@ -21,6 +21,7 @@ import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import StorageRoundedIcon from "@mui/icons-material/StorageRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import Switch from "@mui/material/Switch";
 
 import { apiSettingsApi, type ApiKeyInfo } from "@/lib/api";
 import { useSnackbar } from "@/contexts/SnackbarContext";
@@ -182,7 +183,52 @@ export default function ApiKeysPanel() {
                       variant="outlined"
                       sx={{ px: 2, py: 1.5, borderRadius: 2 }}
                     >
-                      {editingKey === k.key ? (
+                      {k.input_type === "bool" ? (
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+                          <Typography variant="bodySmall" sx={{ fontWeight: 700, minWidth: 160 }}>
+                            {k.label}
+                          </Typography>
+                          <Switch
+                            checked={k.masked_value?.toLowerCase() === "true"}
+                            onChange={async (_e, checked) => {
+                              setSaving(true);
+                              try {
+                                const updated = await apiSettingsApi.updateKey(k.key, checked ? "true" : "false");
+                                setKeys((prev) => prev.map((x) => (x.key === k.key ? updated : x)));
+                                showSnackbar({ message: "Valeur enregistrée.", severity: "success", duration: 3000 });
+                              } catch (e: unknown) {
+                                showSnackbar({ message: e instanceof Error ? e.message : "Erreur.", severity: "error", duration: 5000 });
+                              } finally {
+                                setSaving(false);
+                              }
+                            }}
+                            disabled={saving}
+                            size="small"
+                          />
+                          <Typography variant="bodySmall" sx={{ color: "text.secondary", flex: 1 }}>
+                            {k.masked_value?.toLowerCase() === "true" ? "Activé" : "Désactivé"}
+                          </Typography>
+                          <Chip
+                            icon={SOURCE_ICONS[k.source] as React.ReactElement | undefined}
+                            label={SOURCE_LABELS[k.source]}
+                            size="small"
+                            color={SOURCE_COLORS[k.source]}
+                            variant="outlined"
+                            sx={{ fontSize: "0.6875rem" }}
+                          />
+                          {k.source === "database" && (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDelete(k.key)}
+                              disabled={saving}
+                              title="Supprimer (retour au .env)"
+                              color="error"
+                            >
+                              <DeleteOutlineRoundedIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Box>
+                      ) : editingKey === k.key ? (
                         <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
                           <Typography variant="bodySmall" sx={{ fontWeight: 700 }}>
                             {k.label}

@@ -301,4 +301,5 @@ export interface ApiKeyInfo {
   masked_value: string;
   is_set: boolean;
   source: "database" | "env_file" | "not_set";
+  input_type?: "text" | "bool";
 }
