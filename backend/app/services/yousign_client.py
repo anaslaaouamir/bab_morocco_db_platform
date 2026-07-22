@@ -142,61 +142,43 @@ class RealYousignClient:
             # Yousign only allows letters, spaces, hyphens, apostrophes in name fields.
             clean_name = re.sub(r"\s+", " ", re.sub(r"[^a-zA-ZÀ-ÿ\s\-']", "", partner_name)).strip()
             partner_first_name, _, partner_last_name = clean_name.partition(" ")
+            # Field geometry targets the two-column signature block rendered
+            # by pdf_generator.py (left = Bab Morocco, right = Partner), on
+            # the PDF's last page (the PageBreak right before "SIGNATURES").
+            # width/height must satisfy Yousign's enforced 2.3:1 ratio.
+            # Coordinates are an initial estimate — verify visually against
+            # a real sandbox document and adjust (see Section 7 of the plan).
+            signer1_payload = {
+                "info": {
+                    "first_name": bab_first_name,
+                    "last_name": bab_last_name,
+                    "email": bab_email,
+                    "locale": "fr",
+                },
+                "signature_level": "electronic_signature",
+                "signature_authentication_mode": "no_otp",
+                "fields": [
+                    {
+                        "document_id": document_id,
+                        "type": "signature",
+                        "page": page,
+                        "x": 100,
+                        "y": 195,
+                        "width": 170,
+                        "height": 74,
+                    },
+                ],
+            }
             signer1_resp = await client.post(
                 f"/signature_requests/{signature_request_id}/signers",
-                json={
-                    "info": {
-                        "first_name": bab_first_name,
-                        "last_name": bab_last_name,
-                        "email": bab_email,
-                        "locale": "fr",
-                    },
-                    "signature_level": "electronic_signature",
-                    "signature_authentication_mode": "no_otp",
-                    # Field geometry targets the two-column signature block rendered
-                    # by pdf_generator.py (left = Bab Morocco, right = Partner), on
-                    # the PDF's last page (the PageBreak right before "SIGNATURES").
-                    # width/height must satisfy Yousign's enforced 2.3:1 ratio.
-                    # Coordinates are an initial estimate — verify visually against
-                    # a real sandbox document and adjust (see Section 7 of the plan).
-                    # signer_name and signature_date are auto-filled by Yousign at
-                    # signing time (read-only) — they overlay the "Nom et qualité :"
-                    # / "Date :" labels printed just below the signature box.
-                    "fields": [
-                        {
-                            "document_id": document_id,
-                            "type": "signature",
-                            "page": page,
-                            "x": 100,
-                            "y": 195,
-                            "width": 170,
-                            "height": 74,
-                        },
-                        {
-                            "document_id": document_id,
-                            "type": "signer_name",
-                            "page": page,
-                            "x": 100,
-                            "y": 275,
-                            "width": 170,
-                            "height": 18,
-                        },
-                        {
-                            "document_id": document_id,
-                            "type": "signature_date",
-                            "page": page,
-                            "x": 100,
-                            "y": 297,
-                            "width": 170,
-                            "height": 18,
-                        },
-                    ],
-                },
+                json=signer1_payload,
             )
+            if signer1_resp.status_code >= 400:
+                logger.error("Yousign signer1 error %s: %s | payload: %s",
+                             signer1_resp.status_code, signer1_resp.text, signer1_payload)
             signer1_resp.raise_for_status()
             signer1_data = signer1_resp.json()
             signer_bab_id = signer1_data["id"]
-            signer_bab_signature_link = signer1_data.get("signature_link", "")
 
             # Step 4 — add signer 2: partner (signs second, invited only after signer 1)
             signer2_payload = {
@@ -218,24 +200,6 @@ class RealYousignClient:
                         "width": 170,
                         "height": 74,
                     },
-                    {
-                        "document_id": document_id,
-                        "type": "signer_name",
-                        "page": page,
-                        "x": 328,
-                        "y": 275,
-                        "width": 170,
-                        "height": 18,
-                    },
-                    {
-                        "document_id": document_id,
-                        "type": "signature_date",
-                        "page": page,
-                        "x": 328,
-                        "y": 297,
-                        "width": 170,
-                        "height": 18,
-                    },
                 ],
             }
             signer2_resp = await client.post(
@@ -248,11 +212,41 @@ class RealYousignClient:
             signer2_resp.raise_for_status()
             signer_partner_id = signer2_resp.json()["id"]
 
+            # Step 4b — signer_name and signature_date fields are auto-filled by
+            # Yousign at signing time (read-only) — they overlay the "Nom et
+            # qualité :" / "Date :" labels printed just below each signature box.
+            # These types aren't accepted inline on signer creation — they need
+            # the dedicated document-fields endpoint, tied to the signer via
+            # signer_id.
+            for signer_id, x in ((signer_bab_id, 100), (signer_partner_id, 328)):
+                for field_type, y in (("signer_name", 275), ("signature_date", 297)):
+                    field_resp = await client.post(
+                        f"/signature_requests/{signature_request_id}/documents/{document_id}/fields",
+                        json={
+                            "type": field_type,
+                            "signer_id": signer_id,
+                            "page": page,
+                            "x": x,
+                            "y": y,
+                        },
+                    )
+                    if field_resp.status_code >= 400:
+                        logger.error("Yousign %s field error %s: %s",
+                                     field_type, field_resp.status_code, field_resp.text)
+                    field_resp.raise_for_status()
+
             # Step 5 — activate (sends the invitation to signer 1)
+            # signature_link is null until activation — it's only populated in the
+            # activate response (or a subsequent GET), not at signer creation time.
             activate_resp = await client.post(f"/signature_requests/{signature_request_id}/activate")
             if activate_resp.status_code >= 400:
                 logger.error("Yousign activate error %s: %s", activate_resp.status_code, activate_resp.text)
             activate_resp.raise_for_status()
+            signer_bab_signature_link = ""
+            for signer in activate_resp.json().get("signers", []):
+                if signer.get("id") == signer_bab_id:
+                    signer_bab_signature_link = signer.get("signature_link") or ""
+                    break
 
         return YousignResult(
             signature_request_id=signature_request_id,

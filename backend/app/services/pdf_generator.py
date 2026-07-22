@@ -145,16 +145,7 @@ _CLAUSE_ORDER = [
     "rgpd_clause", "juridiction", "post_signature_note",
 ]
 
-# Signature-block strings that differ only for the Yousign flow (no blank line
-# to hand-sign — Yousign draws its own signature box over this area of the
-# page; see yousign_client.py's `fields` coordinates, which target this block).
-_SIG_LINE_YOUSIGN: dict[str, str] = {
-    "fr": "[ Zone de signature électronique Yousign ]",
-    "en": "[ Yousign electronic signature area ]",
-    "es": "[ Zona de firma electrónica Yousign ]",
-    "de": "[ Yousign — Bereich für elektronische Unterschrift ]",
-    "ar": "[ منطقة التوقيع الإلكتروني عبر Yousign ]",
-}
+# Footer strings that differ only for the Yousign flow.
 _FOOTER_YOUSIGN: dict[str, str] = {
     "fr": "Ce document sera signé électroniquement via Yousign, conforme au règlement eIDAS — babmorocco.com",
     "en": "This document will be signed electronically via Yousign, eIDAS-compliant — babmorocco.com",
@@ -392,25 +383,39 @@ def generate_contract_pdf(
     story.append(Paragraph(headers["signatures"], styles["signature_header"]))
     story.append(HRFlowable(width="100%", thickness=1, color=BAB_ORANGE, spaceAfter=20))
 
-    sig_line_text = _SIG_LINE_YOUSIGN.get(lang, _SIG_LINE_YOUSIGN["fr"]) if signing_method == "yousign" else headers["sig_line"]
-    sig_data = [
-        [
-            Paragraph(headers["sig_bab"], styles["sig_label"]),
-            Paragraph(headers["sig_partner"], styles["sig_label"]),
-        ],
-        [
-            Paragraph(sig_line_text, styles["sig_line"]),
-            Paragraph(sig_line_text, styles["sig_line"]),
-        ],
-        [
-            Paragraph(f"{headers['sig_name']}", styles["sig_note"]),
-            Paragraph(f"{headers['sig_name']}", styles["sig_note"]),
-        ],
-        [
-            Paragraph(f"{headers['sig_date']}", styles["sig_note"]),
-            Paragraph(f"{headers['sig_date']}", styles["sig_note"]),
-        ],
-    ]
+    if signing_method == "yousign":
+        # Yousign draws its own signature box and auto-fills the signer's name
+        # and date directly onto the page (see yousign_client.py's `fields`) —
+        # no placeholder text or labels needed here, just blank space to host them.
+        sig_data = [
+            [
+                Paragraph(headers["sig_bab"], styles["sig_label"]),
+                Paragraph(headers["sig_partner"], styles["sig_label"]),
+            ],
+            [
+                Spacer(1, 2.8 * cm),
+                Spacer(1, 2.8 * cm),
+            ],
+        ]
+    else:
+        sig_data = [
+            [
+                Paragraph(headers["sig_bab"], styles["sig_label"]),
+                Paragraph(headers["sig_partner"], styles["sig_label"]),
+            ],
+            [
+                Paragraph(headers["sig_line"], styles["sig_line"]),
+                Paragraph(headers["sig_line"], styles["sig_line"]),
+            ],
+            [
+                Paragraph(f"{headers['sig_name']}", styles["sig_note"]),
+                Paragraph(f"{headers['sig_name']}", styles["sig_note"]),
+            ],
+            [
+                Paragraph(f"{headers['sig_date']}", styles["sig_note"]),
+                Paragraph(f"{headers['sig_date']}", styles["sig_note"]),
+            ],
+        ]
     sig_table = Table(sig_data, colWidths=[8 * cm, 8 * cm])
     sig_table.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -420,7 +425,11 @@ def generate_contract_pdf(
     ]))
     story.append(sig_table)
 
-    story.append(Spacer(1, 1 * cm))
+    # Extra clearance in Yousign mode: the signer_name/signature_date fields
+    # (yousign_client.py, y=275/297, just below the signature box at y=195-269)
+    # are drawn at fixed page coordinates independent of this flow — leave
+    # enough room so the footer text doesn't land under them.
+    story.append(Spacer(1, (2.6 if signing_method == "yousign" else 1) * cm))
     footer_text = _FOOTER_YOUSIGN.get(lang, _FOOTER_YOUSIGN["fr"]) if signing_method == "yousign" else _FOOTER_MANUAL
     story.append(Paragraph(footer_text, styles["sig_note"]))
 
