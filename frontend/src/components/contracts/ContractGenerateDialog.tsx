@@ -606,7 +606,14 @@ function GeneratedPanel({
   );
 }
 
-function YousignProgressPanel({ contract, prospect }: { contract: RawContract; prospect: Prospect }) {
+function YousignProgressPanel({
+  contract, prospect, onMarkDeclined, actioning,
+}: {
+  contract: RawContract;
+  prospect: Prospect;
+  onMarkDeclined: () => void;
+  actioning: boolean;
+}) {
   const theme = useTheme();
   const { showSnackbar } = useSnackbar();
 
@@ -686,6 +693,29 @@ function YousignProgressPanel({ contract, prospect }: { contract: RawContract; p
           </Typography>
         </Box>
       )}
+
+      <Divider />
+
+      {/* Yousign's signing page has no self-service decline option for the
+          signer — a refusal can only reach us out-of-band (email, phone).
+          Keep a manual fallback so a verbal/written "non" from the partner
+          can still be recorded, same as the pre-Yousign manual flow. */}
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
+        <Typography variant="labelSmall" color="text.secondary">
+          Le partenaire a refusé par un autre moyen (email, téléphone) ?
+        </Typography>
+        <Button
+          variant="outlined"
+          color="error"
+          size="small"
+          startIcon={actioning ? <CircularProgress size={14} color="inherit" /> : <ThumbDownRoundedIcon />}
+          onClick={onMarkDeclined}
+          disabled={actioning}
+          sx={{ fontWeight: 700, textTransform: "none", alignSelf: "flex-start" }}
+        >
+          Marquer comme refusé
+        </Button>
+      </Box>
     </Box>
   );
 }
@@ -1225,7 +1255,12 @@ export default function ContractGenerateDialog({
           )}
           {contract.status === "sent_to_partner" && (
             contract.signing_method === "yousign" ? (
-              <YousignProgressPanel contract={contract} prospect={prospect} />
+              <YousignProgressPanel
+                contract={contract}
+                prospect={prospect}
+                onMarkDeclined={() => setConfirmDecline(true)}
+                actioning={actioning}
+              />
             ) : (
               <SentPanel
                 contract={contract}
