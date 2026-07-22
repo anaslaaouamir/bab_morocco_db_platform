@@ -465,14 +465,23 @@ export default function ContratsPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Live update — a real inbound partner reply or email-open event for a
-  // contract arrives via the notifications WebSocket. Refresh that one
-  // contract's card everywhere; only touch the open dialog if it's already
-  // showing this exact contract (never swap dialogContract without also
-  // updating dialogProspect — they must always refer to the same contract).
+  // Live update — a real inbound partner reply, email-open, or Yousign signing
+  // event (signed/declined/bab-side-signed/expired) for a contract arrives via
+  // the notifications WebSocket. Refresh that one contract's card everywhere;
+  // only touch the open dialog if it's already showing this exact contract
+  // (never swap dialogContract without also updating dialogProspect — they
+  // must always refer to the same contract). Signed/declined also changes the
+  // prospect's pipeline stage, so refetch the prospect lists too.
   useEffect(() => {
     return subscribe((event) => {
-      if (event.type !== "contract_reply" && !(event.type === "email_opened" && event.context === "contract")) {
+      if (
+        event.type !== "contract_reply" &&
+        event.type !== "contract_signed" &&
+        event.type !== "contract_declined" &&
+        event.type !== "contract_bab_signed" &&
+        event.type !== "contract_signature_expired" &&
+        !(event.type === "email_opened" && event.context === "contract")
+      ) {
         return;
       }
       contractsApi
@@ -480,6 +489,9 @@ export default function ContratsPage() {
         .then((updated) => {
           setContracts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
           setDialogContract((prev) => (prev && prev.id === updated.id ? updated : prev));
+          if (updated.status === "signed" || updated.status === "declined") {
+            fetchData();
+          }
         })
         .catch(() => {});
     });

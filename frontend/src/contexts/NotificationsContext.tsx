@@ -20,7 +20,11 @@ export type BmNotification =
   | { type: "email_opened"; context: "outreach"; prospect_id: string; prospect_nom: string }
   | { type: "outreach_reply"; prospect_id: string; prospect_nom: string }
   | { type: "negotiation_reply"; prospect_id: string; prospect_nom: string }
-  | { type: "contract_reply"; contract_id: string; prospect_id: string; prospect_nom: string | null };
+  | { type: "contract_reply"; contract_id: string; prospect_id: string; prospect_nom: string | null }
+  | { type: "contract_signed"; contract_id: string; prospect_id: string; prospect_nom: string }
+  | { type: "contract_declined"; contract_id: string; prospect_id: string; prospect_nom: string }
+  | { type: "contract_bab_signed"; contract_id: string; prospect_id: string; prospect_nom: string }
+  | { type: "contract_signature_expired"; contract_id: string; prospect_id: string; prospect_nom: string };
 
 type NotificationHandler = (event: BmNotification) => void;
 
@@ -41,6 +45,14 @@ function messageFor(event: BmNotification): string {
       return `Nouvelle réponse de ${event.prospect_nom} en négociation.`;
     case "contract_reply":
       return `${event.prospect_nom ?? "Le partenaire"} a répondu au contrat.`;
+    case "contract_signed":
+      return `Contrat signé — ${event.prospect_nom} est maintenant partenaire actif !`;
+    case "contract_declined":
+      return `Contrat refusé par ${event.prospect_nom}.`;
+    case "contract_bab_signed":
+      return `Vous avez signé — en attente de la signature de ${event.prospect_nom}.`;
+    case "contract_signature_expired":
+      return `Délai de signature expiré pour ${event.prospect_nom}.`;
     default:
       return "Nouvel événement.";
   }
