@@ -364,7 +364,7 @@ function DraftPanel({
                 </Box>
               </Box>
               <Typography variant="bodySmall" color="text.secondary" sx={{ fontSize: "0.75rem", lineHeight: 1.5, whiteSpace: "pre-line" }}>
-                {msg.corps.length > 300 ? msg.corps.slice(0, 300) + "…" : msg.corps}
+                {msg.corps}
               </Typography>
             </Box>
           ))}
