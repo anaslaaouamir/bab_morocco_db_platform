@@ -214,11 +214,19 @@ Tests use an in-memory SQLite database; no external services or API keys require
 
 ## Production Deployment
 
+```
+Internet → Cloudflare (DNS) → nginx (vhost bab.elbahi.ma, SSL Let's Encrypt)
+                                 ├── /       → Next.js   :3010   (pm2)
+                                 └── /api    → FastAPI    :8010   (uvicorn, pm2)
+                                                  └── PostgreSQL (dedicated DB)
+```
+
 | Component | Details |
 |---|---|
-| Server | AWS EC2 |
-| Frontend | Next.js on port 3010 |
-| Backend | FastAPI / uvicorn on port 8010 |
-| Process manager | pm2 |
-| Reverse proxy | nginx + Let's Encrypt SSL |
+| Server | VPS at `13.140.187.6` — user `deploy-bab`, folder `/var/www/bab` |
+| Frontend | Next.js on `127.0.0.1:3010` |
+| Backend | FastAPI / uvicorn on `127.0.0.1:8010` |
+| Process manager | pm2 (per-account instance, no sudo) |
+| DNS | Cloudflare |
+| Reverse proxy | nginx + Let's Encrypt SSL (pre-configured, do not modify) |
 | URL | `https://bab.elbahi.ma` |
