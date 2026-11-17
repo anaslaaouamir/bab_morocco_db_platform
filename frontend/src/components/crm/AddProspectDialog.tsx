@@ -719,7 +719,7 @@ export default function AddProspectDialog({ open, onClose, onAdd }: AddProspectD
               </FormControl>
 
               <FormControl size="small" fullWidth>
-                <InputLabel>Langue d'outreach</InputLabel>
+                <InputLabel>Langue d&apos;outreach</InputLabel>
                 <Select
                   value={values.langue}
                   label="Langue d'outreach"

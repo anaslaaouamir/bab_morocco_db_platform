@@ -70,7 +70,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showSnackbarRef = useRef(showSnackbar);
-  showSnackbarRef.current = showSnackbar;
+  useEffect(() => {
+    showSnackbarRef.current = showSnackbar;
+  }, [showSnackbar]);
 
   const subscribe = useCallback((handler: NotificationHandler) => {
     handlersRef.current.add(handler);
