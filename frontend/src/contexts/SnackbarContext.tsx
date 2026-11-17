@@ -32,7 +32,7 @@ const SnackbarContext = createContext<SnackbarContextValue | null>(null);
 
 // ─── Slide transition (up from bottom) ────────────────────────────────────
 
-function SlideUp(props: TransitionProps & { children: React.ReactElement }) {
+function SlideUp(props: TransitionProps & { children: React.ReactElement<unknown> }) {
   return <Slide {...props} direction="up" />;
 }
 

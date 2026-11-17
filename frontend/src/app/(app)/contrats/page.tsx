@@ -185,7 +185,7 @@ function ContractCard({
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mb: 0.5 }}>
               <Typography variant="titleSmall" sx={{ fontWeight: 700 }}>{contract.partner_name}</Typography>
               <Chip
-                icon={info.icon as React.ReactElement}
+                icon={info.icon as React.ReactElement<unknown>}
                 label={info.label}
                 color={info.chipColor}
                 size="small"

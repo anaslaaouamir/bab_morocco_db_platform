@@ -209,7 +209,7 @@ export default function ApiKeysPanel() {
                             {k.masked_value?.toLowerCase() === "true" ? "Activé" : "Désactivé"}
                           </Typography>
                           <Chip
-                            icon={SOURCE_ICONS[k.source] as React.ReactElement | undefined}
+                            icon={SOURCE_ICONS[k.source] as React.ReactElement<unknown> | undefined}
                             label={SOURCE_LABELS[k.source]}
                             size="small"
                             color={SOURCE_COLORS[k.source]}
@@ -298,7 +298,7 @@ export default function ApiKeysPanel() {
                             {k.is_set ? k.masked_value : "Non configurée"}
                           </Typography>
                           <Chip
-                            icon={SOURCE_ICONS[k.source] as React.ReactElement | undefined}
+                            icon={SOURCE_ICONS[k.source] as React.ReactElement<unknown> | undefined}
                             label={SOURCE_LABELS[k.source]}
                             size="small"
                             color={SOURCE_COLORS[k.source]}

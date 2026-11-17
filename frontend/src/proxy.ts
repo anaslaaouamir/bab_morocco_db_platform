@@ -5,10 +5,10 @@ const AUTH_TOKEN_COOKIE = "bm_auth_token";
 
 /**
  * Presence-only auth gate. The actual JWT (signature/expiry) is validated
- * server-side by the backend on every API call — this middleware only stops
+ * server-side by the backend on every API call — this proxy (ex-middleware) only stops
  * obviously-logged-out users from seeing a page flash before redirect.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const token = request.cookies.get(AUTH_TOKEN_COOKIE)?.value;
 
   if (!token) {

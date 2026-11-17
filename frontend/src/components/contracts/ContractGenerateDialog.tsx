@@ -734,6 +734,8 @@ function SentPanel({
 }) {
   const theme = useTheme();
   const { showSnackbar } = useSnackbar();
+  // Snapshot de l'heure au montage (Date.now() est impur pendant le rendu en React 19).
+  const [now] = useState(() => Date.now());
   const hasReply = !!contract.partner_reply;
   const hasPdfMention = hasReply && /pdf|pièce jointe|joint|attachm/i.test(contract.partner_reply!);
 
@@ -744,7 +746,7 @@ function SentPanel({
     ? new Date(contract.partner_replied_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
     : null;
   const daysSince = contract.sent_at
-    ? Math.floor((Date.now() - new Date(contract.sent_at).getTime()) / (1000 * 60 * 60 * 24))
+    ? Math.floor((now - new Date(contract.sent_at).getTime()) / (1000 * 60 * 60 * 24))
     : 0;
   const openedDate = contract.opened_at
     ? new Date(contract.opened_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
